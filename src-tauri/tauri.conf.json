@@ -1,0 +1,76 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "EchoPrism",
+  "version": "0.1.0",
+  "identifier": "app.echoprism",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "EchoPrism",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "titleBarStyle": "overlay"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "EchoPrism",
+    "shortDescription": "Two streams become one - Unified video & podcast player",
+    "longDescription": "EchoPrism is a unified video & podcast player that converges YouTube watching and podcast listening into one seamless stream. Built with Tauri, Rust, and love for privacy.",
+    "copyright": "MIT License",
+    "category": "AudioVideo",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": null,
+      "providerShortName": null,
+      "info": {
+        "NSHumanReadableCopyright": "MIT License",
+        "NSPrincipalClass": "NSApplication",
+        "CFBundleName": "EchoPrism",
+        "CFBundleDisplayName": "EchoPrism"
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libayatana-appindicator3-1", "librsvg2-2"]
+      }
+    }
+  },
+  "plugins": {
+    "store": { "autoSave": true },
+    "windowState": { "autoSave": true }
+  }
+}

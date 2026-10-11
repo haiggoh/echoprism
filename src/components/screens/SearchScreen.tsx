@@ -1,0 +1,99 @@
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { episodeCommands } from '../../hooks/useTauriCommands';
+import { EpisodeCard } from '../feed/EpisodeCard';
+import { FeedFilterTabs } from '../feed/FeedFilterTabs';
+import { EmptyState } from '../ui/EmptyState';
+
+export function SearchScreen() {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'channel'>('all');
+  const [showResults, setShowResults] = useState(false);
+
+  const { data: episodes, isLoading, error } = useQuery({
+    queryKey: ['search', query, filter],
+    queryFn: () => episodeCommands.search(query, { type: filter === 'all' ? undefined : filter }),
+    enabled: showResults && query.length >= 2,
+  });
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (query.trim().length >= 2) {
+      setShowResults(true);
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Search Header */}
+      <div className="px-4 py-4 border-b border-border">
+        <form onSubmit={handleSearch} className="flex gap-4">
+          <div className="flex-1 relative">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search videos, podcasts, channels..."
+              className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              autoFocus
+            />
+          </div>
+          <button type="submit" className="btn-unified px-6" disabled={query.length < 2}>
+            Search
+          </button>
+        </form>
+      </div>
+
+      {/* Filter Tabs */}
+      <FeedFilterTabs 
+        activeFilter={filter} 
+        onFilterChange={setFilter} 
+      />
+
+      {/* Results */}
+      <div className="flex-1 overflow-auto p-4">
+        {!showResults && (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center p-8">
+              <p className="text-text-muted text-lg">Enter a search query to find videos and podcasts</p>
+              <p className="text-text-muted mt-2 text-sm">Minimum 2 characters</p>
+            </div>
+          </div>
+        )}
+
+        {showResults && isLoading && (
+          <div className="flex h-64 items-center justify-center">
+            <div className="convergence-loader" role="status">
+              <div className="convergence-loader-beams" />
+              <div className="convergence-loader-prism" />
+            </div>
+          </div>
+        )}
+
+        {showResults && !isLoading && error && (
+          <div className="flex h-64 items-center justify-center">
+            <div className="text-center p-8">
+              <p className="text-danger mb-4">Search failed</p>
+              <button className="btn-unified" onClick={() => {}}>Retry</button>
+            </div>
+          </div>
+        )}
+
+        {showResults && !isLoading && !error && episodes && episodes.length === 0 && (
+          <EmptyState 
+            variant="search" 
+            query={query}
+          />
+        )}
+
+        {showResults && !isLoading && !error && episodes && episodes.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {episodes.map((episode) => (
+              <EpisodeCard key={episode.id} episode={episode as any} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

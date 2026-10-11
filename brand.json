@@ -1,0 +1,22 @@
+{
+  "name": "EchoPrism",
+  "avoid": ["YouTube", "Google", "YT", "yt", "youtube"],
+  "domains": ["youtube.com", "youtu.be", "googlevideo.com", "ggpht.com", "googleapis.com", "ytimg.com"],
+  "colors": ["#FF0000", "#282828", "#FFFFFF", "#FF1A1A", "#CC0000", "#FF3333"],
+  "checks": {
+    "us_tm": "pending",
+    "eu_tm": "pending",
+    "canada_tm": "pending",
+    "wipo": "pending",
+    "domain_com": "taken",
+    "domain_app": "available",
+    "domain_dev": "available",
+    "domain_co": "available",
+    "domain_xyz": "available",
+    "domain_io": "taken",
+    "app_store": "pending",
+    "play_store": "pending",
+    "x_handle": "pending",
+    "github": "reserved"
+  }
+}

@@ -1,0 +1,350 @@
+// Core types for EchoPrism
+
+export interface User {
+  id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserPreferences {
+  user_id: string;
+  default_instance_id?: string;
+  default_format: 'video' | 'audio' | 'unified';
+  queue_behavior: 'play_next' | 'add_end';
+  audio_only_default: boolean;
+  auto_download_wifi: boolean;
+  sponsorblock_enabled: boolean;
+  sponsorblock_categories: string[];
+  keyboard_shortcuts_enabled: boolean;
+  theme: 'dark' | 'light' | 'system';
+  cross_device_sync_enabled: boolean;
+  updated_at: string;
+}
+
+// ============================
+// INSTANCES
+// ============================
+
+export type InstanceType = 'invidious' | 'piped';
+export type InstanceHealth = 'healthy' | 'degraded' | 'failed' | 'unknown';
+
+export interface Instance {
+  id: string;
+  url: string;
+  type: InstanceType;
+  health: InstanceHealth;
+  latency_ms?: number;
+  last_checked?: string;
+  auto_failover: boolean;
+  supports_sabr: boolean;
+  supports_age_restricted: boolean;
+  region?: string;
+  country?: string;
+  pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InstanceHealthLog {
+  id: number;
+  instance_id: string;
+  checked_at: string;
+  latency_ms?: number;
+  status: InstanceHealth;
+  error_message?: string;
+  video_id_tested?: string;
+}
+
+// ============================
+// CHANNELS
+// ============================
+
+export type ChannelType = 'video' | 'podcast' | 'both';
+export type FormatPreference = 'video' | 'audio' | 'both';
+
+export interface Channel {
+  id: string;
+  user_id: string;
+  external_id: string;
+  title: string;
+  handle?: string;
+  thumbnail_url?: string;
+  description?: string;
+  subscriber_count?: number;
+  is_subscribed: boolean;
+  subscribed_at: string;
+  notifications_enabled: boolean;
+  format_preference: FormatPreference;
+  instance_id?: string;
+  type: ChannelType;
+  podcast_feed_url?: string;
+  podcast_guid?: string;
+  last_fetched_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================
+// EPISODES / VIDEOS (Unified)
+// ============================
+
+export interface EpisodeFormat {
+  quality: string;
+  format: string;
+  url: string;
+  mime_type?: string;
+}
+
+export interface Chapter {
+  start_time: number;
+  end_time: number;
+  title: string;
+  image_url?: string;
+}
+
+export interface SponsorSegment {
+  start_time: number;
+  end_time: number;
+  category: string;
+  uuid: string;
+}
+
+export interface Episode {
+  id: string;
+  channel_id: string;
+  external_id: string;
+  title: string;
+  description?: string;
+  thumbnail_url?: string;
+  duration_seconds?: number;
+  published_at?: string;
+  url?: string;
+  video_id?: string;
+  podcast_guid?: string;
+  episode_number?: number;
+  season_number?: number;
+  audio_url?: string;
+  video_url?: string;
+  formats?: EpisodeFormat[];
+  chapters?: Chapter[];
+  sponsors?: SponsorSegment[];
+  transcript_url?: string;
+  is_downloaded: boolean;
+  download_quality?: string;
+  progress_seconds: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================
+// SMART EPISODE LINKS
+// ============================
+
+export type MatchSource = 'auto' | 'manual';
+
+export interface EpisodeLink {
+  id: string;
+  podcast_guid: string;
+  youtube_video_id: string;
+  confidence: number;
+  matched_at: string;
+  matched_by: 'auto' | 'manual';
+  title_similarity?: number;
+  date_diff_days?: number;
+  duration_diff_seconds?: number;
+  user_confirmed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================
+// QUEUE
+// ============================
+
+export type RepeatMode = 'off' | 'one' | 'all';
+export type PlayMode = 'video' | 'audio' | 'unified';
+export type QueueSource = 'feed' | 'search' | 'manual' | 'history' | 'smart_link';
+
+export interface Queue {
+  id: string;
+  user_id: string;
+  current_index: number;
+  repeat_mode: 'off' | 'one' | 'all';
+  shuffle: boolean;
+  audio_only_mode: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QueueItem {
+  id: string;
+  queue_id: string;
+  episode_id: string;
+  position: number;
+  added_at: string;
+  source: QueueSource;
+  play_mode: PlayMode;
+  smart_link_id?: string;
+}
+
+// ============================
+// PLAYBACK STATE
+// ============================
+
+export interface PlaybackState {
+  user_id: string;
+  episode_id?: string;
+  position_seconds: number;
+  duration_seconds?: number;
+  playback_rate: number;
+  volume: number;
+  is_audio_mode: boolean;
+  is_pip: boolean;
+  current_instance_id?: string;
+  last_updated: string;
+}
+
+// ============================
+// DOWNLOADS
+// ============================
+
+export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+
+export interface Download {
+  id: string;
+  episode_id: string;
+  quality: string;
+  format: 'video' | 'audio';
+  file_path: string;
+  file_size?: number;
+  status: DownloadStatus;
+  progress: number;
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+// ============================
+// HISTORY
+// ============================
+
+export interface HistoryEntry {
+  id: string;
+  user_id: string;
+  episode_id: string;
+  position_seconds: number;
+  duration_seconds?: number;
+  completed: boolean;
+  played_at: string;
+}
+
+// ============================
+// PODCAST FEEDS
+// ============================
+
+export interface PodcastFeed {
+  id: string;
+  user_id: string;
+  feed_url: string;
+  title?: string;
+  description?: string;
+  thumbnail_url?: string;
+  link?: string;
+  language?: string;
+  author?: string;
+  categories?: string[];
+  last_fetched_at?: string;
+  last_episode_published_at?: string;
+  fetch_interval_minutes: number;
+  auto_download: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================
+// SPONSORBLOCK
+// ============================
+
+export interface SponsorBlockSegment {
+  video_id: string;
+  segments: SponsorSegment[];
+  fetched_at: string;
+  expires_at: string;
+}
+
+export interface SponsorSegment {
+  start_time: number;
+  end_time: number;
+  category: string;
+  uuid: string;
+  votes?: number;
+}
+
+// ============================
+// KEYBOARD SHORTCUTS
+// ============================
+
+export type ShortcutContext = 'global' | 'player' | 'queue' | 'feed';
+
+export interface KeyboardShortcut {
+  id: string;
+  user_id: string;
+  action: string;
+  key_combination: string;
+  context: ShortcutContext;
+  enabled: boolean;
+  is_custom: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================
+// API RESPONSES
+// ============================
+
+export interface InstanceHealth {
+  id: string;
+  url: string;
+  type: 'invidious' | 'piped';
+  health: 'healthy' | 'degraded' | 'failed' | 'unknown';
+  latency_ms?: number;
+  last_checked?: string;
+  supports_sabr: boolean;
+  supports_age_restricted: boolean;
+  region?: string;
+}
+
+export interface StreamInfo {
+  url: string;
+  headers?: Record<string, string>;
+  format: string;
+}
+
+export interface EpisodeWithChannel extends Episode {
+  channel?: {
+    id: string;
+    title: string;
+    handle?: string;
+    thumbnail_url?: string;
+  };
+}
+
+// ============================
+// UI STATE
+// ============================
+
+export type PlayMode = 'video' | 'audio' | 'unified';
+export type QueueSource = 'feed' | 'search' | 'manual' | 'history' | 'smart_link';
+export type PlayModeType = 'video' | 'audio' | 'unified';
+
+export interface UIState {
+  sidebarOpen: boolean;
+  miniPlayerOpen: boolean;
+  fullscreenPlayer: boolean;
+  currentRoute: string;
+  previousRoute: string;
+  sidebarCollapsed: boolean;
+}
+
+export type ViewMode = 'feed' | 'queue' | 'player' | 'search' | 'settings' | 'history' | 'downloads' | 'channels' | 'smart-links';
