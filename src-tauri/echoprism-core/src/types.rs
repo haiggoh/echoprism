@@ -557,6 +557,22 @@ pub struct Queue {
     pub items: Vec<QueueItem>,
 }
 
+impl Default for Queue {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            user_id: String::new(),
+            current_index: 0,
+            repeat_mode: RepeatMode::Off,
+            shuffle: false,
+            audio_only_mode: false,
+            created_at: String::new(),
+            updated_at: String::new(),
+            items: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]

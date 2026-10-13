@@ -239,29 +239,36 @@ pub async fn search_episodes(
 }
 
 pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
-    let queue = query_as!(
-        Queue,
-        "SELECT id, user_id, current_index, repeat_mode as \"repeat_mode\", shuffle, audio_only_mode,
-              created_at, updated_at
+    let row = query!(
+        "SELECT id, user_id, current_index, repeat_mode, shuffle, audio_only_mode, created_at, updated_at
          FROM queues WHERE user_id = 'current-user' LIMIT 1"
     )
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    if let Some(mut queue) = queue {
+    if let Some(row) = row {
         let items = query_as!(
             QueueItem,
             "SELECT id, queue_id, episode_id, position, added_at, source as \"source\", play_mode as \"play_mode\", smart_link_id
              FROM queue_items WHERE queue_id = ? ORDER BY position",
-            queue.id
+            row.id
         )
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        queue.items = items;
-        Ok(queue)
+        Ok(Queue {
+            id: row.id,
+            user_id: row.user_id,
+            current_index: row.current_index,
+            repeat_mode: row.repeat_mode,
+            shuffle: row.shuffle,
+            audio_only_mode: row.audio_only_mode,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            items,
+        })
     } else {
         let now = chrono::Utc::now().to_rfc3339();
         let queue = Queue {
@@ -318,6 +325,8 @@ pub async fn add_to_queue(
 }
 
 pub async fn reorder_queue(pool: &SqlitePool, from: usize, to: usize) -> DbResult<()> {
+    let from_i64 = from as i64;
+    let to_i64 = to as i64;
     query!(
         "UPDATE queue_items SET position = CASE
             WHEN position = ? THEN ?
@@ -325,7 +334,7 @@ pub async fn reorder_queue(pool: &SqlitePool, from: usize, to: usize) -> DbResul
             WHEN position < ? AND position >= ? THEN position + 1
             ELSE position END
          WHERE queue_id = (SELECT id FROM queues WHERE user_id = 'current-user')",
-        from as i64, to as i64, from as i64, to as i64, from as i64, to as i64
+        from_i64, to_i64, from_i64, to_i64, from_i64, to_i64
     ).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -344,14 +353,14 @@ pub async fn clear_queue(pool: &SqlitePool) -> DbResult<()> {
 
 pub async fn play_next(pool: &SqlitePool, episode_id: String) -> DbResult<()> {
     let queue = get_queue(pool).await?;
-    let pos = queue.current_index + 1;
+    let pos = (queue.current_index + 1) as usize;
     add_to_queue(pool, episode_id, None, Some(pos)).await?;
     Ok(())
 }
 
 pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) -> DbResult<Vec<EpisodeLink>> {
     let min_conf = confidence_min.unwrap_or(0.0);
-    query_as!(EpisodeLink, "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by as \"matched_by: _\", title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC", min_conf)
+    query_as!(EpisodeLink, "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by as \"matched_by\", title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC", min_conf)
         .fetch_all(pool).await.map_err(|e| e.to_string())
 }
 
