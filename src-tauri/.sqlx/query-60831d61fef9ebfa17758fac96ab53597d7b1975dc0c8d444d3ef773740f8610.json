@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,\n                  e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,\n                  e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
+  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds as \"duration_seconds: Option<i64>\", e.published_at as \"published_at: Option<String>\",\n                  e.url as \"url: Option<String>\", e.video_id as \"video_id: Option<String>\", e.podcast_guid as \"podcast_guid: Option<String>\",\n                  e.episode_number as \"episode_number: Option<i64>\", e.season_number as \"season_number: Option<i64>\",\n                  e.audio_url as \"audio_url: Option<String>\", e.video_url as \"video_url: Option<String>\",\n                  e.formats as \"formats: Option<String>\", e.chapters as \"chapters: Option<String>\",\n                  e.sponsors as \"sponsors: Option<String>\", e.transcript_url as \"transcript_url: Option<String>\",\n                  e.is_downloaded, e.download_quality as \"download_quality: Option<String>\",\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -34,67 +34,67 @@
         "type_info": "Text"
       },
       {
-        "name": "duration_seconds",
+        "name": "duration_seconds: Option<i64>",
         "ordinal": 6,
         "type_info": "Int64"
       },
       {
-        "name": "published_at",
+        "name": "published_at: Option<String>",
         "ordinal": 7,
         "type_info": "Text"
       },
       {
-        "name": "url",
+        "name": "url: Option<String>",
         "ordinal": 8,
         "type_info": "Text"
       },
       {
-        "name": "video_id",
+        "name": "video_id: Option<String>",
         "ordinal": 9,
         "type_info": "Text"
       },
       {
-        "name": "podcast_guid",
+        "name": "podcast_guid: Option<String>",
         "ordinal": 10,
         "type_info": "Text"
       },
       {
-        "name": "episode_number",
+        "name": "episode_number: Option<i64>",
         "ordinal": 11,
         "type_info": "Int64"
       },
       {
-        "name": "season_number",
+        "name": "season_number: Option<i64>",
         "ordinal": 12,
         "type_info": "Int64"
       },
       {
-        "name": "audio_url",
+        "name": "audio_url: Option<String>",
         "ordinal": 13,
         "type_info": "Text"
       },
       {
-        "name": "video_url",
+        "name": "video_url: Option<String>",
         "ordinal": 14,
         "type_info": "Text"
       },
       {
-        "name": "formats",
+        "name": "formats: Option<String>",
         "ordinal": 15,
         "type_info": "Text"
       },
       {
-        "name": "chapters",
+        "name": "chapters: Option<String>",
         "ordinal": 16,
         "type_info": "Text"
       },
       {
-        "name": "sponsors",
+        "name": "sponsors: Option<String>",
         "ordinal": 17,
         "type_info": "Text"
       },
       {
-        "name": "transcript_url",
+        "name": "transcript_url: Option<String>",
         "ordinal": 18,
         "type_info": "Text"
       },
@@ -104,7 +104,7 @@
         "type_info": "Bool"
       },
       {
-        "name": "download_quality",
+        "name": "download_quality: Option<String>",
         "ordinal": 20,
         "type_info": "Text"
       },
@@ -154,5 +154,5 @@
       false
     ]
   },
-  "hash": "388995d10bc6be9b358d7e5700427918bc4dde82058c9a2f9f737b86dadd4da0"
+  "hash": "60831d61fef9ebfa17758fac96ab53597d7b1975dc0c8d444d3ef773740f8610"
 }
