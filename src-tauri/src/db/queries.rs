@@ -11,7 +11,7 @@ pub type DbResult<T> = std::result::Result<T, String>;
 pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     query_as!(
         Instance,
-        r#"SELECT id, url, type as "instance_type", health,
+        r#"SELECT id, url, type as "instance_type: _", health as "health: _",
               latency_ms as "latency_ms: Option<i64>", last_checked as "last_checked: Option<String>",
               auto_failover, supports_sabr, supports_age_restricted,
               region as "region: Option<String>", country as "country: Option<String>",
@@ -67,7 +67,6 @@ pub async fn list_channels(
     let channel_type = params.and_then(|p| p.channel_type);
 
     if let Some(ct) = channel_type {
-        let ct_str = ct.to_string();
         query_as!(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
@@ -79,7 +78,7 @@ pub async fn list_channels(
                FROM channels
                WHERE type = ?
                ORDER BY subscribed_at DESC"#,
-            ct_str
+            ct.to_string()
         )
         .fetch_all(pool)
         .await
@@ -103,6 +102,8 @@ pub async fn list_channels(
 }
 
 pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()> {
+    let format_pref = channel.format_preference.to_string();
+    let channel_type_str = channel.channel_type.to_string();
     query!(
         r#"INSERT INTO channels (id, user_id, external_id, title, handle, thumbnail_url,
               description, subscriber_count, is_subscribed, subscribed_at,
@@ -120,9 +121,9 @@ pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()
         channel.is_subscribed,
         channel.subscribed_at,
         channel.notifications_enabled,
-        channel.format_preference.to_string(),
+        format_pref,
         channel.instance_id,
-        channel.channel_type.to_string(),
+        channel_type_str,
         channel.podcast_feed_url,
         channel.podcast_guid,
         channel.last_fetched_at,
@@ -226,9 +227,13 @@ pub async fn search_episodes(
     query_as!(
         Episode,
         r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-              e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,
-              e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,
-              e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,
+              e.duration_seconds as "duration_seconds: Option<i64>", e.published_at as "published_at: Option<String>",
+              e.url as "url: Option<String>", e.video_id as "video_id: Option<String>", e.podcast_guid as "podcast_guid: Option<String>",
+              e.episode_number as "episode_number: Option<i64>", e.season_number as "season_number: Option<i64>",
+              e.audio_url as "audio_url: Option<String>", e.video_url as "video_url: Option<String>",
+              e.formats as "formats: Option<String>", e.chapters as "chapters: Option<String>",
+              e.sponsors as "sponsors: Option<String>", e.transcript_url as "transcript_url: Option<String>",
+              e.is_downloaded, e.download_quality as "download_quality: Option<String>",
               e.progress_seconds, e.created_at, e.updated_at
            FROM episodes e
            JOIN episodes_fts fts ON e.rowid = fts.rowid
@@ -246,7 +251,8 @@ pub async fn search_episodes(
 pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
     let queue = query_as!(
         Queue,
-        "SELECT id, user_id, current_index, repeat_mode as \"repeat_mode: _\", shuffle, audio_only_mode, created_at, updated_at
+        "SELECT id, user_id, current_index, repeat_mode as \"repeat_mode\", shuffle, audio_only_mode,
+              created_at, updated_at
          FROM queues WHERE user_id = 'current-user' LIMIT 1"
     )
     .fetch_optional(pool)
@@ -256,7 +262,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
     if let Some(mut queue) = queue {
         let items = query_as!(
             QueueItem,
-            "SELECT id, queue_id, episode_id, position, added_at, source as \"source: _\", play_mode as \"play_mode: _\", smart_link_id
+            "SELECT id, queue_id, episode_id, position, added_at, source as \"source\", play_mode as \"play_mode\", smart_link_id
              FROM queue_items WHERE queue_id = ? ORDER BY position",
             queue.id
         )

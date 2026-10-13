@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n              e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,\n              e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,\n              e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,\n              e.progress_seconds, e.created_at, e.updated_at\n           FROM episodes e\n           JOIN episodes_fts fts ON e.rowid = fts.rowid\n           WHERE episodes_fts MATCH ?\n           ORDER BY e.published_at DESC\n           LIMIT ?",
+  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,\n                  e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,\n                  e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -154,5 +154,5 @@
       false
     ]
   },
-  "hash": "4cd9e2773bde5be6ecc75314e98d00f4580c06fe4d584f10efa41c0de4b61a96"
+  "hash": "388995d10bc6be9b358d7e5700427918bc4dde82058c9a2f9f737b86dadd4da0"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, user_id, current_index, repeat_mode as \"repeat_mode: _\", shuffle, audio_only_mode, created_at, updated_at\n         FROM queues WHERE user_id = 'current-user' LIMIT 1",
+  "query": "SELECT id, queue_id, episode_id, position, added_at, source as \"source\", play_mode as \"play_mode\", smart_link_id\n             FROM queue_items WHERE queue_id = ? ORDER BY position",
   "describe": {
     "columns": [
       {
@@ -9,43 +9,43 @@
         "type_info": "Text"
       },
       {
-        "name": "user_id",
+        "name": "queue_id",
         "ordinal": 1,
         "type_info": "Text"
       },
       {
-        "name": "current_index",
+        "name": "episode_id",
         "ordinal": 2,
-        "type_info": "Int64"
-      },
-      {
-        "name": "repeat_mode: _",
-        "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "shuffle",
+        "name": "position",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "added_at",
         "ordinal": 4,
-        "type_info": "Bool"
+        "type_info": "Text"
       },
       {
-        "name": "audio_only_mode",
+        "name": "source",
         "ordinal": 5,
-        "type_info": "Bool"
+        "type_info": "Text"
       },
       {
-        "name": "created_at",
+        "name": "play_mode",
         "ordinal": 6,
         "type_info": "Text"
       },
       {
-        "name": "updated_at",
+        "name": "smart_link_id",
         "ordinal": 7,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       true,
@@ -55,8 +55,8 @@
       false,
       false,
       false,
-      false
+      true
     ]
   },
-  "hash": "c1a04f0d000eadf4f3d621ba6cc54f8fbc86a0184bd32ff359fd273273f2e55c"
+  "hash": "5e7dd299cc933859d884fb76b27ed70ef6f6948dfc2cd3100b961b87c2fcf5f4"
 }

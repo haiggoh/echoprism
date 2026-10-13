@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds as \"duration_seconds: Option<i64>\", e.published_at as \"published_at: Option<String>\",\n                  e.url as \"url: Option<String>\", e.video_id as \"video_id: Option<String>\", e.podcast_guid as \"podcast_guid: Option<String>\",\n                  e.episode_number as \"episode_number: Option<i64>\", e.season_number as \"season_number: Option<i64>\",\n                  e.audio_url as \"audio_url: Option<String>\", e.video_url as \"video_url: Option<String>\",\n                  e.formats as \"formats: Option<String>\", e.chapters as \"chapters: Option<String>\",\n                  e.sponsors as \"sponsors: Option<String>\", e.transcript_url as \"transcript_url: Option<String>\",\n                  e.is_downloaded, e.download_quality as \"download_quality: Option<String>\",\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
+  "query": "SELECT id, channel_id, external_id, title, description, thumbnail_url,\n              duration_seconds as \"duration_seconds: Option<i64>\", published_at as \"published_at: Option<String>\",\n              url as \"url: Option<String>\", video_id as \"video_id: Option<String>\", podcast_guid as \"podcast_guid: Option<String>\",\n              episode_number as \"episode_number: Option<i64>\", season_number as \"season_number: Option<i64>\",\n              audio_url as \"audio_url: Option<String>\", video_url as \"video_url: Option<String>\",\n              formats as \"formats: Option<String>\", chapters as \"chapters: Option<String>\",\n              sponsors as \"sponsors: Option<String>\", transcript_url as \"transcript_url: Option<String>\",\n              is_downloaded, download_quality as \"download_quality: Option<String>\",\n              progress_seconds, created_at, updated_at\n           FROM episodes WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -125,7 +125,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       true,
@@ -154,5 +154,5 @@
       false
     ]
   },
-  "hash": "60831d61fef9ebfa17758fac96ab53597d7b1975dc0c8d444d3ef773740f8610"
+  "hash": "b3dbba0a383286ae5d1c0bbc7b20e9843a81c2bb47a89d0f5602ad8a2d6ae85e"
 }

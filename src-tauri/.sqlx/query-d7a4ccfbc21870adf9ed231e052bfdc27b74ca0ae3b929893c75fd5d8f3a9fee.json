@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, channel_id, external_id, title, description, thumbnail_url,\n              duration_seconds, published_at, url, video_id, podcast_guid,\n              episode_number, season_number, audio_url, video_url, formats,\n              chapters, sponsors, transcript_url, is_downloaded, download_quality,\n              progress_seconds, created_at, updated_at\n           FROM episodes WHERE id = ?",
+  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,\n                  e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,\n                  e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               JOIN channels c ON e.channel_id = c.id\n               WHERE c.type = ?\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -125,7 +125,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       true,
@@ -154,5 +154,5 @@
       false
     ]
   },
-  "hash": "cac68f8558484713ca507d36adc8a3b88515584f8b8a2f0d490bd99ef9023aff"
+  "hash": "d7a4ccfbc21870adf9ed231e052bfdc27b74ca0ae3b929893c75fd5d8f3a9fee"
 }

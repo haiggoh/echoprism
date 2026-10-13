@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds as \"duration_seconds: Option<i64>\", e.published_at as \"published_at: Option<String>\",\n                  e.url as \"url: Option<String>\", e.video_id as \"video_id: Option<String>\", e.podcast_guid as \"podcast_guid: Option<String>\",\n                  e.episode_number as \"episode_number: Option<i64>\", e.season_number as \"season_number: Option<i64>\",\n                  e.audio_url as \"audio_url: Option<String>\", e.video_url as \"video_url: Option<String>\",\n                  e.formats as \"formats: Option<String>\", e.chapters as \"chapters: Option<String>\",\n                  e.sponsors as \"sponsors: Option<String>\", e.transcript_url as \"transcript_url: Option<String>\",\n                  e.is_downloaded, e.download_quality as \"download_quality: Option<String>\",\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               JOIN channels c ON e.channel_id = c.id\n               WHERE c.type = ?\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
+  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n              e.duration_seconds as \"duration_seconds: Option<i64>\", e.published_at as \"published_at: Option<String>\",\n              e.url as \"url: Option<String>\", e.video_id as \"video_id: Option<String>\", e.podcast_guid as \"podcast_guid: Option<String>\",\n              e.episode_number as \"episode_number: Option<i64>\", e.season_number as \"season_number: Option<i64>\",\n              e.audio_url as \"audio_url: Option<String>\", e.video_url as \"video_url: Option<String>\",\n              e.formats as \"formats: Option<String>\", e.chapters as \"chapters: Option<String>\",\n              e.sponsors as \"sponsors: Option<String>\", e.transcript_url as \"transcript_url: Option<String>\",\n              e.is_downloaded, e.download_quality as \"download_quality: Option<String>\",\n              e.progress_seconds, e.created_at, e.updated_at\n           FROM episodes e\n           JOIN episodes_fts fts ON e.rowid = fts.rowid\n           WHERE episodes_fts MATCH ?\n           ORDER BY e.published_at DESC\n           LIMIT ?",
   "describe": {
     "columns": [
       {
@@ -125,7 +125,7 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       true,
@@ -154,5 +154,5 @@
       false
     ]
   },
-  "hash": "b794bc2044b1fce75f1730d6834ecbe9e1c973fe8f855a5c9a9e3d6822351406"
+  "hash": "5de78e575cefbc67453d751d424687441e880b6417b45d760444534564c05c18"
 }

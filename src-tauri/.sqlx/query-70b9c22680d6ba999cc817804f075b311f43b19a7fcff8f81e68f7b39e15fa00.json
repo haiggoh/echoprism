@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, user_id, external_id, title, handle, thumbnail_url, description,\n                  subscriber_count as \"subscriber_count: Option<i64>\", is_subscribed, subscribed_at, notifications_enabled,\n                  format_preference as \"format_preference: _\", instance_id as \"instance_id: Option<String>\",\n                  type as \"channel_type: _\",\n                  podcast_feed_url as \"podcast_feed_url: Option<String>\", podcast_guid as \"podcast_guid: Option<String>\",\n                  last_fetched_at as \"last_fetched_at: Option<String>\", created_at, updated_at\n               FROM channels\n               WHERE type = ?\n               ORDER BY subscribed_at DESC",
+  "query": "SELECT id, user_id, external_id, title, handle, thumbnail_url, description,\n                  subscriber_count, is_subscribed, subscribed_at, notifications_enabled,\n                  format_preference as \"format_preference: _\", instance_id as \"instance_id: Option<String>\",\n                  type as \"channel_type: _\", podcast_feed_url, podcast_guid, last_fetched_at,\n                  created_at, updated_at\n               FROM channels\n               ORDER BY subscribed_at DESC",
   "describe": {
     "columns": [
       {
@@ -39,7 +39,7 @@
         "type_info": "Text"
       },
       {
-        "name": "subscriber_count: Option<i64>",
+        "name": "subscriber_count",
         "ordinal": 7,
         "type_info": "Int64"
       },
@@ -74,17 +74,17 @@
         "type_info": "Text"
       },
       {
-        "name": "podcast_feed_url: Option<String>",
+        "name": "podcast_feed_url",
         "ordinal": 14,
         "type_info": "Text"
       },
       {
-        "name": "podcast_guid: Option<String>",
+        "name": "podcast_guid",
         "ordinal": 15,
         "type_info": "Text"
       },
       {
-        "name": "last_fetched_at: Option<String>",
+        "name": "last_fetched_at",
         "ordinal": 16,
         "type_info": "Text"
       },
@@ -100,7 +100,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       true,
@@ -124,5 +124,5 @@
       false
     ]
   },
-  "hash": "e8660c129905b85aae42ed893340fe0cb07074a1a2cd7f5da54e0ad5286b8f42"
+  "hash": "70b9c22680d6ba999cc817804f075b311f43b19a7fcff8f81e68f7b39e15fa00"
 }
