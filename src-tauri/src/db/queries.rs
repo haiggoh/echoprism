@@ -69,7 +69,7 @@ pub async fn list_channels(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
                   subscriber_count, is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference", instance_id, type as "channel_type",
+                  format_preference, instance_id, type as "channel_type: _",
                   podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at
                FROM channels
                WHERE type = ?
@@ -84,7 +84,7 @@ pub async fn list_channels(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
                   subscriber_count, is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference", instance_id, type as "channel_type",
+                  format_preference, instance_id, type as "channel_type: _",
                   podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at
                FROM channels
                ORDER BY subscribed_at DESC"#
@@ -268,7 +268,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             "INSERT INTO queues (id, user_id, current_index, repeat_mode, shuffle, audio_only_mode, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             queue.id, queue.user_id, queue.current_index, queue.repeat_mode as RepeatMode,
-            queue.shuffle, queue.audio_only_mode, DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339(), DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339()
+            queue.shuffle, queue.audio_only_mode, now.clone(), now
         ).execute(pool).await.map_err(|e| e.to_string())?;
         Ok(queue)
     }
@@ -283,7 +283,9 @@ pub async fn add_to_queue(
     let queue = get_queue(pool).await?;
 
     let pos = position.unwrap_or(queue.items.len()) as i64;
-    let added_at = DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339();
+    let added_at = chrono::Utc::now().to_rfc3339();
+    let source_str = QueueSource::Feed.to_string();
+    let play_mode_str = mode.unwrap_or(PlayMode::Unified).to_string();
     let item = QueueItem {
         id: uuid::Uuid::new_v4().to_string(),
         queue_id: queue.id.clone(),
@@ -298,7 +300,7 @@ pub async fn add_to_queue(
     query!(
         "INSERT INTO queue_items (id, queue_id, episode_id, position, added_at, source, play_mode, smart_link_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        item.id, item.queue_id, item.episode_id, item.position, item.added_at, item.source as QueueSource, item.play_mode as PlayMode, item.smart_link_id
+        item.id, item.queue_id, item.episode_id, item.position, item.added_at, source_str, play_mode_str, item.smart_link_id
     ).execute(pool).await.map_err(|e| e.to_string())?;
 
     Ok(item)

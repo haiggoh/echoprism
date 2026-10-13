@@ -321,6 +321,79 @@ impl sqlx::Type<sqlx::Sqlite> for ChannelType {
     }
 }
 
+// Only implement From<String>, not From<&str> to avoid TryFrom conflict with strum::EnumString
+impl From<String> for ChannelType {
+    fn from(s: String) -> Self {
+        ChannelType::from_str(&s).unwrap_or(ChannelType::Video)
+    }
+}
+
+impl From<String> for Format {
+    fn from(s: String) -> Self {
+        Format::from_str(&s).unwrap_or(Format::Unified)
+    }
+}
+
+impl From<String> for QueueBehavior {
+    fn from(s: String) -> Self {
+        QueueBehavior::from_str(&s).unwrap_or(QueueBehavior::AddEnd)
+    }
+}
+
+impl From<String> for Theme {
+    fn from(s: String) -> Self {
+        Theme::from_str(&s).unwrap_or(Theme::System)
+    }
+}
+
+impl From<String> for InstanceType {
+    fn from(s: String) -> Self {
+        InstanceType::from_str(&s).unwrap_or(InstanceType::Piped)
+    }
+}
+
+impl From<String> for InstanceHealth {
+    fn from(s: String) -> Self {
+        InstanceHealth::from_str(&s).unwrap_or(InstanceHealth::Unknown)
+    }
+}
+
+impl From<String> for DownloadFormat {
+    fn from(s: String) -> Self {
+        DownloadFormat::from_str(&s).unwrap_or(DownloadFormat::Video)
+    }
+}
+
+impl From<String> for DownloadStatus {
+    fn from(s: String) -> Self {
+        DownloadStatus::from_str(&s).unwrap_or(DownloadStatus::Pending)
+    }
+}
+
+impl From<String> for RepeatMode {
+    fn from(s: String) -> Self {
+        RepeatMode::from_str(&s).unwrap_or(RepeatMode::Off)
+    }
+}
+
+impl From<String> for QueueSource {
+    fn from(s: String) -> Self {
+        QueueSource::from_str(&s).unwrap_or(QueueSource::Feed)
+    }
+}
+
+impl From<String> for PlayMode {
+    fn from(s: String) -> Self {
+        PlayMode::from_str(&s).unwrap_or(PlayMode::Unified)
+    }
+}
+
+impl From<String> for MatchSource {
+    fn from(s: String) -> Self {
+        MatchSource::from_str(&s).unwrap_or(MatchSource::Auto)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Episode {
     pub id: String,

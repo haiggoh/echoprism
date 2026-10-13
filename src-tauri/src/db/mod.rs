@@ -10,6 +10,7 @@ use tauri::Manager;
 use std::path::PathBuf;
 use tauri::path::BaseDirectory;
 
+#[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
 }
