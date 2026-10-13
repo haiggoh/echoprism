@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n            id,\n            url,\n            type as \"instance_type: _\",\n            health as \"health: _\",\n            latency_ms as \"latency_ms: Option<i64>\",\n            last_checked as \"last_checked: Option<String>\",\n            auto_failover,\n            supports_sabr,\n            supports_age_restricted,\n            region as \"region: Option<String>\",\n            country as \"country: Option<String>\",\n            pinned,\n            created_at,\n            updated_at\n        FROM instances ORDER BY pinned DESC, last_checked DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "instance_type: _",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "health: _",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "latency_ms: Option<i64>",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "last_checked: Option<String>",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "auto_failover",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "supports_sabr",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "supports_age_restricted",
+        "ordinal": 8,
+        "type_info": "Bool"
+      },
+      {
+        "name": "region: Option<String>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "country: Option<String>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "pinned",
+        "ordinal": 11,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 13,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dc470083595083659b0e5469445df07a2ca5a66a975e39f7f611236ae3495fb2"
+}

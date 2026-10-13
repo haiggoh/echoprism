@@ -9,19 +9,20 @@ use std::collections::HashMap;
 pub type DbResult<T> = std::result::Result<T, String>;
 
 pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
-    let rows = query!(
+    let rows = sqlx::query_as!(
+        Instance,
         r#"SELECT
             id,
             url,
-            type as instance_type,
-            health,
-            latency_ms,
-            last_checked,
+            type as "instance_type: _",
+            health as "health: _",
+            latency_ms as "latency_ms: Option<i64>",
+            last_checked as "last_checked: Option<String>",
             auto_failover,
             supports_sabr,
             supports_age_restricted,
-            region,
-            country,
+            region as "region: Option<String>",
+            country as "country: Option<String>",
             pinned,
             created_at,
             updated_at
@@ -31,24 +32,8 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     .await
     .map_err(|e| e.to_string())?;
 
-    let instances = rows.into_iter().map(|row| Instance {
-        id: row.id,
-        url: row.url,
-        instance_type: InstanceType::Piped,
-        health: InstanceHealth::Unknown,
-        latency_ms: row.latency_ms,
-        last_checked: row.last_checked,
-        auto_failover: row.auto_failover.unwrap_or(true),
-        supports_sabr: row.supports_sabr.unwrap_or(false),
-        supports_age_restricted: row.supports_age_restricted.unwrap_or(false),
-        region: row.region,
-        country: row.country,
-        pinned: row.pinned.unwrap_or(false),
-        created_at: row.created_at.unwrap_or_default(),
-        updated_at: row.updated_at.unwrap_or_default(),
-    }).collect();
-
     // Fix enum types
+    let mut instances = rows;
     for instance in &mut instances {
         instance.instance_type = match instance.instance_type {
             InstanceType::Invidious => InstanceType::Invidious,
