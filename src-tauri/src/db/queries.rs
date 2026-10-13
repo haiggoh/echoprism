@@ -12,9 +12,9 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     query_as!(
         Instance,
         r#"SELECT id, url, type as "instance_type: _", health as "health: _",
-              latency_ms as "latency_ms: Option<i64>", last_checked as "last_checked: Option<String>",
+              latency_ms as "latency_ms: _", last_checked as "last_checked: _",
               auto_failover, supports_sabr, supports_age_restricted,
-              region as "region: Option<String>", country as "country: Option<String>",
+              region as "region: _", country as "country: _",
               pinned, created_at, updated_at
            FROM instances ORDER BY pinned DESC, last_checked DESC"#
     )
