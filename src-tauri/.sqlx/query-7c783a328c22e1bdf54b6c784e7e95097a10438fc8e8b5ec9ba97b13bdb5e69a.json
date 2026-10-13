@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT user_id, default_instance_id, default_format as \"default_format: _\", queue_behavior as \"queue_behavior: _\", audio_only_default, auto_download_wifi, sponsorblock_enabled, sponsorblock_categories, keyboard_shortcuts_enabled, theme as \"theme: _\", cross_device_sync_enabled, updated_at\n         FROM user_preferences WHERE user_id = 'current-user'",
+  "query": "SELECT user_id, default_instance_id, default_format as \"default_format: _\", queue_behavior as \"queue_behavior: _\", audio_only_default, auto_download_wifi, sponsorblock_enabled, sponsorblock_categories, keyboard_shortcuts_enabled, theme as \"theme: _\", cross_device_sync_enabled, updated_at as \"updated_at: _\"\n         FROM user_preferences WHERE user_id = 'current-user'",
   "describe": {
     "columns": [
       {
@@ -59,7 +59,7 @@
         "type_info": "Bool"
       },
       {
-        "name": "updated_at",
+        "name": "updated_at: _",
         "ordinal": 11,
         "type_info": "Text"
       }
@@ -82,5 +82,5 @@
       false
     ]
   },
-  "hash": "2d418aaad7665330b49560370bbe36336c64aba9b2f5f335d80454e717b57e53"
+  "hash": "7c783a328c22e1bdf54b6c784e7e95097a10438fc8e8b5ec9ba97b13bdb5e69a"
 }

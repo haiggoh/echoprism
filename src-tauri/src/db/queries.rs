@@ -367,7 +367,7 @@ pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) 
 pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
     query_as!(
         UserPreferences,
-        "SELECT user_id, default_instance_id, default_format as \"default_format: _\", queue_behavior as \"queue_behavior: _\", audio_only_default, auto_download_wifi, sponsorblock_enabled, sponsorblock_categories, keyboard_shortcuts_enabled, theme as \"theme: _\", cross_device_sync_enabled, updated_at
+        "SELECT user_id, default_instance_id, default_format as \"default_format: _\", queue_behavior as \"queue_behavior: _\", audio_only_default, auto_download_wifi, sponsorblock_enabled, sponsorblock_categories, keyboard_shortcuts_enabled, theme as \"theme: _\", cross_device_sync_enabled, updated_at as \"updated_at: _\"
          FROM user_preferences WHERE user_id = 'current-user'"
     )
     .fetch_optional(pool)

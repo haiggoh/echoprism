@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by as \"matched_by: _\", title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC",
+  "query": "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by as \"matched_by\", title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC",
   "describe": {
     "columns": [
       {
@@ -29,7 +29,7 @@
         "type_info": "Text"
       },
       {
-        "name": "matched_by: _",
+        "name": "matched_by",
         "ordinal": 5,
         "type_info": "Text"
       },
@@ -82,5 +82,5 @@
       false
     ]
   },
-  "hash": "e4bf66c69051cce78e188155250aa37b8dd24a15088f77e87c02f2ba85d9504a"
+  "hash": "aa6d4d6e653bf91a50dd7969df2486f442e6fa6979ed6e8e3c5fe08012722b1c"
 }

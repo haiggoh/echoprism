@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, user_id, current_index, repeat_mode as \"repeat_mode\", shuffle, audio_only_mode,\n              created_at, updated_at\n         FROM queues WHERE user_id = 'current-user' LIMIT 1",
+  "query": "SELECT id, user_id, current_index, repeat_mode, shuffle, audio_only_mode, created_at, updated_at\n         FROM queues WHERE user_id = 'current-user' LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "4b95c2db5ad3858b4a94c3b89dc560484b99c963cb41f16a14a3ec2a8f34b361"
+  "hash": "d93bbda35a63db19256790f1ea18eabd1d0aec5cbd49aee9b8a145f20012a594"
 }
