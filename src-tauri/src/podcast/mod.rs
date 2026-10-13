@@ -280,6 +280,7 @@ impl PodcastManager {
         
         for sub in subscriptions {
             // Add as channel
+            let now = chrono::Utc::now().to_rfc3339();
             let channel = crate::types::Channel {
                 id: uuid::Uuid::new_v4().to_string(),
                 user_id: "current-user".to_string(),
@@ -288,18 +289,18 @@ impl PodcastManager {
                 handle: Some(sub.author_url.clone()),
                 thumbnail_url: sub.author_thumbnails.first().map(|t| t.url.clone()),
                 description: None,
-                subscriber_count: Some(sub.subscriber_count as u64),
+                subscriber_count: Some(sub.subscriber_count as i64),
                 is_subscribed: true,
-                subscribed_at: chrono::Utc::now(),
+                subscribed_at: now.clone(),
                 notifications_enabled: true,
                 format_preference: crate::types::Format::Unified,
                 instance_id: None,
-                type_: crate::types::ChannelType::Video,
+                channel_type: crate::types::ChannelType::Video,
                 podcast_feed_url: None,
                 podcast_guid: None,
                 last_fetched_at: None,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+                created_at: now.clone(),
+                updated_at: now,
             };
             
             // Insert into database

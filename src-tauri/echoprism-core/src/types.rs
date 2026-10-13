@@ -3,15 +3,95 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use sqlx::{Type, FromRow};
+use std::str::FromStr;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct User {
-    pub id: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+// Helper type for DateTimeUtc stored as TEXT (RFC3339)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DateTimeUtc(pub DateTime<Utc>);
+
+impl DateTimeUtc {
+    pub fn new(dt: DateTime<Utc>) -> Self {
+        Self(dt)
+    }
+
+    pub fn inner(&self) -> DateTime<Utc> {
+        self.0
+    }
+
+    pub fn to_rfc3339(&self) -> String {
+        self.0.to_rfc3339()
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl From<DateTime<Utc>> for DateTimeUtc {
+    fn from(dt: DateTime<Utc>) -> Self {
+        Self(dt)
+    }
+}
+
+impl From<DateTimeUtc> for DateTime<Utc> {
+    fn from(dt: DateTimeUtc) -> Self {
+        dt.0
+    }
+}
+
+impl From<String> for DateTimeUtc {
+    fn from(s: String) -> Self {
+        DateTime::parse_from_rfc3339(&s)
+            .map(|dt| DateTimeUtc(dt.with_timezone(&Utc)))
+            .unwrap_or_else(|_| DateTimeUtc(DateTime::default()))
+    }
+}
+
+impl From<&str> for DateTimeUtc {
+    fn from(s: &str) -> Self {
+        DateTime::parse_from_rfc3339(s)
+            .map(|dt| DateTimeUtc(dt.with_timezone(&Utc)))
+            .unwrap_or_else(|_| DateTimeUtc(DateTime::default()))
+    }
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for DateTimeUtc {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        DateTime::parse_from_rfc3339(s)
+            .map(|dt| DateTimeUtc(dt.with_timezone(&Utc)))
+            .map_err(|e| e.into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for DateTimeUtc {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.0.to_rfc3339();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+// Manual sqlx::Type implementation for DateTimeUtc
+impl sqlx::Type<sqlx::Sqlite> for DateTimeUtc {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+
+
+
+
+
+
+
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct User {
+    pub id: String,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserPreferences {
     pub user_id: String,
     pub default_instance_id: Option<String>,
@@ -24,33 +104,121 @@ pub struct UserPreferences {
     pub keyboard_shortcuts_enabled: bool,
     pub theme: Theme,
     pub cross_device_sync_enabled: bool,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub updated_at: DateTimeUtc,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum Format {
     Video,
     Audio,
     Unified,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+impl sqlx::Decode<'_, sqlx::Sqlite> for Format {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid Format: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for Format {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for Format {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum QueueBehavior {
     PlayNext,
     AddEnd,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+impl sqlx::Decode<'_, sqlx::Sqlite> for QueueBehavior {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid QueueBehavior: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for QueueBehavior {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for QueueBehavior {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum Theme {
     Dark,
     Light,
     System,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for Theme {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid Theme: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for Theme {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for Theme {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
+pub enum InstanceType {
+    Invidious,
+    Piped,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for InstanceType {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid InstanceType: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for InstanceType {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for InstanceType {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -71,22 +239,34 @@ pub struct Instance {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT")]
-pub enum InstanceType {
-    Invidious,
-    Piped,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
-#[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum InstanceHealth {
     Healthy,
     Degraded,
     Failed,
     Unknown,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for InstanceHealth {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid InstanceHealth: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for InstanceHealth {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for InstanceHealth {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -112,13 +292,33 @@ pub struct Channel {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum ChannelType {
     Video,
     Podcast,
     Both,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for ChannelType {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid ChannelType: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for ChannelType {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for ChannelType {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -189,22 +389,42 @@ pub struct EpisodeLink {
     pub podcast_guid: String,
     pub youtube_video_id: String,
     pub confidence: f64,
-    pub matched_at: chrono::DateTime<Utc>,
+    pub matched_at: DateTimeUtc,
     pub matched_by: MatchSource,
     pub title_similarity: Option<f64>,
     pub date_diff_days: Option<i64>,
     pub duration_diff_seconds: Option<i64>,
     pub user_confirmed: bool,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum MatchSource {
     Auto,
     Manual,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for MatchSource {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid MatchSource: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for MatchSource {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for MatchSource {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,7 +440,7 @@ pub struct PodcastEpisode {
     pub description: Option<String>,
     pub channel_title: Option<String>,
     pub channel_id: Option<String>,
-    pub published_at: Option<chrono::DateTime<Utc>>,
+    pub published_at: Option<DateTimeUtc>,
     pub duration_seconds: Option<u64>,
     pub audio_url: Option<String>,
     pub transcript: Option<String>,
@@ -233,7 +453,7 @@ pub struct YoutubeVideo {
     pub title: String,
     pub channel_title: Option<String>,
     pub channel_id: Option<String>,
-    pub published_at: Option<chrono::DateTime<Utc>>,
+    pub published_at: Option<DateTimeUtc>,
     pub duration_seconds: Option<u64>,
     pub description: Option<String>,
     pub thumbnail_url: Option<String>,
@@ -246,7 +466,7 @@ pub struct InstanceHealthLog {
     pub health: InstanceHealth,
     pub latency_ms: Option<u64>,
     pub error_message: Option<String>,
-    pub checked_at: chrono::DateTime<Utc>,
+    pub checked_at: DateTimeUtc,
     pub video_id_tested: Option<String>,
 }
 
@@ -263,13 +483,33 @@ pub struct Queue {
     pub items: Vec<QueueItem>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum RepeatMode {
     Off,
     One,
     All,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for RepeatMode {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid RepeatMode: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for RepeatMode {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for RepeatMode {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -284,9 +524,9 @@ pub struct QueueItem {
     pub smart_link_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum QueueSource {
     Feed,
     Search,
@@ -295,13 +535,53 @@ pub enum QueueSource {
     SmartLink,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+impl sqlx::Decode<'_, sqlx::Sqlite> for QueueSource {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid QueueSource: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for QueueSource {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for QueueSource {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum PlayMode {
     Video,
     Audio,
     Unified,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for PlayMode {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid PlayMode: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for PlayMode {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for PlayMode {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,41 +595,91 @@ pub struct PlaybackState {
     pub is_audio_mode: bool,
     pub is_pip: bool,
     pub current_instance_id: Option<String>,
-    pub last_updated: chrono::DateTime<Utc>,
+    pub last_updated: DateTimeUtc,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Download {
     pub id: String,
     pub episode_id: String,
     pub quality: String,
     pub format: DownloadFormat,
     pub file_path: String,
-    pub file_size: Option<u64>,
+    pub file_size: Option<i64>,
     pub status: DownloadStatus,
     pub progress: f64,
     pub error_message: Option<String>,
-    pub created_at: chrono::DateTime<Utc>,
-    pub completed_at: Option<chrono::DateTime<Utc>>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+impl Download {
+    pub fn created_at_utc(&self) -> DateTimeUtc {
+        DateTimeUtc::from(self.created_at.clone())
+    }
+
+    pub fn completed_at_utc(&self) -> Option<DateTimeUtc> {
+        self.completed_at.as_ref().map(|s| DateTimeUtc::from(s.clone()))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum DownloadFormat {
     Video,
     Audio,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+impl sqlx::Decode<'_, sqlx::Sqlite> for DownloadFormat {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid DownloadFormat: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for DownloadFormat {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for DownloadFormat {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum DownloadStatus {
     Pending,
     Downloading,
     Completed,
     Failed,
     Cancelled,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for DownloadStatus {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid DownloadStatus: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for DownloadStatus {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for DownloadStatus {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,7 +690,7 @@ pub struct HistoryEntry {
     pub position_seconds: f64,
     pub duration_seconds: Option<f64>,
     pub completed: bool,
-    pub played_at: chrono::DateTime<Utc>,
+    pub played_at: DateTimeUtc,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -375,21 +705,21 @@ pub struct PodcastFeed {
     pub language: Option<String>,
     pub author: Option<String>,
     pub categories: Option<Vec<String>>,
-    pub last_fetched_at: Option<chrono::DateTime<Utc>>,
-    pub last_episode_published_at: Option<chrono::DateTime<Utc>>,
+    pub last_fetched_at: Option<DateTimeUtc>,
+    pub last_episode_published_at: Option<DateTimeUtc>,
     pub fetch_interval_minutes: u64,
     pub auto_download: bool,
     pub is_active: bool,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SponsorBlockSegment {
     pub video_id: String,
     pub segments: Vec<SponsorSegment>,
-    pub fetched_at: chrono::DateTime<Utc>,
-    pub expires_at: chrono::DateTime<Utc>,
+    pub fetched_at: DateTimeUtc,
+    pub expires_at: DateTimeUtc,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,13 +731,14 @@ pub struct KeyboardShortcut {
     pub context: ShortcutContext,
     pub enabled: bool,
     pub is_custom: bool,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "TEXT")]
+#[strum(serialize_all = "snake_case")]
 pub enum ShortcutContext {
     Global,
     Player,

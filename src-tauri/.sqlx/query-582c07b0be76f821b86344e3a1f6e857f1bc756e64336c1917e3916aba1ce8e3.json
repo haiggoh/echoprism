@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, user_id, external_id, title, handle, thumbnail_url, description,\n                  subscriber_count, is_subscribed, subscribed_at, notifications_enabled,\n                  format_preference as \"format_preference: _\", instance_id, type as \"channel_type: _\",\n                  podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at\n               FROM channels\n               WHERE type = ?\n               ORDER BY subscribed_at DESC",
+  "query": "SELECT id, user_id, external_id, title, handle, thumbnail_url, description,\n                  subscriber_count, is_subscribed, subscribed_at, notifications_enabled,\n                  format_preference as \"format_preference\", instance_id, type as \"channel_type\",\n                  podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at\n               FROM channels\n               WHERE type = ?\n               ORDER BY subscribed_at DESC",
   "describe": {
     "columns": [
       {
@@ -59,7 +59,7 @@
         "type_info": "Bool"
       },
       {
-        "name": "format_preference: _",
+        "name": "format_preference",
         "ordinal": 11,
         "type_info": "Text"
       },
@@ -69,7 +69,7 @@
         "type_info": "Text"
       },
       {
-        "name": "channel_type: _",
+        "name": "channel_type",
         "ordinal": 13,
         "type_info": "Text"
       },
@@ -124,5 +124,5 @@
       false
     ]
   },
-  "hash": "63210d0762768649a6a7d0fa4bb7d9435c798476e4df440a6e670c28d1301582"
+  "hash": "582c07b0be76f821b86344e3a1f6e857f1bc756e64336c1917e3916aba1ce8e3"
 }

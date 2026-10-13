@@ -2,7 +2,7 @@
 
 use crate::types::*;
 use sqlx::{SqlitePool, Row, FromRow, query_as, query};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use std::collections::HashMap;
 
 // Local Result type for database queries
@@ -11,7 +11,7 @@ pub type DbResult<T> = std::result::Result<T, String>;
 pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     query_as!(
         Instance,
-        r#"SELECT id, url, type as "instance_type: _", health, latency_ms, last_checked,
+        r#"SELECT id, url, type as "instance_type: _", health as "health: _", latency_ms, last_checked,
               auto_failover, supports_sabr, supports_age_restricted, region, country,
               pinned, created_at, updated_at
            FROM instances ORDER BY pinned DESC, last_checked DESC"#
@@ -22,6 +22,8 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
 }
 
 pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult<()> {
+    let instance_type_str = instance.instance_type.to_string();
+    let health_str = instance.health.to_string();
     query!(
         r#"INSERT INTO instances (id, url, type, health, latency_ms, last_checked,
               auto_failover, supports_sabr, supports_age_restricted, region, country,
@@ -29,8 +31,8 @@ pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         instance.id,
         instance.url,
-        instance.instance_type as InstanceType,
-        instance.health as InstanceHealth,
+        instance_type_str,
+        health_str,
         instance.latency_ms,
         instance.last_checked,
         instance.auto_failover,
@@ -67,12 +69,12 @@ pub async fn list_channels(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
                   subscriber_count, is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference: _", instance_id, type as "channel_type: _",
+                  format_preference as "format_preference", instance_id, type as "channel_type",
                   podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at
                FROM channels
                WHERE type = ?
                ORDER BY subscribed_at DESC"#,
-            ct as ChannelType
+            ct.to_string()
         )
         .fetch_all(pool)
         .await
@@ -82,7 +84,7 @@ pub async fn list_channels(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
                   subscriber_count, is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference: _", instance_id, type as "channel_type: _",
+                  format_preference as "format_preference", instance_id, type as "channel_type",
                   podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at
                FROM channels
                ORDER BY subscribed_at DESC"#
@@ -111,9 +113,9 @@ pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()
         channel.is_subscribed,
         channel.subscribed_at,
         channel.notifications_enabled,
-        channel.format_preference as Format,
+        channel.format_preference.to_string(),
         channel.instance_id,
-        channel.channel_type as ChannelType,
+        channel.channel_type.to_string(),
         channel.podcast_feed_url,
         channel.podcast_guid,
         channel.last_fetched_at,
@@ -250,6 +252,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
         queue.items = items;
         Ok(queue)
     } else {
+        let now = chrono::Utc::now().to_rfc3339();
         let queue = Queue {
             id: uuid::Uuid::new_v4().to_string(),
             user_id: "current-user".to_string(),
@@ -257,15 +260,15 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             repeat_mode: RepeatMode::Off,
             shuffle: false,
             audio_only_mode: false,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: now.clone(),
+            updated_at: now,
             items: vec![],
         };
         query!(
             "INSERT INTO queues (id, user_id, current_index, repeat_mode, shuffle, audio_only_mode, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             queue.id, queue.user_id, queue.current_index, queue.repeat_mode as RepeatMode,
-            queue.shuffle, queue.audio_only_mode, chrono::Utc::now(), chrono::Utc::now()
+            queue.shuffle, queue.audio_only_mode, DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339(), DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339()
         ).execute(pool).await.map_err(|e| e.to_string())?;
         Ok(queue)
     }
@@ -280,7 +283,7 @@ pub async fn add_to_queue(
     let queue = get_queue(pool).await?;
 
     let pos = position.unwrap_or(queue.items.len()) as i64;
-    let added_at = chrono::Utc::now().to_rfc3339();
+    let added_at = DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339();
     let item = QueueItem {
         id: uuid::Uuid::new_v4().to_string(),
         queue_id: queue.id.clone(),
@@ -364,7 +367,7 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
         prefs.keyboard_shortcuts_enabled,
         prefs.theme as Theme,
         prefs.cross_device_sync_enabled,
-        chrono::Utc::now()
+        chrono::Utc::now().to_rfc3339()
     ).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -379,10 +382,14 @@ pub async fn get_playback_state(pool: &SqlitePool) -> DbResult<PlaybackState> {
     .await
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "No playback state".to_string())
+    .map(|state| PlaybackState {
+        last_updated: DateTimeUtc::from(state.last_updated),
+        ..state
+    })
 }
 
 pub async fn update_playback_state(pool: &SqlitePool, params: crate::commands::playback::PlaybackUpdateParams) -> DbResult<()> {
-    let now = chrono::Utc::now();
+    let now = chrono::Utc::now().to_rfc3339();
     query!(
         "UPDATE playback_state SET position_seconds = COALESCE(?, position_seconds), duration_seconds = COALESCE(?, duration_seconds), playback_rate = COALESCE(?, playback_rate), volume = COALESCE(?, volume), is_audio_mode = COALESCE(?, is_audio_mode), is_pip = COALESCE(?, is_pip), current_instance_id = COALESCE(?, current_instance_id), last_updated = ? WHERE user_id = 'current-user'",
         params.position, params.position, params.rate, params.volume, params.audio_mode, params.audio_mode, params.position, now
@@ -426,10 +433,15 @@ pub async fn list_downloads(pool: &SqlitePool, status: Option<String>) -> DbResu
 pub async fn list_shortcuts(pool: &SqlitePool) -> DbResult<Vec<KeyboardShortcut>> {
     query_as!(KeyboardShortcut, "SELECT id, user_id, action, key_combination, context as \"context: _\", enabled, is_custom, created_at, updated_at FROM keyboard_shortcuts WHERE user_id = 'current-user'")
         .fetch_all(pool).await.map_err(|e| e.to_string())
+        .map(|shortcuts| shortcuts.into_iter().map(|s| KeyboardShortcut {
+            created_at: DateTimeUtc::from(s.created_at),
+            updated_at: DateTimeUtc::from(s.updated_at),
+            ..s
+        }).collect())
 }
 
 pub async fn update_shortcut(pool: &SqlitePool, action: String, key: String, context: String) -> DbResult<()> {
-    let now = chrono::Utc::now();
+    let now = DateTimeUtc::new(DateTimeUtc::new(chrono::Utc::now())).to_rfc3339();
     let id = uuid::Uuid::new_v4().to_string();
     query!("INSERT OR REPLACE INTO keyboard_shortcuts (id, user_id, action, key_combination, context, enabled, is_custom, created_at, updated_at) VALUES (?, 'current-user', ?, ?, ?, 1, 0, ?, ?)",
         id, action, key, context, now, now

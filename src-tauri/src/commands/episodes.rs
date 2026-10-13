@@ -38,11 +38,13 @@ pub async fn search_episodes(
     db.search_episodes(q, params).await
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Default)]
 pub struct SearchParams {
     #[serde(rename = "type")]
     pub episode_type: Option<String>,
     pub filters: Option<std::collections::HashMap<String, String>>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
 }
 
 #[command]
