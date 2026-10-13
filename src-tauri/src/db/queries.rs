@@ -11,10 +11,9 @@ pub type DbResult<T> = std::result::Result<T, String>;
 pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     query_as!(
         Instance,
-        r#"SELECT id, url, type as "instance_type: _", health as "health: _",
-              latency_ms as "latency_ms: Option<i64>", last_checked as "last_checked: Option<String>",
+        r#"SELECT id, url, type as instance_type, health, latency_ms, last_checked,
               auto_failover, supports_sabr, supports_age_restricted,
-              region as "region: Option<String>", country as "country: Option<String>",
+              region, country,
               pinned, created_at, updated_at
            FROM instances ORDER BY pinned DESC, last_checked DESC"#
     )
@@ -67,18 +66,19 @@ pub async fn list_channels(
     let channel_type = params.and_then(|p| p.channel_type);
 
     if let Some(ct) = channel_type {
+        let ct_str = ct.to_string();
         query_as!(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
                   subscriber_count as "subscriber_count: Option<i64>", is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference: _", instance_id as "instance_id: Option<String>",
-                  type as "channel_type: _", podcast_feed_url as "podcast_feed_url: Option<String>",
+                  format_preference as "format_preference", instance_id as "instance_id: Option<String>",
+                  type as "channel_type", podcast_feed_url as "podcast_feed_url: Option<String>",
                   podcast_guid as "podcast_guid: Option<String>", last_fetched_at as "last_fetched_at: Option<String>",
                   created_at, updated_at
                FROM channels
                WHERE type = ?
                ORDER BY subscribed_at DESC"#,
-            ct.to_string()
+            ct_str
         )
         .fetch_all(pool)
         .await
@@ -88,8 +88,8 @@ pub async fn list_channels(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
                   subscriber_count as "subscriber_count: Option<i64>", is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference: _", instance_id as "instance_id: Option<String>",
-                  type as "channel_type: _", podcast_feed_url as "podcast_feed_url: Option<String>",
+                  format_preference as "format_preference", instance_id as "instance_id: Option<String>",
+                  type as "channel_type", podcast_feed_url as "podcast_feed_url: Option<String>",
                   podcast_guid as "podcast_guid: Option<String>", last_fetched_at as "last_fetched_at: Option<String>",
                   created_at, updated_at
                FROM channels
