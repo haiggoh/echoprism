@@ -21,9 +21,8 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "transparent": false,
-        "titleBarStyle": "overlay"
-      }
+        "transparent": false
+              }
     ],
     "security": {
       "csp": null
@@ -32,14 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "publisher": "EchoPrism",
+        "publisher": "EchoPrism",
     "shortDescription": "Two streams become one - Unified video & podcast player",
     "longDescription": "EchoPrism is a unified video & podcast player that converges YouTube watching and podcast listening into one seamless stream. Built with Tauri, Rust, and love for privacy.",
     "copyright": "MIT License",
@@ -51,12 +43,7 @@
       "minimumSystemVersion": "10.15",
       "signingIdentity": null,
       "providerShortName": null,
-      "info": {
-        "NSHumanReadableCopyright": "MIT License",
-        "NSPrincipalClass": "NSApplication",
-        "CFBundleName": "EchoPrism",
-        "CFBundleDisplayName": "EchoPrism"
-      }
+      "infoPlist": "Info.plist"
     },
     "windows": {
       "webviewInstallMode": {

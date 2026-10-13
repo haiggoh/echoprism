@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO queue_items (id, queue_id, episode_id, position, added_at, source, play_mode, smart_link_id)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "894bb44f36ef6bbd48cbc8f12bd65e40c7231048961e732de93d78feb8a54f8e"
+}

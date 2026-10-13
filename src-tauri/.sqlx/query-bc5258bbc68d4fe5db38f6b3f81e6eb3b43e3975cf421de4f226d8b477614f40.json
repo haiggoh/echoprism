@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO channels (id, user_id, external_id, title, handle, thumbnail_url,\n              description, subscriber_count, is_subscribed, subscribed_at,\n              notifications_enabled, format_preference, instance_id, type,\n              podcast_feed_url, podcast_guid, last_fetched_at, created_at, updated_at)\n           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 19
+    },
+    "nullable": []
+  },
+  "hash": "bc5258bbc68d4fe5db38f6b3f81e6eb3b43e3975cf421de4f226d8b477614f40"
+}

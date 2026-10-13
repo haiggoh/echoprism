@@ -4,12 +4,11 @@ pub mod types;
 pub mod error;
 pub mod config;
 
+// Re-export all types from types module
 pub use types::*;
-pub use error::*;
-pub use config::*;
 
-pub mod prelude {
-    pub use crate::types::*;
-    pub use crate::error::*;
-    pub use crate::config::*;
-}
+// Re-export error types
+pub use error::*;
+
+// Re-export config types with explicit names to avoid conflicts
+pub use config::{AppConfig, InstanceConfig, UserPreferences as ConfigUserPreferences};

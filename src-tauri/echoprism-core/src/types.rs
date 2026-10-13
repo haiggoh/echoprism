@@ -27,56 +27,61 @@ pub struct UserPreferences {
     pub updated_at: chrono::DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum Format {
     Video,
     Audio,
     Unified,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum QueueBehavior {
     PlayNext,
     AddEnd,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum Theme {
     Dark,
     Light,
     System,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Instance {
     pub id: String,
     pub url: String,
     pub instance_type: InstanceType,
     pub health: InstanceHealth,
-    pub latency_ms: Option<u64>,
-    pub last_checked: Option<chrono::DateTime<Utc>>,
+    pub latency_ms: Option<i64>,
+    pub last_checked: Option<String>,
     pub auto_failover: bool,
     pub supports_sabr: bool,
     pub supports_age_restricted: bool,
     pub region: Option<String>,
     pub country: Option<String>,
     pub pinned: bool,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT")]
 pub enum InstanceType {
     Invidious,
     Piped,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT")]
 pub enum InstanceHealth {
     Healthy,
     Degraded,
@@ -84,7 +89,7 @@ pub enum InstanceHealth {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Channel {
     pub id: String,
     pub user_id: String,
@@ -93,29 +98,30 @@ pub struct Channel {
     pub handle: Option<String>,
     pub thumbnail_url: Option<String>,
     pub description: Option<String>,
-    pub subscriber_count: Option<u64>,
+    pub subscriber_count: Option<i64>,
     pub is_subscribed: bool,
-    pub subscribed_at: chrono::DateTime<Utc>,
+    pub subscribed_at: String,
     pub notifications_enabled: bool,
     pub format_preference: Format,
     pub instance_id: Option<String>,
     pub channel_type: ChannelType,
     pub podcast_feed_url: Option<String>,
     pub podcast_guid: Option<String>,
-    pub last_fetched_at: Option<chrono::DateTime<Utc>>,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub last_fetched_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT")]
 pub enum ChannelType {
     Video,
     Podcast,
     Both,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Episode {
     pub id: String,
     pub channel_id: String,
@@ -123,24 +129,41 @@ pub struct Episode {
     pub title: String,
     pub description: Option<String>,
     pub thumbnail_url: Option<String>,
-    pub duration_seconds: Option<u64>,
-    pub published_at: Option<chrono::DateTime<Utc>>,
+    pub duration_seconds: Option<i64>,
+    pub published_at: Option<String>,
     pub url: Option<String>,
     pub video_id: Option<String>,
     pub podcast_guid: Option<String>,
-    pub episode_number: Option<u32>,
-    pub season_number: Option<u32>,
+    pub episode_number: Option<i64>,
+    pub season_number: Option<i64>,
     pub audio_url: Option<String>,
     pub video_url: Option<String>,
-    pub formats: Option<serde_json::Value>,
-    pub chapters: Option<Vec<Chapter>>,
-    pub sponsors: Option<Vec<SponsorSegment>>,
+    pub formats: Option<String>,
+    pub chapters: Option<String>,
+    pub sponsors: Option<String>,
     pub transcript_url: Option<String>,
     pub is_downloaded: bool,
     pub download_quality: Option<String>,
     pub progress_seconds: f64,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl Episode {
+    /// Parse formats JSON string into serde_json::Value
+    pub fn formats_json(&self) -> Option<serde_json::Value> {
+        self.formats.as_ref().and_then(|s| serde_json::from_str(s).ok())
+    }
+
+    /// Parse chapters JSON string into Vec<Chapter>
+    pub fn chapters_json(&self) -> Option<Vec<Chapter>> {
+        self.chapters.as_ref().and_then(|s| serde_json::from_str(s).ok())
+    }
+
+    /// Parse sponsors JSON string into Vec<SponsorSegment>
+    pub fn sponsors_json(&self) -> Option<Vec<SponsorSegment>> {
+        self.sponsors.as_ref().and_then(|s| serde_json::from_str(s).ok())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,47 +199,94 @@ pub struct EpisodeLink {
     pub updated_at: chrono::DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum MatchSource {
     Auto,
     Manual,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchResult {
+    pub matched_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodcastEpisode {
+    pub id: String,
+    pub guid: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub channel_title: Option<String>,
+    pub channel_id: Option<String>,
+    pub published_at: Option<chrono::DateTime<Utc>>,
+    pub duration_seconds: Option<u64>,
+    pub audio_url: Option<String>,
+    pub transcript: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YoutubeVideo {
+    pub id: String,
+    pub video_id: String,
+    pub title: String,
+    pub channel_title: Option<String>,
+    pub channel_id: Option<String>,
+    pub published_at: Option<chrono::DateTime<Utc>>,
+    pub duration_seconds: Option<u64>,
+    pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceHealthLog {
+    pub id: String,
+    pub instance_id: String,
+    pub health: InstanceHealth,
+    pub latency_ms: Option<u64>,
+    pub error_message: Option<String>,
+    pub checked_at: chrono::DateTime<Utc>,
+    pub video_id_tested: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Queue {
     pub id: String,
     pub user_id: String,
-    pub current_index: usize,
+    pub current_index: i64,
     pub repeat_mode: RepeatMode,
     pub shuffle: bool,
     pub audio_only_mode: bool,
-    pub created_at: chrono::DateTime<Utc>,
-    pub updated_at: chrono::DateTime<Utc>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub items: Vec<QueueItem>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum RepeatMode {
     Off,
     One,
     All,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct QueueItem {
     pub id: String,
     pub queue_id: String,
     pub episode_id: String,
-    pub position: usize,
-    pub added_at: chrono::DateTime<Utc>,
+    pub position: i64,
+    pub added_at: String,
     pub source: QueueSource,
     pub play_mode: PlayMode,
     pub smart_link_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum QueueSource {
     Feed,
     Search,
@@ -225,8 +295,9 @@ pub enum QueueSource {
     SmartLink,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum PlayMode {
     Video,
     Audio,
@@ -262,15 +333,17 @@ pub struct Download {
     pub completed_at: Option<chrono::DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT")]
 pub enum DownloadFormat {
     Video,
     Audio,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum DownloadStatus {
     Pending,
     Downloading,
@@ -285,7 +358,7 @@ pub struct HistoryEntry {
     pub user_id: String,
     pub episode_id: String,
     pub position_seconds: f64,
-    duration_seconds: Option<f64>,
+    pub duration_seconds: Option<f64>,
     pub completed: bool,
     pub played_at: chrono::DateTime<Utc>,
 }
@@ -320,15 +393,6 @@ pub struct SponsorBlockSegment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SponsorSegment {
-    pub start_time: f64,
-    pub end_time: f64,
-    pub category: String,
-    pub uuid: String,
-    pub votes: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyboardShortcut {
     pub id: String,
     pub user_id: String,
@@ -341,182 +405,9 @@ pub struct KeyboardShortcut {
     pub updated_at: chrono::DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
-pub enum ShortcutContext {
-    Global,
-    Player,
-    Queue,
-    Feed,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DownloadFormat {
-    Video,
-    Audio,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DownloadStatus {
-    Pending,
-    Downloading,
-    Completed,
-    Failed,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PlayMode {
-    Video,
-    Audio,
-    Unified,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RepeatMode {
-    Off,
-    One,
-    All,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum QueueSource {
-    Feed,
-    Search,
-    Manual,
-    History,
-    SmartLink,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PlayModeType {
-    Video,
-    Audio,
-    Unified,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ShortcutContext {
-    Global,
-    Player,
-    Queue,
-    Feed,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum InstanceType {
-    Invidious,
-    Piped,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum InstanceHealth {
-    Healthy,
-    Degraded,
-    Failed,
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ChannelType {
-    Video,
-    Podcast,
-    Both,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Format {
-    Video,
-    Audio,
-    Unified,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum QueueBehavior {
-    PlayNext,
-    AddEnd,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Theme {
-    Dark,
-    Light,
-    System,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum FormatType {
-    Video,
-    Audio,
-    Unified,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum MatchSource {
-    Auto,
-    Manual,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DownloadFormat {
-    Video,
-    Audio,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DownloadStatus {
-    Pending,
-    Downloading,
-    Completed,
-    Failed,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RepeatMode {
-    Off,
-    One,
-    All,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum QueueSource {
-    Feed,
-    Search,
-    Manual,
-    History,
-    SmartLink,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PlayMode {
-    Video,
-    Audio,
-    Unified,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "TEXT")]
 pub enum ShortcutContext {
     Global,
     Player,

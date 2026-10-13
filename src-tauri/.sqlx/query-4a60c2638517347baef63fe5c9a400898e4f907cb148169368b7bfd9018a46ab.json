@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO keyboard_shortcuts (id, user_id, action, key_combination, context, enabled, is_custom, created_at, updated_at) VALUES (?, 'current-user', ?, ?, ?, 1, 0, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "4a60c2638517347baef63fe5c9a400898e4f907cb148169368b7bfd9018a46ab"
+}

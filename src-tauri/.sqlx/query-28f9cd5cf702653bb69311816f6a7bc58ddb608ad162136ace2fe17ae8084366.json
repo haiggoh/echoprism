@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT user_id, episode_id, position_seconds, duration_seconds, playback_rate, volume, is_audio_mode, is_pip, current_instance_id, last_updated\n         FROM playback_state WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "episode_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "position_seconds",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "duration_seconds",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "playback_rate",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "volume",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "is_audio_mode",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "is_pip",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "current_instance_id",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_updated",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "28f9cd5cf702653bb69311816f6a7bc58ddb608ad162136ace2fe17ae8084366"
+}

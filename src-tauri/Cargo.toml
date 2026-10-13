@@ -17,26 +17,34 @@ members = [
   "echoprism-instance-pool",
 ]
 
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
 [dependencies]
-tauri = { version = "2.0", features = [
-  "shell",
-  "dialog",
-  "fs",
-  "opener",
-  "store",
-  "window-state",
-  "clipboard-manager",
-  "global-shortcut",
-  "notification",
-  "http",
-  "tray-icon",
-  "media-session",
-  "clipboard",
-  "single-instance",
-  "updater",
-  "protocol",
-] }
+echoprism-core = { path = "echoprism-core" }
+tauri = { version = "2.0", features = ["wry", "compression", "common-controls-v6", "dynamic-acl", "x11", "dbus"] }
+tauri-plugin-store = "2.0"
+tauri-plugin-dialog = "2.0"
+tauri-plugin-fs = "2.0"
+tauri-plugin-opener = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-window-state = "2.0"
+tauri-plugin-clipboard-manager = "2.0"
+tauri-plugin-global-shortcut = "2.0"
+tauri-plugin-notification = "2.0"
+tauri-plugin-http = "2.0"
+tauri-plugin-media-session = "0.2"
+tauri-plugin-clipboard = "2.0"
+tauri-plugin-single-instance = "2.0"
+tauri-plugin-updater = "2.0"
 tokio = { version = "1.38", features = ["full"] }
+tokio-util = { version = "0.7", features = ["full"] }
+tokio-stream = "0.1"
+tokio-process = "0.2"
+bytes = "1.5"
+futures = "0.3"
+pin-project = "1.1"
+async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.4"
@@ -49,8 +57,6 @@ url = "2.5"
 uuid = { version = "1.7", features = ["v4", "serde", "fast-rng"] }
 chrono = { version = "0.4", features = ["serde"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "json"] }
-rusqlite = { version = "0.31", features = ["bundled", "serde_json", "chrono", "extra_check"] }
-yt-dlp = "0.1"  # hypothetical - would use command-line yt-dlp
 flume = "0.11"
 parking_lot = "0.12"
 dashmap = "5.5"
@@ -62,11 +68,10 @@ walkdir = "2.3"
 ignore = "0.4"
 glob = "0.3"
 regex = "1.10"
-fuzzy_matcher = "0.4"
-levenshtein = "0.3"
-stop_words = "0.1"
+fuzzy-matcher = "0.3.7"
+levenshtein = "1.0"
+stop-words = "0.5"
 stemmer = "0.1"
-tf_idf = "0.1"
 html-escape = "0.2"
 ammonia = "4.0"
 rss = "2.0"
@@ -87,21 +92,18 @@ argon2 = "0.5"
 bcrypt = "0.15"
 jsonwebtoken = "9.2"
 axum = { version = "0.7", features = ["ws", "json", "multipart"] }
-tower = "0.4"
+tower = { version = "0.4" }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 hyper = { version = "1.0", features = ["full"] }
 http = "1.0"
 mime = "0.3"
 percent-encoding = "2.3"
 form_urlencoded = "1.2"
-multipart = "0.19"
-bytes = "1.5"
-futures = "0.3"
-pin-project = "1.1"
-async-trait = "0.1"
-mockall = { version = "0.12", features = ["nightly"] }
+multipart = "0.18"
+mockall = "0.12"
 proptest = "1.0"
 rstest = "0.18"
 tempfile = "3.8"
 assert_cmd = "2.0"
 predicates = "3.0"
+roxmltree = "0.19"

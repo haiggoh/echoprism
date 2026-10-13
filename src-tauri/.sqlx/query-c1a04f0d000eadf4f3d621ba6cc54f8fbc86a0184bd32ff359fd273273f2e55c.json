@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, user_id, current_index, repeat_mode as \"repeat_mode: _\", shuffle, audio_only_mode, created_at, updated_at\n         FROM queues WHERE user_id = 'current-user' LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_index",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "repeat_mode: _",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "shuffle",
+        "ordinal": 4,
+        "type_info": "Bool"
+      },
+      {
+        "name": "audio_only_mode",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c1a04f0d000eadf4f3d621ba6cc54f8fbc86a0184bd32ff359fd273273f2e55c"
+}

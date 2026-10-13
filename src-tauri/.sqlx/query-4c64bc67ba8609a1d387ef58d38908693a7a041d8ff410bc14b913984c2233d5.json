@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM queue_items WHERE queue_id = (SELECT id FROM queues WHERE user_id = 'current-user')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "4c64bc67ba8609a1d387ef58d38908693a7a041d8ff410bc14b913984c2233d5"
+}

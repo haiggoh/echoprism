@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO instances (id, url, type, health, latency_ms, last_checked,\n              auto_failover, supports_sabr, supports_age_restricted, region, country,\n              pinned, created_at, updated_at)\n           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "8d6c0f64a53d7c25bddcc1b7469bece2fa5fbb4571417c3fc9b6ae003f083c29"
+}

@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT user_id, default_instance_id, default_format as \"default_format: _\", queue_behavior as \"queue_behavior: _\", audio_only_default, auto_download_wifi, sponsorblock_enabled, sponsorblock_categories, keyboard_shortcuts_enabled, theme as \"theme: _\", cross_device_sync_enabled, updated_at\n         FROM user_preferences WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_instance_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_format: _",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "queue_behavior: _",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "audio_only_default",
+        "ordinal": 4,
+        "type_info": "Bool"
+      },
+      {
+        "name": "auto_download_wifi",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "sponsorblock_enabled",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "sponsorblock_categories",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "keyboard_shortcuts_enabled",
+        "ordinal": 8,
+        "type_info": "Bool"
+      },
+      {
+        "name": "theme: _",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "cross_device_sync_enabled",
+        "ordinal": 10,
+        "type_info": "Bool"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2d418aaad7665330b49560370bbe36336c64aba9b2f5f335d80454e717b57e53"
+}

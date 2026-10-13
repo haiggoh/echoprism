@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE playback_state SET position_seconds = COALESCE(?, position_seconds), duration_seconds = COALESCE(?, duration_seconds), playback_rate = COALESCE(?, playback_rate), volume = COALESCE(?, volume), is_audio_mode = COALESCE(?, is_audio_mode), is_pip = COALESCE(?, is_pip), current_instance_id = COALESCE(?, current_instance_id), last_updated = ? WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "176e0afdb9afe52266a9c908403555cd1d612ab85d224d7a865cf501c824d716"
+}

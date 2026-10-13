@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, channel_id, external_id, title, description, thumbnail_url,\n              duration_seconds, published_at, url, video_id, podcast_guid,\n              episode_number, season_number, audio_url, video_url, formats,\n              chapters, sponsors, transcript_url, is_downloaded, download_quality,\n              progress_seconds, created_at, updated_at\n           FROM episodes WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "channel_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "external_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "thumbnail_url",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "duration_seconds",
+        "ordinal": 6,
+        "type_info": "Int64"
+      },
+      {
+        "name": "published_at",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "url",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "video_id",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_guid",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "episode_number",
+        "ordinal": 11,
+        "type_info": "Int64"
+      },
+      {
+        "name": "season_number",
+        "ordinal": 12,
+        "type_info": "Int64"
+      },
+      {
+        "name": "audio_url",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "video_url",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "formats",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "chapters",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "sponsors",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "transcript_url",
+        "ordinal": 18,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_downloaded",
+        "ordinal": 19,
+        "type_info": "Bool"
+      },
+      {
+        "name": "download_quality",
+        "ordinal": 20,
+        "type_info": "Text"
+      },
+      {
+        "name": "progress_seconds",
+        "ordinal": 21,
+        "type_info": "Float"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 22,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 23,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cac68f8558484713ca507d36adc8a3b88515584f8b8a2f0d490bd99ef9023aff"
+}

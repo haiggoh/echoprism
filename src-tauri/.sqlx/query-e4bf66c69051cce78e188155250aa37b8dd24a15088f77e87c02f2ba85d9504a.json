@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by as \"matched_by: _\", title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_guid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "youtube_video_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "confidence",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "matched_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "matched_by: _",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "title_similarity",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "date_diff_days",
+        "ordinal": 7,
+        "type_info": "Int64"
+      },
+      {
+        "name": "duration_diff_seconds",
+        "ordinal": 8,
+        "type_info": "Int64"
+      },
+      {
+        "name": "user_confirmed",
+        "ordinal": 9,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e4bf66c69051cce78e188155250aa37b8dd24a15088f77e87c02f2ba85d9504a"
+}

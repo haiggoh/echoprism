@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM history WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "59ee12e0dcb5957d0c476237d59655c45426e5d76be9580ed12d5202beb59556"
+}

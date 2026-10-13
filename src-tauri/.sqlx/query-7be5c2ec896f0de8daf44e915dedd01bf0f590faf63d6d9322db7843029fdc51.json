@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE queue_items SET position = CASE\n            WHEN position = ? THEN ?\n            WHEN position > ? AND position <= ? THEN position - 1\n            WHEN position < ? AND position >= ? THEN position + 1\n            ELSE position END\n         WHERE queue_id = (SELECT id FROM queues WHERE user_id = 'current-user')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "7be5c2ec896f0de8daf44e915dedd01bf0f590faf63d6d9322db7843029fdc51"
+}
