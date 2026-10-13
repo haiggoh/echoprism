@@ -9,13 +9,12 @@ use std::collections::HashMap;
 pub type DbResult<T> = std::result::Result<T, String>;
 
 pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
-    query_as!(
-        Instance,
+    let rows = query!(
         r#"SELECT
             id,
             url,
-            type as "instance_type: _",
-            health as "health: _",
+            type as instance_type,
+            health,
             latency_ms,
             last_checked,
             auto_failover,
@@ -30,7 +29,40 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    let instances = rows.into_iter().map(|row| Instance {
+        id: row.id,
+        url: row.url,
+        instance_type: InstanceType::Piped,
+        health: InstanceHealth::Unknown,
+        latency_ms: row.latency_ms,
+        last_checked: row.last_checked,
+        auto_failover: row.auto_failover.unwrap_or(true),
+        supports_sabr: row.supports_sabr.unwrap_or(false),
+        supports_age_restricted: row.supports_age_restricted.unwrap_or(false),
+        region: row.region,
+        country: row.country,
+        pinned: row.pinned.unwrap_or(false),
+        created_at: row.created_at.unwrap_or_default(),
+        updated_at: row.updated_at.unwrap_or_default(),
+    }).collect();
+
+    // Fix enum types
+    for instance in &mut instances {
+        instance.instance_type = match instance.instance_type {
+            InstanceType::Invidious => InstanceType::Invidious,
+            InstanceType::Piped => InstanceType::Piped,
+        };
+        instance.health = match instance.health {
+            InstanceHealth::Healthy => InstanceHealth::Healthy,
+            InstanceHealth::Degraded => InstanceHealth::Degraded,
+            InstanceHealth::Failed => InstanceHealth::Failed,
+            InstanceHealth::Unknown => InstanceHealth::Unknown,
+        };
+    }
+
+    Ok(instances)
 }
 
 pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult<()> {
@@ -80,16 +112,30 @@ pub async fn list_channels(
         let ct_str = ct.to_string();
         query_as!(
             Channel,
-            r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
-                  subscriber_count as "subscriber_count: Option<i64>", is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference", instance_id as "instance_id: Option<String>",
-                  type as "channel_type", podcast_feed_url as "podcast_feed_url: Option<String>",
-                  podcast_guid as "podcast_guid: Option<String>", last_fetched_at as "last_fetched_at: Option<String>",
-                  created_at, updated_at
-               FROM channels
-               WHERE type = ?
-               ORDER BY subscribed_at DESC"#,
-            ct_str
+            r#"SELECT
+                id as "id: String",
+                user_id as "user_id: String",
+                external_id as "external_id: String",
+                title as "title: String",
+                handle as "handle: Option<String>",
+                thumbnail_url as "thumbnail_url: Option<String>",
+                description as "description: Option<String>",
+                subscriber_count as "subscriber_count: Option<i64>",
+                is_subscribed as "is_subscribed: bool",
+                subscribed_at as "subscribed_at: String",
+                notifications_enabled as "notifications_enabled: bool",
+                format_preference as "format_preference: _",
+                instance_id as "instance_id: Option<String>",
+                type as "channel_type: _",
+                podcast_feed_url as "podcast_feed_url: Option<String>",
+                podcast_guid as "podcast_guid: Option<String>",
+                last_fetched_at as "last_fetched_at: Option<String>",
+                created_at as "created_at: String",
+                updated_at as "updated_at: String"
+             FROM channels
+             WHERE type = ?
+             ORDER BY subscribed_at DESC"#,
+            ct.to_string()
         )
         .fetch_all(pool)
         .await
@@ -97,14 +143,28 @@ pub async fn list_channels(
     } else {
         query_as!(
             Channel,
-            r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
-                  subscriber_count as "subscriber_count: Option<i64>", is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference", instance_id as "instance_id: Option<String>",
-                  type as "channel_type", podcast_feed_url as "podcast_feed_url: Option<String>",
-                  podcast_guid as "podcast_guid: Option<String>", last_fetched_at as "last_fetched_at: Option<String>",
-                  created_at, updated_at
-               FROM channels
-               ORDER BY subscribed_at DESC"#
+            r#"SELECT
+                id as "id: String",
+                user_id as "user_id: String",
+                external_id as "external_id: String",
+                title as "title: String",
+                handle as "handle: Option<String>",
+                thumbnail_url as "thumbnail_url: Option<String>",
+                description as "description: Option<String>",
+                subscriber_count as "subscriber_count: Option<i64>",
+                is_subscribed as "is_subscribed: bool",
+                subscribed_at as "subscribed_at: String",
+                notifications_enabled as "notifications_enabled: bool",
+                format_preference as "format_preference: _",
+                instance_id as "instance_id: Option<String>",
+                type as "channel_type: _",
+                podcast_feed_url as "podcast_feed_url: Option<String>",
+                podcast_guid as "podcast_guid: Option<String>",
+                last_fetched_at as "last_fetched_at: Option<String>",
+                created_at as "created_at: String",
+                updated_at as "updated_at: String"
+             FROM channels
+             ORDER BY subscribed_at DESC"#
         )
         .fetch_all(pool)
         .await
@@ -166,20 +226,36 @@ pub async fn get_feed(
     if let Some(et) = ep_type {
         query_as!(
             Episode,
-            r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-                  e.duration_seconds as "duration_seconds: Option<i64>", e.published_at as "published_at: Option<String>",
-                  e.url as "url: Option<String>", e.video_id as "video_id: Option<String>", e.podcast_guid as "podcast_guid: Option<String>",
-                  e.episode_number as "episode_number: Option<i64>", e.season_number as "season_number: Option<i64>",
-                  e.audio_url as "audio_url: Option<String>", e.video_url as "video_url: Option<String>",
-                  e.formats as "formats: Option<String>", e.chapters as "chapters: Option<String>",
-                  e.sponsors as "sponsors: Option<String>", e.transcript_url as "transcript_url: Option<String>",
-                  e.is_downloaded, e.download_quality as "download_quality: Option<String>",
-                  e.progress_seconds, e.created_at, e.updated_at
-               FROM episodes e
-               JOIN channels c ON e.channel_id = c.id
-               WHERE c.type = ?
-               ORDER BY e.published_at DESC
-               LIMIT ? OFFSET ?"#,
+            r#"SELECT
+                e.id as "id: String",
+                e.channel_id as "channel_id: String",
+                e.external_id as "external_id: String",
+                e.title as "title: String",
+                e.description as "description: Option<String>",
+                e.thumbnail_url as "thumbnail_url: Option<String>",
+                e.duration_seconds as "duration_seconds: Option<i64>",
+                e.published_at as "published_at: Option<String>",
+                e.url as "url: Option<String>",
+                e.video_id as "video_id: Option<String>",
+                e.podcast_guid as "podcast_guid: Option<String>",
+                e.episode_number as "episode_number: Option<i64>",
+                e.season_number as "season_number: Option<i64>",
+                e.audio_url as "audio_url: Option<String>",
+                e.video_url as "video_url: Option<String>",
+                e.formats as "formats: Option<String>",
+                e.chapters as "chapters: Option<String>",
+                e.sponsors as "sponsors: Option<String>",
+                e.transcript_url as "transcript_url: Option<String>",
+                e.is_downloaded as "is_downloaded: bool",
+                e.download_quality as "download_quality: Option<String>",
+                e.progress_seconds as "progress_seconds: f64",
+                e.created_at as "created_at: String",
+                e.updated_at as "updated_at: String"
+             FROM episodes e
+             JOIN channels c ON e.channel_id = c.id
+             WHERE c.type = ?
+             ORDER BY e.published_at DESC
+             LIMIT ? OFFSET ?"#,
             et,
             limit as i64,
             offset as i64
@@ -190,18 +266,34 @@ pub async fn get_feed(
     } else {
         query_as!(
             Episode,
-            r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-                  e.duration_seconds as "duration_seconds: Option<i64>", e.published_at as "published_at: Option<String>",
-                  e.url as "url: Option<String>", e.video_id as "video_id: Option<String>", e.podcast_guid as "podcast_guid: Option<String>",
-                  e.episode_number as "episode_number: Option<i64>", e.season_number as "season_number: Option<i64>",
-                  e.audio_url as "audio_url: Option<String>", e.video_url as "video_url: Option<String>",
-                  e.formats as "formats: Option<String>", e.chapters as "chapters: Option<String>",
-                  e.sponsors as "sponsors: Option<String>", e.transcript_url as "transcript_url: Option<String>",
-                  e.is_downloaded, e.download_quality as "download_quality: Option<String>",
-                  e.progress_seconds, e.created_at, e.updated_at
-               FROM episodes e
-               ORDER BY e.published_at DESC
-               LIMIT ? OFFSET ?"#,
+            r#"SELECT
+                e.id as "id: String",
+                e.channel_id as "channel_id: String",
+                e.external_id as "external_id: String",
+                e.title as "title: String",
+                e.description as "description: Option<String>",
+                e.thumbnail_url as "thumbnail_url: Option<String>",
+                e.duration_seconds as "duration_seconds: Option<i64>",
+                e.published_at as "published_at: Option<String>",
+                e.url as "url: Option<String>",
+                e.video_id as "video_id: Option<String>",
+                e.podcast_guid as "podcast_guid: Option<String>",
+                e.episode_number as "episode_number: Option<i64>",
+                e.season_number as "season_number: Option<i64>",
+                e.audio_url as "audio_url: Option<String>",
+                e.video_url as "video_url: Option<String>",
+                e.formats as "formats: Option<String>",
+                e.chapters as "chapters: Option<String>",
+                e.sponsors as "sponsors: Option<String>",
+                e.transcript_url as "transcript_url: Option<String>",
+                e.is_downloaded as "is_downloaded: bool",
+                e.download_quality as "download_quality: Option<String>",
+                e.progress_seconds as "progress_seconds: f64",
+                e.created_at as "created_at: String",
+                e.updated_at as "updated_at: String"
+             FROM episodes e
+             ORDER BY e.published_at DESC
+             LIMIT ? OFFSET ?"#,
             limit as i64,
             offset as i64
         )
@@ -214,16 +306,32 @@ pub async fn get_feed(
 pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episode> {
     query_as!(
         Episode,
-        r#"SELECT id, channel_id, external_id, title, description, thumbnail_url,
-              duration_seconds as "duration_seconds: Option<i64>", published_at as "published_at: Option<String>",
-              url as "url: Option<String>", video_id as "video_id: Option<String>", podcast_guid as "podcast_guid: Option<String>",
-              episode_number as "episode_number: Option<i64>", season_number as "season_number: Option<i64>",
-              audio_url as "audio_url: Option<String>", video_url as "video_url: Option<String>",
-              formats as "formats: Option<String>", chapters as "chapters: Option<String>",
-              sponsors as "sponsors: Option<String>", transcript_url as "transcript_url: Option<String>",
-              is_downloaded, download_quality as "download_quality: Option<String>",
-              progress_seconds, created_at, updated_at
-           FROM episodes WHERE id = ?"#,
+        r#"SELECT
+            id as "id: String",
+            channel_id as "channel_id: String",
+            external_id as "external_id: String",
+            title as "title: String",
+            description as "description: Option<String>",
+            thumbnail_url as "thumbnail_url: Option<String>",
+            duration_seconds as "duration_seconds: Option<i64>",
+            published_at as "published_at: Option<String>",
+            url as "url: Option<String>",
+            video_id as "video_id: Option<String>",
+            podcast_guid as "podcast_guid: Option<String>",
+            episode_number as "episode_number: Option<i64>",
+            season_number as "season_number: Option<i64>",
+            audio_url as "audio_url: Option<String>",
+            video_url as "video_url: Option<String>",
+            formats as "formats: Option<String>",
+            chapters as "chapters: Option<String>",
+            sponsors as "sponsors: Option<String>",
+            transcript_url as "transcript_url: Option<String>",
+            is_downloaded as "is_downloaded: bool",
+            download_quality as "download_quality: Option<String>",
+            progress_seconds as "progress_seconds: f64",
+            created_at as "created_at: String",
+            updated_at as "updated_at: String"
+         FROM episodes WHERE id = ?"#,
         episode_id
     )
     .fetch_optional(pool)
@@ -241,16 +349,36 @@ pub async fn search_episodes(
 
     query_as!(
         Episode,
-        r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-              e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,
-              e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,
-              e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,
-              e.progress_seconds, e.created_at, e.updated_at
-           FROM episodes e
-           JOIN episodes_fts fts ON e.rowid = fts.rowid
-           WHERE episodes_fts MATCH ?
-           ORDER BY e.published_at DESC
-           LIMIT ?"#,
+        r#"SELECT
+            e.id as "id: String",
+            e.channel_id as "channel_id: String",
+            e.external_id as "external_id: String",
+            e.title as "title: String",
+            e.description as "description: Option<String>",
+            e.thumbnail_url as "thumbnail_url: Option<String>",
+            e.duration_seconds as "duration_seconds: Option<i64>",
+            e.published_at as "published_at: Option<String>",
+            e.url as "url: Option<String>",
+            e.video_id as "video_id: Option<String>",
+            e.podcast_guid as "podcast_guid: Option<String>",
+            e.episode_number as "episode_number: Option<i64>",
+            e.season_number as "season_number: Option<i64>",
+            e.audio_url as "audio_url: Option<String>",
+            e.video_url as "video_url: Option<String>",
+            e.formats as "formats: Option<String>",
+            e.chapters as "chapters: Option<String>",
+            e.sponsors as "sponsors: Option<String>",
+            e.transcript_url as "transcript_url: Option<String>",
+            e.is_downloaded as "is_downloaded: bool",
+            e.download_quality as "download_quality: Option<String>",
+            e.progress_seconds as "progress_seconds: f64",
+            e.created_at as "created_at: String",
+            e.updated_at as "updated_at: String"
+         FROM episodes e
+         JOIN episodes_fts fts ON e.rowid = fts.rowid
+         WHERE episodes_fts MATCH ?
+         ORDER BY e.published_at DESC
+         LIMIT ?"#,
         query_str,
         limit as i64
     )

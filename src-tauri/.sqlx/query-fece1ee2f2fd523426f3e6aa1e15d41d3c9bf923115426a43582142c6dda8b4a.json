@@ -1,35 +1,35 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,\n                  e.duration_seconds as \"duration_seconds: Option<i64>\", e.published_at as \"published_at: Option<String>\",\n                  e.url as \"url: Option<String>\", e.video_id as \"video_id: Option<String>\", e.podcast_guid as \"podcast_guid: Option<String>\",\n                  e.episode_number as \"episode_number: Option<i64>\", e.season_number as \"season_number: Option<i64>\",\n                  e.audio_url as \"audio_url: Option<String>\", e.video_url as \"video_url: Option<String>\",\n                  e.formats as \"formats: Option<String>\", e.chapters as \"chapters: Option<String>\",\n                  e.sponsors as \"sponsors: Option<String>\", e.transcript_url as \"transcript_url: Option<String>\",\n                  e.is_downloaded, e.download_quality as \"download_quality: Option<String>\",\n                  e.progress_seconds, e.created_at, e.updated_at\n               FROM episodes e\n               ORDER BY e.published_at DESC\n               LIMIT ? OFFSET ?",
+  "query": "SELECT\n                e.id as \"id: String\",\n                e.channel_id as \"channel_id: String\",\n                e.external_id as \"external_id: String\",\n                e.title as \"title: String\",\n                e.description as \"description: Option<String>\",\n                e.thumbnail_url as \"thumbnail_url: Option<String>\",\n                e.duration_seconds as \"duration_seconds: Option<i64>\",\n                e.published_at as \"published_at: Option<String>\",\n                e.url as \"url: Option<String>\",\n                e.video_id as \"video_id: Option<String>\",\n                e.podcast_guid as \"podcast_guid: Option<String>\",\n                e.episode_number as \"episode_number: Option<i64>\",\n                e.season_number as \"season_number: Option<i64>\",\n                e.audio_url as \"audio_url: Option<String>\",\n                e.video_url as \"video_url: Option<String>\",\n                e.formats as \"formats: Option<String>\",\n                e.chapters as \"chapters: Option<String>\",\n                e.sponsors as \"sponsors: Option<String>\",\n                e.transcript_url as \"transcript_url: Option<String>\",\n                e.is_downloaded as \"is_downloaded: bool\",\n                e.download_quality as \"download_quality: Option<String>\",\n                e.progress_seconds as \"progress_seconds: f64\",\n                e.created_at as \"created_at: String\",\n                e.updated_at as \"updated_at: String\"\n             FROM episodes e\n             ORDER BY e.published_at DESC\n             LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
-        "name": "id",
+        "name": "id: String",
         "ordinal": 0,
         "type_info": "Text"
       },
       {
-        "name": "channel_id",
+        "name": "channel_id: String",
         "ordinal": 1,
         "type_info": "Text"
       },
       {
-        "name": "external_id",
+        "name": "external_id: String",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "title",
+        "name": "title: String",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "description",
+        "name": "description: Option<String>",
         "ordinal": 4,
         "type_info": "Text"
       },
       {
-        "name": "thumbnail_url",
+        "name": "thumbnail_url: Option<String>",
         "ordinal": 5,
         "type_info": "Text"
       },
@@ -99,7 +99,7 @@
         "type_info": "Text"
       },
       {
-        "name": "is_downloaded",
+        "name": "is_downloaded: bool",
         "ordinal": 19,
         "type_info": "Bool"
       },
@@ -109,17 +109,17 @@
         "type_info": "Text"
       },
       {
-        "name": "progress_seconds",
+        "name": "progress_seconds: f64",
         "ordinal": 21,
         "type_info": "Float"
       },
       {
-        "name": "created_at",
+        "name": "created_at: String",
         "ordinal": 22,
         "type_info": "Text"
       },
       {
-        "name": "updated_at",
+        "name": "updated_at: String",
         "ordinal": 23,
         "type_info": "Text"
       }
@@ -154,5 +154,5 @@
       false
     ]
   },
-  "hash": "60831d61fef9ebfa17758fac96ab53597d7b1975dc0c8d444d3ef773740f8610"
+  "hash": "fece1ee2f2fd523426f3e6aa1e15d41d3c9bf923115426a43582142c6dda8b4a"
 }
