@@ -70,10 +70,9 @@ pub async fn list_channels(
         query_as!(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
-                  subscriber_count as "subscriber_count: Option<i64>", is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference", instance_id as "instance_id: Option<String>",
-                  type as "channel_type", podcast_feed_url as "podcast_feed_url: Option<String>",
-                  podcast_guid as "podcast_guid: Option<String>", last_fetched_at as "last_fetched_at: Option<String>",
+                  subscriber_count, is_subscribed, subscribed_at, notifications_enabled,
+                  format_preference, instance_id, type as "channel_type",
+                  podcast_feed_url, podcast_guid, last_fetched_at,
                   created_at, updated_at
                FROM channels
                WHERE type = ?
@@ -87,10 +86,9 @@ pub async fn list_channels(
         query_as!(
             Channel,
             r#"SELECT id, user_id, external_id, title, handle, thumbnail_url, description,
-                  subscriber_count as "subscriber_count: Option<i64>", is_subscribed, subscribed_at, notifications_enabled,
-                  format_preference as "format_preference", instance_id as "instance_id: Option<String>",
-                  type as "channel_type", podcast_feed_url as "podcast_feed_url: Option<String>",
-                  podcast_guid as "podcast_guid: Option<String>", last_fetched_at as "last_fetched_at: Option<String>",
+                  subscriber_count, is_subscribed, subscribed_at, notifications_enabled,
+                  format_preference, instance_id, type as "channel_type",
+                  podcast_feed_url, podcast_guid, last_fetched_at,
                   created_at, updated_at
                FROM channels
                ORDER BY subscribed_at DESC"#
@@ -156,13 +154,9 @@ pub async fn get_feed(
         query_as!(
             Episode,
             r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-                  e.duration_seconds as "duration_seconds: Option<i64>", e.published_at as "published_at: Option<String>",
-                  e.url as "url: Option<String>", e.video_id as "video_id: Option<String>", e.podcast_guid as "podcast_guid: Option<String>",
-                  e.episode_number as "episode_number: Option<i64>", e.season_number as "season_number: Option<i64>",
-                  e.audio_url as "audio_url: Option<String>", e.video_url as "video_url: Option<String>",
-                  e.formats as "formats: Option<String>", e.chapters as "chapters: Option<String>",
-                  e.sponsors as "sponsors: Option<String>", e.transcript_url as "transcript_url: Option<String>",
-                  e.is_downloaded, e.download_quality as "download_quality: Option<String>",
+                  e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,
+                  e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,
+                  e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,
                   e.progress_seconds, e.created_at, e.updated_at
                FROM episodes e
                JOIN channels c ON e.channel_id = c.id
@@ -180,13 +174,9 @@ pub async fn get_feed(
         query_as!(
             Episode,
             r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-                  e.duration_seconds as "duration_seconds: Option<i64>", e.published_at as "published_at: Option<String>",
-                  e.url as "url: Option<String>", e.video_id as "video_id: Option<String>", e.podcast_guid as "podcast_guid: Option<String>",
-                  e.episode_number as "episode_number: Option<i64>", e.season_number as "season_number: Option<i64>",
-                  e.audio_url as "audio_url: Option<String>", e.video_url as "video_url: Option<String>",
-                  e.formats as "formats: Option<String>", e.chapters as "chapters: Option<String>",
-                  e.sponsors as "sponsors: Option<String>", e.transcript_url as "transcript_url: Option<String>",
-                  e.is_downloaded, e.download_quality as "download_quality: Option<String>",
+                  e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,
+                  e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,
+                  e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,
                   e.progress_seconds, e.created_at, e.updated_at
                FROM episodes e
                ORDER BY e.published_at DESC
@@ -204,9 +194,13 @@ pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episod
     query_as!(
         Episode,
         r#"SELECT id, channel_id, external_id, title, description, thumbnail_url,
-              duration_seconds, published_at, url, video_id, podcast_guid,
-              episode_number, season_number, audio_url, video_url, formats,
-              chapters, sponsors, transcript_url, is_downloaded, download_quality,
+              duration_seconds as "duration_seconds: Option<i64>", published_at as "published_at: Option<String>",
+              url as "url: Option<String>", video_id as "video_id: Option<String>", podcast_guid as "podcast_guid: Option<String>",
+              episode_number as "episode_number: Option<i64>", season_number as "season_number: Option<i64>",
+              audio_url as "audio_url: Option<String>", video_url as "video_url: Option<String>",
+              formats as "formats: Option<String>", chapters as "chapters: Option<String>",
+              sponsors as "sponsors: Option<String>", transcript_url as "transcript_url: Option<String>",
+              is_downloaded, download_quality as "download_quality: Option<String>",
               progress_seconds, created_at, updated_at
            FROM episodes WHERE id = ?"#,
         episode_id
@@ -227,13 +221,9 @@ pub async fn search_episodes(
     query_as!(
         Episode,
         r#"SELECT e.id, e.channel_id, e.external_id, e.title, e.description, e.thumbnail_url,
-              e.duration_seconds as "duration_seconds: Option<i64>", e.published_at as "published_at: Option<String>",
-              e.url as "url: Option<String>", e.video_id as "video_id: Option<String>", e.podcast_guid as "podcast_guid: Option<String>",
-              e.episode_number as "episode_number: Option<i64>", e.season_number as "season_number: Option<i64>",
-              e.audio_url as "audio_url: Option<String>", e.video_url as "video_url: Option<String>",
-              e.formats as "formats: Option<String>", e.chapters as "chapters: Option<String>",
-              e.sponsors as "sponsors: Option<String>", e.transcript_url as "transcript_url: Option<String>",
-              e.is_downloaded, e.download_quality as "download_quality: Option<String>",
+              e.duration_seconds, e.published_at, e.url, e.video_id, e.podcast_guid,
+              e.episode_number, e.season_number, e.audio_url, e.video_url, e.formats,
+              e.chapters, e.sponsors, e.transcript_url, e.is_downloaded, e.download_quality,
               e.progress_seconds, e.created_at, e.updated_at
            FROM episodes e
            JOIN episodes_fts fts ON e.rowid = fts.rowid

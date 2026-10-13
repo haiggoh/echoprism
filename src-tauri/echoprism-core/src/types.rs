@@ -553,6 +553,7 @@ pub struct Queue {
     pub audio_only_mode: bool,
     pub created_at: String,
     pub updated_at: String,
+    #[sqlx(skip)]
     pub items: Vec<QueueItem>,
 }
 
