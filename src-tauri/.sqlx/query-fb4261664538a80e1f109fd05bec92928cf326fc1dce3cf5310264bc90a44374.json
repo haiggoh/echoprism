@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, url, type as \"instance_type: _\", health as \"health: _\",\n              latency_ms as \"latency_ms: Option<i64>\", last_checked as \"last_checked: Option<String>\",\n              auto_failover, supports_sabr, supports_age_restricted,\n              region as \"region: Option<String>\", country as \"country: Option<String>\",\n              pinned, created_at, updated_at\n           FROM instances ORDER BY pinned DESC, last_checked DESC",
+  "query": "SELECT id, url, type as \"instance_type: _\", health as \"health: _\",\n              latency_ms as \"latency_ms: Option<i64>\", last_checked as \"last_checked: Option<String>\",\n              auto_failover, supports_sabr, supports_age_restricted,\n              region as \"region: Option<String>\", country as \"country: Option<String>\",\n              pinned, created_at as \"created_at: String\", updated_at as \"updated_at: String\"\n           FROM instances ORDER BY pinned DESC, last_checked DESC",
   "describe": {
     "columns": [
       {
@@ -64,12 +64,12 @@
         "type_info": "Bool"
       },
       {
-        "name": "created_at",
+        "name": "created_at: String",
         "ordinal": 12,
         "type_info": "Text"
       },
       {
-        "name": "updated_at",
+        "name": "updated_at: String",
         "ordinal": 13,
         "type_info": "Text"
       }
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "948fdc88b46dd7316c619ba32a3f3068bf9e21e661ad68527d9cee6204ea3502"
+  "hash": "fb4261664538a80e1f109fd05bec92928cf326fc1dce3cf5310264bc90a44374"
 }
