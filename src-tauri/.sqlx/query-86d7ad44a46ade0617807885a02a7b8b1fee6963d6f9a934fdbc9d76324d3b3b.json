@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, url, type as \"instance_type: _\", health as \"health: _\", latency_ms, last_checked,\n              auto_failover, supports_sabr, supports_age_restricted, region, country,\n              pinned, created_at, updated_at\n           FROM instances ORDER BY pinned DESC, last_checked DESC",
+  "query": "SELECT id, url, type as instance_type, health, latency_ms, last_checked,\n              auto_failover, supports_sabr, supports_age_restricted, region, country,\n              pinned, created_at, updated_at\n           FROM instances ORDER BY pinned DESC, last_checked DESC",
   "describe": {
     "columns": [
       {
@@ -14,12 +14,12 @@
         "type_info": "Text"
       },
       {
-        "name": "instance_type: _",
+        "name": "instance_type",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "health: _",
+        "name": "health",
         "ordinal": 3,
         "type_info": "Text"
       },
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "b54627305d56e435c6281b451404b071827c2f29099872851eedf1f4e1a4bcd5"
+  "hash": "86d7ad44a46ade0617807885a02a7b8b1fee6963d6f9a934fdbc9d76324d3b3b"
 }
