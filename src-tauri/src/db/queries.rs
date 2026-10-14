@@ -147,9 +147,9 @@ pub async fn list_channels(
                 thumbnail_url as "thumbnail_url: Option<String>",
                 description as "description: Option<String>",
                 subscriber_count as "subscriber_count: Option<i64>",
-                is_subscribed,
+                is_subscribed as "is_subscribed: i64",
                 subscribed_at as "subscribed_at: String",
-                notifications_enabled,
+                notifications_enabled as "notifications_enabled: i64",
                 format_preference as "format_preference: _",
                 instance_id as "instance_id: Option<String>",
                 type as "channel_type: _",
@@ -200,9 +200,9 @@ pub async fn list_channels(
                 thumbnail_url as "thumbnail_url: Option<String>",
                 description as "description: Option<String>",
                 subscriber_count as "subscriber_count: Option<i64>",
-                is_subscribed,
+                is_subscribed as "is_subscribed: i64",
                 subscribed_at as "subscribed_at: String",
-                notifications_enabled,
+                notifications_enabled as "notifications_enabled: i64",
                 format_preference as "format_preference: _",
                 instance_id as "instance_id: Option<String>",
                 type as "channel_type: _",
@@ -293,34 +293,62 @@ pub async fn get_feed(
     let limit = params.as_ref().and_then(|p| p.limit).unwrap_or(50);
     let offset = params.unwrap_or_default().offset.unwrap_or(0);
 
+    #[derive(sqlx::FromRow)]
+    struct EpisodeRow {
+        id: String,
+        channel_id: String,
+        external_id: String,
+        title: String,
+        description: Option<String>,
+        thumbnail_url: Option<String>,
+        duration_seconds: Option<i64>,
+        published_at: Option<String>,
+        url: Option<String>,
+        video_id: Option<String>,
+        podcast_guid: Option<String>,
+        episode_number: Option<i64>,
+        season_number: Option<i64>,
+        audio_url: Option<String>,
+        video_url: Option<String>,
+        formats: Option<String>,
+        chapters: Option<String>,
+        sponsors: Option<String>,
+        transcript_url: Option<String>,
+        is_downloaded: bool,
+        download_quality: Option<String>,
+        progress_seconds: f64,
+        created_at: String,
+        updated_at: String,
+    }
+
     if let Some(et) = ep_type {
-        query_as!(
-            Episode,
+        let rows = sqlx::query_as!(
+            EpisodeRow,
             r#"SELECT
-                e.id as "id: String",
-                e.channel_id as "channel_id: String",
-                e.external_id as "external_id: String",
-                e.title as "title: String",
-                e.description as "description: Option<String>",
-                e.thumbnail_url as "thumbnail_url: Option<String>",
-                e.duration_seconds as "duration_seconds: Option<i64>",
-                e.published_at as "published_at: Option<String>",
-                e.url as "url: Option<String>",
-                e.video_id as "video_id: Option<String>",
-                e.podcast_guid as "podcast_guid: Option<String>",
-                e.episode_number as "episode_number: Option<i64>",
-                e.season_number as "season_number: Option<i64>",
-                e.audio_url as "audio_url: Option<String>",
-                e.video_url as "video_url: Option<String>",
-                e.formats as "formats: Option<String>",
-                e.chapters as "chapters: Option<String>",
-                e.sponsors as "sponsors: Option<String>",
-                e.transcript_url as "transcript_url: Option<String>",
-                e.is_downloaded as "is_downloaded: bool",
-                e.download_quality as "download_quality: Option<String>",
-                e.progress_seconds as "progress_seconds: f64",
-                e.created_at as "created_at: String",
-                e.updated_at as "updated_at: String"
+                e.id,
+                e.channel_id,
+                e.external_id,
+                e.title,
+                e.description,
+                e.thumbnail_url,
+                e.duration_seconds,
+                e.published_at,
+                e.url,
+                e.video_id,
+                e.podcast_guid,
+                e.episode_number,
+                e.season_number,
+                e.audio_url,
+                e.video_url,
+                e.formats,
+                e.chapters,
+                e.sponsors,
+                e.transcript_url,
+                e.is_downloaded,
+                e.download_quality,
+                e.progress_seconds,
+                e.created_at,
+                e.updated_at
              FROM episodes e
              JOIN channels c ON e.channel_id = c.id
              WHERE c.type = ?
@@ -332,35 +360,62 @@ pub async fn get_feed(
         )
         .fetch_all(pool)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+        Ok(rows.into_iter().map(|r| Episode {
+            id: r.id,
+            channel_id: r.channel_id,
+            external_id: r.external_id,
+            title: r.title,
+            description: r.description,
+            thumbnail_url: r.thumbnail_url,
+            duration_seconds: r.duration_seconds,
+            published_at: r.published_at,
+            url: r.url,
+            video_id: r.video_id,
+            podcast_guid: r.podcast_guid,
+            episode_number: r.episode_number,
+            season_number: r.season_number,
+            audio_url: r.audio_url,
+            video_url: r.video_url,
+            formats: r.formats,
+            chapters: r.chapters,
+            sponsors: r.sponsors,
+            transcript_url: r.transcript_url,
+            is_downloaded: r.is_downloaded,
+            download_quality: r.download_quality,
+            progress_seconds: r.progress_seconds,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }).collect())
     } else {
-        query_as!(
-            Episode,
+        let rows = sqlx::query_as!(
+            EpisodeRow,
             r#"SELECT
-                e.id as "id: String",
-                e.channel_id as "channel_id: String",
-                e.external_id as "external_id: String",
-                e.title as "title: String",
-                e.description as "description: Option<String>",
-                e.thumbnail_url as "thumbnail_url: Option<String>",
-                e.duration_seconds as "duration_seconds: Option<i64>",
-                e.published_at as "published_at: Option<String>",
-                e.url as "url: Option<String>",
-                e.video_id as "video_id: Option<String>",
-                e.podcast_guid as "podcast_guid: Option<String>",
-                e.episode_number as "episode_number: Option<i64>",
-                e.season_number as "season_number: Option<i64>",
-                e.audio_url as "audio_url: Option<String>",
-                e.video_url as "video_url: Option<String>",
-                e.formats as "formats: Option<String>",
-                e.chapters as "chapters: Option<String>",
-                e.sponsors as "sponsors: Option<String>",
-                e.transcript_url as "transcript_url: Option<String>",
-                e.is_downloaded as "is_downloaded: bool",
-                e.download_quality as "download_quality: Option<String>",
-                e.progress_seconds as "progress_seconds: f64",
-                e.created_at as "created_at: String",
-                e.updated_at as "updated_at: String"
+                e.id,
+                e.channel_id,
+                e.external_id,
+                e.title,
+                e.description,
+                e.thumbnail_url,
+                e.duration_seconds,
+                e.published_at,
+                e.url,
+                e.video_id,
+                e.podcast_guid,
+                e.episode_number,
+                e.season_number,
+                e.audio_url,
+                e.video_url,
+                e.formats,
+                e.chapters,
+                e.sponsors,
+                e.transcript_url,
+                e.is_downloaded,
+                e.download_quality,
+                e.progress_seconds,
+                e.created_at,
+                e.updated_at
              FROM episodes e
              ORDER BY e.published_at DESC
              LIMIT ? OFFSET ?"#,
@@ -369,45 +424,127 @@ pub async fn get_feed(
         )
         .fetch_all(pool)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+        Ok(rows.into_iter().map(|r| Episode {
+            id: r.id,
+            channel_id: r.channel_id,
+            external_id: r.external_id,
+            title: r.title,
+            description: r.description,
+            thumbnail_url: r.thumbnail_url,
+            duration_seconds: r.duration_seconds,
+            published_at: r.published_at,
+            url: r.url,
+            video_id: r.video_id,
+            podcast_guid: r.podcast_guid,
+            episode_number: r.episode_number,
+            season_number: r.season_number,
+            audio_url: r.audio_url,
+            video_url: r.video_url,
+            formats: r.formats,
+            chapters: r.chapters,
+            sponsors: r.sponsors,
+            transcript_url: r.transcript_url,
+            is_downloaded: r.is_downloaded,
+            download_quality: r.download_quality,
+            progress_seconds: r.progress_seconds,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }).collect())
     }
 }
 
 pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episode> {
-    query_as!(
-        Episode,
+    #[derive(sqlx::FromRow)]
+    struct EpisodeRow {
+        id: String,
+        channel_id: String,
+        external_id: String,
+        title: String,
+        description: Option<String>,
+        thumbnail_url: Option<String>,
+        duration_seconds: Option<i64>,
+        published_at: Option<String>,
+        url: Option<String>,
+        video_id: Option<String>,
+        podcast_guid: Option<String>,
+        episode_number: Option<i64>,
+        season_number: Option<i64>,
+        audio_url: Option<String>,
+        video_url: Option<String>,
+        formats: Option<String>,
+        chapters: Option<String>,
+        sponsors: Option<String>,
+        transcript_url: Option<String>,
+        is_downloaded: bool,
+        download_quality: Option<String>,
+        progress_seconds: f64,
+        created_at: String,
+        updated_at: String,
+    }
+
+    let row = sqlx::query_as!(
+        EpisodeRow,
         r#"SELECT
-            id as "id: String",
-            channel_id as "channel_id: String",
-            external_id as "external_id: String",
-            title as "title: String",
-            description as "description: Option<String>",
-            thumbnail_url as "thumbnail_url: Option<String>",
-            duration_seconds as "duration_seconds: Option<i64>",
-            published_at as "published_at: Option<String>",
-            url as "url: Option<String>",
-            video_id as "video_id: Option<String>",
-            podcast_guid as "podcast_guid: Option<String>",
-            episode_number as "episode_number: Option<i64>",
-            season_number as "season_number: Option<i64>",
-            audio_url as "audio_url: Option<String>",
-            video_url as "video_url: Option<String>",
-            formats as "formats: Option<String>",
-            chapters as "chapters: Option<String>",
-            sponsors as "sponsors: Option<String>",
-            transcript_url as "transcript_url: Option<String>",
-            is_downloaded as "is_downloaded: bool",
-            download_quality as "download_quality: Option<String>",
-            progress_seconds as "progress_seconds: f64",
-            created_at as "created_at: String",
-            updated_at as "updated_at: String"
+            id,
+            channel_id,
+            external_id,
+            title,
+            description,
+            thumbnail_url,
+            duration_seconds,
+            published_at,
+            url,
+            video_id,
+            podcast_guid,
+            episode_number,
+            season_number,
+            audio_url,
+            video_url,
+            formats,
+            chapters,
+            sponsors,
+            transcript_url,
+            is_downloaded,
+            download_quality,
+            progress_seconds,
+            created_at,
+            updated_at
          FROM episodes WHERE id = ?"#,
         episode_id
     )
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?
-    .ok_or_else(|| "Episode not found".to_string())
+    .ok_or_else(|| "Episode not found".to_string())?;
+
+    Ok(Episode {
+        id: row.id,
+        channel_id: row.channel_id,
+        external_id: row.external_id,
+        title: row.title,
+        description: row.description,
+        thumbnail_url: row.thumbnail_url,
+        duration_seconds: row.duration_seconds,
+        published_at: row.published_at,
+        url: row.url,
+        video_id: row.video_id,
+        podcast_guid: row.podcast_guid,
+        episode_number: row.episode_number,
+        season_number: row.season_number,
+        audio_url: row.audio_url,
+        video_url: row.video_url,
+        formats: row.formats,
+        chapters: row.chapters,
+        sponsors: row.sponsors,
+        transcript_url: row.transcript_url,
+        is_downloaded: row.is_downloaded,
+        download_quality: row.download_quality,
+        progress_seconds: row.progress_seconds,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
 }
 
 pub async fn search_episodes(
@@ -417,33 +554,61 @@ pub async fn search_episodes(
 ) -> DbResult<Vec<Episode>> {
     let limit = params.as_ref().and_then(|p| p.limit).unwrap_or(50);
 
-    query_as!(
-        Episode,
+    #[derive(sqlx::FromRow)]
+    struct EpisodeRow {
+        id: String,
+        channel_id: String,
+        external_id: String,
+        title: String,
+        description: Option<String>,
+        thumbnail_url: Option<String>,
+        duration_seconds: Option<i64>,
+        published_at: Option<String>,
+        url: Option<String>,
+        video_id: Option<String>,
+        podcast_guid: Option<String>,
+        episode_number: Option<i64>,
+        season_number: Option<i64>,
+        audio_url: Option<String>,
+        video_url: Option<String>,
+        formats: Option<String>,
+        chapters: Option<String>,
+        sponsors: Option<String>,
+        transcript_url: Option<String>,
+        is_downloaded: bool,
+        download_quality: Option<String>,
+        progress_seconds: f64,
+        created_at: String,
+        updated_at: String,
+    }
+
+    let rows = sqlx::query_as!(
+        EpisodeRow,
         r#"SELECT
-            e.id as "id: String",
-            e.channel_id as "channel_id: String",
-            e.external_id as "external_id: String",
-            e.title as "title: String",
-            e.description as "description: Option<String>",
-            e.thumbnail_url as "thumbnail_url: Option<String>",
-            e.duration_seconds as "duration_seconds: Option<i64>",
-            e.published_at as "published_at: Option<String>",
-            e.url as "url: Option<String>",
-            e.video_id as "video_id: Option<String>",
-            e.podcast_guid as "podcast_guid: Option<String>",
-            e.episode_number as "episode_number: Option<i64>",
-            e.season_number as "season_number: Option<i64>",
-            e.audio_url as "audio_url: Option<String>",
-            e.video_url as "video_url: Option<String>",
-            e.formats as "formats: Option<String>",
-            e.chapters as "chapters: Option<String>",
-            e.sponsors as "sponsors: Option<String>",
-            e.transcript_url as "transcript_url: Option<String>",
-            e.is_downloaded as "is_downloaded: bool",
-            e.download_quality as "download_quality: Option<String>",
-            e.progress_seconds as "progress_seconds: f64",
-            e.created_at as "created_at: String",
-            e.updated_at as "updated_at: String"
+            e.id,
+            e.channel_id,
+            e.external_id,
+            e.title,
+            e.description,
+            e.thumbnail_url,
+            e.duration_seconds,
+            e.published_at,
+            e.url,
+            e.video_id,
+            e.podcast_guid,
+            e.episode_number,
+            e.season_number,
+            e.audio_url,
+            e.video_url,
+            e.formats,
+            e.chapters,
+            e.sponsors,
+            e.transcript_url,
+            e.is_downloaded,
+            e.download_quality,
+            e.progress_seconds,
+            e.created_at,
+            e.updated_at
          FROM episodes e
          JOIN episodes_fts fts ON e.rowid = fts.rowid
          WHERE episodes_fts MATCH ?
@@ -454,7 +619,34 @@ pub async fn search_episodes(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| Episode {
+        id: r.id,
+        channel_id: r.channel_id,
+        external_id: r.external_id,
+        title: r.title,
+        description: r.description,
+        thumbnail_url: r.thumbnail_url,
+        duration_seconds: r.duration_seconds,
+        published_at: r.published_at,
+        url: r.url,
+        video_id: r.video_id,
+        podcast_guid: r.podcast_guid,
+        episode_number: r.episode_number,
+        season_number: r.season_number,
+        audio_url: r.audio_url,
+        video_url: r.video_url,
+        formats: r.formats,
+        chapters: r.chapters,
+        sponsors: r.sponsors,
+        transcript_url: r.transcript_url,
+        is_downloaded: r.is_downloaded,
+        download_quality: r.download_quality,
+        progress_seconds: r.progress_seconds,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+    }).collect())
 }
 
 pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
