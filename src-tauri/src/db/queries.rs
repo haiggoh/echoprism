@@ -667,17 +667,29 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
     .map_err(|e| e.to_string())?;
 
     if let Some(row) = row {
+        #[derive(sqlx::FromRow)]
+        struct QueueItemRow {
+            id: String,
+            queue_id: String,
+            episode_id: String,
+            position: i64,
+            added_at: String,
+            source: QueueSource,
+            play_mode: PlayMode,
+            smart_link_id: Option<String>,
+        }
+
         let items = query_as!(
-            QueueItem,
+            QueueItemRow,
             r#"SELECT
-                id as "id: String",
-                queue_id as "queue_id: String",
-                episode_id as "episode_id: String",
-                position as "position: i64",
-                added_at as "added_at: String",
+                id,
+                queue_id,
+                episode_id,
+                position,
+                added_at,
                 source as "source: _",
                 play_mode as "play_mode: _",
-                smart_link_id as "smart_link_id: Option<String>"
+                smart_link_id
              FROM queue_items WHERE queue_id = ? ORDER BY position"#,
             row.id
         )
@@ -694,7 +706,16 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             audio_only_mode: row.audio_only_mode,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            items,
+            items: items.into_iter().map(|r| QueueItem {
+                id: r.id,
+                queue_id: r.queue_id,
+                episode_id: r.episode_id,
+                position: r.position,
+                added_at: r.added_at,
+                source: r.source,
+                play_mode: r.play_mode,
+                smart_link_id: r.smart_link_id,
+            }).collect(),
         })
     } else {
         let now = chrono::Utc::now().to_rfc3339();
