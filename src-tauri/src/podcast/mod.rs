@@ -5,15 +5,10 @@ use crate::db::Database;
 use tauri::{AppHandle, Manager};
 use reqwest::Client;
 use std::sync::Arc;
-use quick_xml::Reader;
-use quick_xml::events::Event;
-use atom_syndication::Feed as AtomFeed;
 use rss::Channel as RssChannel;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use tracing::{info, warn, error};
 
 pub struct PodcastManager {
     client: reqwest::Client,
@@ -199,7 +194,7 @@ impl PodcastManager {
     
     async fn save_podcast_feed(&self, feed_url: &str, title: String, feed_data: PodcastFeedData) -> Result<(), String> {
         // Save podcast feed to database
-        let feed = PodcastFeed {
+        let _feed = PodcastFeed {
             id: uuid::Uuid::new_v4().to_string(),
             user_id: "current-user".to_string(),
             feed_url: feed_url.to_string(),
@@ -223,7 +218,7 @@ impl PodcastManager {
         // self.db.insert_podcast_feed(&feed).await?;
         
         // Insert episodes
-        for episode in feed_data.episodes {
+        for _episode in feed_data.episodes {
             // self.db.insert_episode(&episode).await?;
         }
         
@@ -252,12 +247,12 @@ impl PodcastManager {
             .map_err(|e| format!("Failed to parse subscriptions: {}", e))?;
         
         let mut imported = 0;
-        let mut errors = Vec::new();
+        let errors = Vec::new();
         
         for sub in subscriptions {
             // Add as channel
             let now = chrono::Utc::now().to_rfc3339();
-            let channel = crate::types::Channel {
+            let _channel = crate::types::Channel {
                 id: uuid::Uuid::new_v4().to_string(),
                 user_id: "current-user".to_string(),
                 external_id: sub.author_id.clone(),

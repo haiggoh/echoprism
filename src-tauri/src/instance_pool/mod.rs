@@ -8,7 +8,6 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use reqwest::Client;
-use tracing::{info, warn, error};
 
 pub struct InstancePool {
     pub instances: Arc<RwLock<HashMap<String, Instance>>>,
@@ -144,7 +143,7 @@ impl InstancePool {
     }
     
     pub async fn failover_instance(&self, failed_id: &str) -> Result<(), String> {
-        let instances = self.get_all().await;
+        let _instances = self.get_all().await;
         let failed = self.get(failed_id).await.ok_or("Failed instance not found")?;
         
         // Find a healthy instance of the same type

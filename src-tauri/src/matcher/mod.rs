@@ -6,15 +6,9 @@ use crate::instance_pool::InstancePool;
 use crate::extractor::Extractor;
 use tauri::{AppHandle, Manager};
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use levenshtein::levenshtein;
 use stop_words::get;
 use stop_words::LANGUAGE;
-use std::collections::HashMap;
-use chrono::{DateTime, Utc, Duration};
-use tracing::{info, warn, debug};
 
 #[derive(Clone)]
 pub struct MatchingConfig {
@@ -77,7 +71,7 @@ impl EpisodeMatcher {
         let youtube_videos = self.db.get_youtube_videos().await?;
         
         let mut matched = 0;
-        let mut errors: Vec<String> = Vec::new();
+        let _errors: Vec<String> = Vec::new();
         
         for podcast in unmatched_podcasts {
             if let Some(link) = self.find_best_match(&podcast, &youtube_videos).await? {
@@ -221,7 +215,7 @@ impl EpisodeMatcher {
         }
     }
     
-    async fn content_similarity(&self, podcast: &PodcastEpisode, video: &YoutubeVideo) -> Result<f64, String> {
+    async fn content_similarity(&self, _podcast: &PodcastEpisode, _video: &YoutubeVideo) -> Result<f64, String> {
         // Could use TF-IDF on transcripts if available
         // For now, return neutral score
         Ok(0.5)

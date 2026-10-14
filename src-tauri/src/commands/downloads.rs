@@ -6,7 +6,7 @@ use tauri::{command, State};
 
 #[command]
 pub async fn start_download(
-    db: State<'_,  Database>,
+    _db: State<'_,  Database>,
     episode_id: String,
     quality: String,
     format: DownloadFormat,
@@ -37,11 +37,11 @@ pub async fn list_downloads(
 }
 
 #[command]
-pub async fn cancel_download(db: State<'_,  Database>, id: String) -> std::result::Result<(), String> {
+pub async fn cancel_download(_db: State<'_,  Database>, _id: String) -> std::result::Result<(), String> {
     Ok(())
 }
 
 #[command]
-pub async fn delete_download(db: State<'_,  Database>, id: String) -> std::result::Result<(), String> {
+pub async fn delete_download(_db: State<'_,  Database>, _id: String) -> std::result::Result<(), String> {
     Ok(())
 }

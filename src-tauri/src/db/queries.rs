@@ -1,9 +1,7 @@
 //! Database queries
 
 use crate::types::*;
-use sqlx::{SqlitePool, Row, FromRow, query_as, query};
-use chrono::Utc;
-use std::collections::HashMap;
+use sqlx::{SqlitePool, Row, query_as, query};
 use std::str::FromStr;
 
 // Local Result type for database queries
@@ -1196,13 +1194,13 @@ pub async fn update_shortcut(pool: &SqlitePool, action: String, key: String, con
 }
 
 // Matcher queries
-pub async fn get_unmatched_podcasts(pool: &SqlitePool) -> DbResult<Vec<PodcastEpisode>> {
+pub async fn get_unmatched_podcasts(_pool: &SqlitePool) -> DbResult<Vec<PodcastEpisode>> {
     // This would require a podcast_episodes table which doesn't exist in the schema
     // For now, return empty list - the podcast module has its own data structures
     Ok(Vec::new())
 }
 
-pub async fn get_youtube_videos(pool: &SqlitePool) -> DbResult<Vec<YoutubeVideo>> {
+pub async fn get_youtube_videos(_pool: &SqlitePool) -> DbResult<Vec<YoutubeVideo>> {
     // This would require a youtube_videos table which doesn't exist in the schema
     // For now, return empty list - the matcher uses extracted video data
     Ok(Vec::new())

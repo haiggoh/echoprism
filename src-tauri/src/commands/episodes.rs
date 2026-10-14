@@ -52,10 +52,10 @@ pub async fn stream_episode(
     db: State<'_, Database>,
     episode_id: String,
     format: Option<String>,
-    quality: Option<String>,
+    _quality: Option<String>,
 ) -> std::result::Result<StreamInfo, String> {
     // Get episode from DB
-    let episode = db.get_episode(&episode_id).await?;
+    let _episode = db.get_episode(&episode_id).await?;
 
     // Get stream URL from extractor
     // For now, return mock data
@@ -68,8 +68,8 @@ pub async fn stream_episode(
 
 #[command]
 pub async fn smart_link_switch_episode(
-    db: State<'_, Database>,
-    link_id: String,
+    _db: State<'_, Database>,
+    _link_id: String,
 ) -> std::result::Result<(), String> {
     // Switch playback via smart link
     Ok(())

@@ -1,6 +1,6 @@
 //! Database migrations
 
-use sqlx::{SqlitePool, Executor};
+use sqlx::Executor;
 
 pub async fn run(pool: &sqlx::SqlitePool) -> Result<(), String> {
     // Create tables
@@ -36,7 +36,7 @@ async fn create_fts(pool: &sqlx::SqlitePool) -> Result<(), String> {
     Ok(())
 }
 
-async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
+async fn migrate_data(_pool: &sqlx::SqlitePool) -> Result<(), String> {
     // Future data migrations go here
     Ok(())
 }

@@ -1,7 +1,6 @@
 //! Background job commands
 
 use crate::db::Database;
-use crate::types::*;
 use tauri::{command, State};
 
 #[command]

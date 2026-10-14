@@ -18,7 +18,7 @@ pub struct ChannelListParams {
 
 #[command]
 pub async fn subscribe(
-    db: State<'_, Database>,
+    _db: State<'_, Database>,
     external_id: String,
     channel_type: ChannelType,
     instance_id: Option<String>,
@@ -54,16 +54,16 @@ pub async fn subscribe(
 }
 
 #[command]
-pub async fn unsubscribe(db: State<'_, Database>, channel_id: String) -> std::result::Result<(), String> {
+pub async fn unsubscribe(_db: State<'_, Database>, _channel_id: String) -> std::result::Result<(), String> {
     // db.delete_channel(&channel_id).await?;
     Ok(())
 }
 
 #[command]
 pub async fn import(
-    db: State<'_, Database>,
-    source: String,
-    data: String,
+    _db: State<'_, Database>,
+    _source: String,
+    _data: String,
 ) -> std::result::Result<ImportResult, String> {
     // TODO: Parse YouTube export or OPML
     Ok(ImportResult { imported: 0, errors: vec![] })
@@ -77,8 +77,8 @@ pub struct ImportResult {
 
 #[command]
 pub async fn export(
-    db: State<'_, Database>,
-    format: String,
+    _db: State<'_, Database>,
+    _format: String,
 ) -> std::result::Result<String, String> {
     // TODO: Export subscriptions as JSON or OPML
     Ok("".to_string())

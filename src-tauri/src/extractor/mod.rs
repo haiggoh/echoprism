@@ -3,11 +3,8 @@
 use crate::types::*;
 use crate::instance_pool::InstancePool;
 use tauri::{AppHandle, Manager};
-use reqwest::Client;
 use std::sync::Arc;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, error};
 
 pub struct Extractor {
     client: reqwest::Client,
@@ -61,7 +58,7 @@ impl Extractor {
     
     /// Extract video info using Invidious/Piped instance
     pub async fn extract_with_instance(&self, video_id: &str, instance: &Instance) -> Result<VideoInfo, String> {
-        let url = format!("{}/api/v1/videos/{}", instance.url.trim_end_matches('/'), video_id);
+        let _url = format!("{}/api/v1/videos/{}", instance.url.trim_end_matches('/'), video_id);
         
         let response = reqwest::get(&format!("{}/api/v1/videos/{}", instance.url.trim_end_matches('/'), video_id))
             .await
@@ -124,7 +121,7 @@ impl Extractor {
     }
     
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
-        let yt_dlp = self.find_yt_dlp().await?;
+        let _yt_dlp = self.find_yt_dlp().await?;
 
         let mut args: Vec<String> = vec!["-g".to_string(), "--no-playlist".to_string(), "--no-warnings".to_string()];
         if let Some(f) = format { args.extend(["-f".to_string(), f.to_string()]); }

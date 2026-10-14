@@ -2,15 +2,9 @@
 
 use crate::db::Database;
 use crate::instance_pool::InstancePool;
-use crate::matcher::EpisodeMatcher;
-use crate::sponsorblock::SponsorBlockManager;
-use crate::podcast::PodcastManager;
 use crate::types::{InstanceHealth};
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
-use chrono::Utc;
-use tracing::{info, warn, error};
 
 pub async fn start_all(app_handle: tauri::AppHandle) {
     let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
@@ -82,7 +76,7 @@ async fn start_smart_linking(matcher: std::sync::Arc<crate::matcher::EpisodeMatc
     });
 }
 
-async fn start_feed_fetching(podcast: std::sync::Arc<crate::podcast::PodcastManager>) {
+async fn start_feed_fetching(_podcast: std::sync::Arc<crate::podcast::PodcastManager>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1800)); // 30 minutes
         loop {
@@ -96,7 +90,7 @@ async fn start_feed_fetching(podcast: std::sync::Arc<crate::podcast::PodcastMana
     });
 }
 
-async fn start_sponsorblock_sync(sponsorblock: std::sync::Arc<crate::sponsorblock::SponsorBlockManager>) {
+async fn start_sponsorblock_sync(_sponsorblock: std::sync::Arc<crate::sponsorblock::SponsorBlockManager>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400)); // 24 hours
         loop {
@@ -109,7 +103,7 @@ async fn start_sponsorblock_sync(sponsorblock: std::sync::Arc<crate::sponsorbloc
     });
 }
 
-async fn start_cleanup(db: std::sync::Arc<Database>) {
+async fn start_cleanup(_db: std::sync::Arc<Database>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400)); // 24 hours
         loop {

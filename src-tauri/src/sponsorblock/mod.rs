@@ -2,12 +2,10 @@
 
 use crate::types::*;
 use crate::db::Database;
-use reqwest::Client;
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use tracing::{info, warn, error};
 
 pub struct SponsorBlockManager {
     client: reqwest::Client,
@@ -106,12 +104,12 @@ impl SponsorBlockManager {
         Ok(segments)
     }
     
-    async fn save_to_db(&self, video_id: &str, segments: &[SponsorSegment]) -> Result<(), String> {
-        let segments_json = serde_json::to_string(segments)
+    async fn save_to_db(&self, _video_id: &str, segments: &[SponsorSegment]) -> Result<(), String> {
+        let _segments_json = serde_json::to_string(segments)
             .map_err(|e| format!("Failed to serialize segments: {}", e))?;
         
         // Save to database with 24h expiry
-        let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
+        let _expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
         
         // self.db.save_sponsorblock_segments(video_id, &segments_json, expires_at).await?;
         Ok(())
@@ -126,9 +124,9 @@ impl SponsorBlockManager {
         category: String,
         user_id: String,
     ) -> Result<(), String> {
-        let client = reqwest::Client::new();
+        let _client = reqwest::Client::new();
         
-        let params = serde_json::json!({
+        let _params = serde_json::json!({
             "videoID": video_id,
             "startTime": start_time,
             "endTime": end_time,

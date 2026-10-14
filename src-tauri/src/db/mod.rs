@@ -7,8 +7,6 @@ use crate::types::*;
 use crate::db::queries::DbResult;
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use tauri::Manager;
-use std::path::PathBuf;
-use tauri::path::BaseDirectory;
 
 #[derive(Clone)]
 pub struct Database {
