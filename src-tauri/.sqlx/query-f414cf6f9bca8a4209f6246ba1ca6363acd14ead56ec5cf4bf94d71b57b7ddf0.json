@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO episode_links (id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by, title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "f414cf6f9bca8a4209f6246ba1ca6363acd14ead56ec5cf4bf94d71b57b7ddf0"
+}

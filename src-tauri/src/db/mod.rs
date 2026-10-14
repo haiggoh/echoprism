@@ -120,6 +120,19 @@ impl Database {
         queries::list_episode_links(&self.pool, confidence_min).await
     }
 
+    // Matcher methods
+    pub async fn get_unmatched_podcasts(&self) -> DbResult<Vec<PodcastEpisode>> {
+        queries::get_unmatched_podcasts(&self.pool).await
+    }
+
+    pub async fn get_youtube_videos(&self) -> DbResult<Vec<YoutubeVideo>> {
+        queries::get_youtube_videos(&self.pool).await
+    }
+
+    pub async fn insert_episode_link(&self, link: &EpisodeLink) -> DbResult<()> {
+        queries::insert_episode_link(&self.pool, link).await
+    }
+
     // Preferences
     pub async fn get_preferences(&self) -> DbResult<UserPreferences> {
         queries::get_preferences(&self.pool).await

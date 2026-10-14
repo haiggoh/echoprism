@@ -23,6 +23,7 @@ pub async fn subscribe(
     channel_type: ChannelType,
     instance_id: Option<String>,
 ) -> std::result::Result<Channel, String> {
+    let now = chrono::Utc::now().to_rfc3339();
     let channel = Channel {
         id: uuid::Uuid::new_v4().to_string(),
         user_id: "current-user".to_string(), // TODO: get from auth
@@ -33,7 +34,7 @@ pub async fn subscribe(
         description: None,
         subscriber_count: None,
         is_subscribed: true,
-        subscribed_at: chrono::Utc::now(),
+        subscribed_at: now.clone(),
         notifications_enabled: true,
         format_preference: Format::Unified,
         instance_id,
@@ -41,8 +42,8 @@ pub async fn subscribe(
         podcast_feed_url: None,
         podcast_guid: None,
         last_fetched_at: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
+        created_at: now.clone(),
+        updated_at: now,
     };
     
     // TODO: Fetch channel metadata from instance

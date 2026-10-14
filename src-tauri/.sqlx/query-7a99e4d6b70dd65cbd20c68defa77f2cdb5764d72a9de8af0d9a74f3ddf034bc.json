@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id: String\",\n                queue_id as \"queue_id: String\",\n                episode_id as \"episode_id: String\",\n                position as \"position: i64\",\n                added_at as \"added_at: String\",\n                source as \"source: _\",\n                play_mode as \"play_mode: _\",\n                smart_link_id as \"smart_link_id: Option<String>\"\n             FROM queue_items WHERE queue_id = ? ORDER BY position",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "queue_id: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "episode_id: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "position: i64",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "added_at: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "source: _",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "play_mode: _",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "smart_link_id: Option<String>",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "7a99e4d6b70dd65cbd20c68defa77f2cdb5764d72a9de8af0d9a74f3ddf034bc"
+}

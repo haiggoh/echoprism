@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id as \"id: String\",\n                user_id as \"user_id: String\",\n                external_id as \"external_id: String\",\n                title as \"title: String\",\n                handle as \"handle: Option<String>\",\n                thumbnail_url as \"thumbnail_url: Option<String>\",\n                description as \"description: Option<String>\",\n                subscriber_count as \"subscriber_count: Option<i64>\",\n                is_subscribed as \"is_subscribed: bool\",\n                subscribed_at as \"subscribed_at: String\",\n                notifications_enabled as \"notifications_enabled: bool\",\n                format_preference as \"format_preference: _\",\n                instance_id as \"instance_id: Option<String>\",\n                type as \"channel_type: _\",\n                podcast_feed_url as \"podcast_feed_url: Option<String>\",\n                podcast_guid as \"podcast_guid: Option<String>\",\n                last_fetched_at as \"last_fetched_at: Option<String>\",\n                created_at as \"created_at: String\",\n                updated_at as \"updated_at: String\"\n             FROM channels\n             WHERE type = ?\n             ORDER BY subscribed_at DESC",
+  "query": "SELECT\n                id as \"id: String\",\n                user_id as \"user_id: String\",\n                external_id as \"external_id: String\",\n                title as \"title: String\",\n                handle as \"handle: Option<String>\",\n                thumbnail_url as \"thumbnail_url: Option<String>\",\n                description as \"description: Option<String>\",\n                subscriber_count as \"subscriber_count: Option<i64>\",\n                is_subscribed,\n                subscribed_at as \"subscribed_at: String\",\n                notifications_enabled,\n                format_preference as \"format_preference: _\",\n                instance_id as \"instance_id: Option<String>\",\n                type as \"channel_type: _\",\n                podcast_feed_url as \"podcast_feed_url: Option<String>\",\n                podcast_guid as \"podcast_guid: Option<String>\",\n                last_fetched_at as \"last_fetched_at: Option<String>\",\n                created_at as \"created_at: String\",\n                updated_at as \"updated_at: String\"\n             FROM channels\n             ORDER BY subscribed_at DESC",
   "describe": {
     "columns": [
       {
@@ -44,9 +44,9 @@
         "type_info": "Int64"
       },
       {
-        "name": "is_subscribed: bool",
+        "name": "is_subscribed",
         "ordinal": 8,
-        "type_info": "Bool"
+        "type_info": "Int64"
       },
       {
         "name": "subscribed_at: String",
@@ -54,9 +54,9 @@
         "type_info": "Text"
       },
       {
-        "name": "notifications_enabled: bool",
+        "name": "notifications_enabled",
         "ordinal": 10,
-        "type_info": "Bool"
+        "type_info": "Int64"
       },
       {
         "name": "format_preference: _",
@@ -100,10 +100,10 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       false,
@@ -124,5 +124,5 @@
       false
     ]
   },
-  "hash": "50435d783d1f653296a8381ac724ee2d9cb532b16c4c9a48f2c04e43c1ff1243"
+  "hash": "def09da319dd8575d018ada5d426c44e4eeaeb10dfe20d2cabd895ad5cc55d25"
 }

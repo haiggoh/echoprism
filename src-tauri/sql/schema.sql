@@ -8,7 +8,7 @@ PRAGMA journal_mode = WAL;
 -- USERS & PREFERENCES
 -- ============================
 CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 -- INSTANCES (Invidious/Piped Pool)
 -- ============================
 CREATE TABLE IF NOT EXISTS instances (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     url TEXT NOT NULL UNIQUE,
     type TEXT NOT NULL CHECK (type IN ('invidious','piped')),
     health TEXT NOT NULL DEFAULT 'unknown' CHECK (health IN ('healthy','degraded','failed','unknown')),
@@ -70,7 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_instance_health_log_checked ON instance_health_lo
 -- CHANNELS (YouTube + Podcasts)
 -- ============================
 CREATE TABLE IF NOT EXISTS channels (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     external_id TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -100,7 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_channels_type ON channels(type);
 -- EPISODES / VIDEOS (Unified)
 -- ============================
 CREATE TABLE IF NOT EXISTS episodes (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     external_id TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -156,7 +156,7 @@ END;
 -- SMART EPISODE LINKS (Audio ↔ Video)
 -- ============================
 CREATE TABLE IF NOT EXISTS episode_links (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     podcast_guid TEXT NOT NULL,
     youtube_video_id TEXT NOT NULL,
     confidence REAL NOT NULL DEFAULT 0.0 CHECK (confidence >= 0.0 AND confidence <= 1.0),
@@ -179,7 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_episode_links_confidence ON episode_links(confide
 -- QUEUE (Unified Video + Audio)
 -- ============================
 CREATE TABLE IF NOT EXISTS queues (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     current_index INTEGER NOT NULL DEFAULT 0,
     repeat_mode TEXT NOT NULL DEFAULT 'off' CHECK (repeat_mode IN ('off','one','all')),
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS queues (
 );
 
 CREATE TABLE IF NOT EXISTS queue_items (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     queue_id TEXT NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
     episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS playback_state (
 -- DOWNLOADS
 -- ============================
 CREATE TABLE IF NOT EXISTS downloads (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
     quality TEXT NOT NULL,
     format TEXT NOT NULL CHECK (format IN ('video','audio')),
@@ -247,7 +247,7 @@ CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 -- HISTORY / CONTINUE WATCHING
 -- ============================
 CREATE TABLE IF NOT EXISTS history (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
     position_seconds REAL NOT NULL DEFAULT 0,
@@ -265,7 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_history_episode ON history(episode_id);
 -- PODCAST FEEDS (RSS/Atom/JSON)
 -- ============================
 CREATE TABLE IF NOT EXISTS podcast_feeds (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     feed_url TEXT NOT NULL,
     title TEXT,
@@ -303,7 +303,7 @@ CREATE INDEX IF NOT EXISTS idx_sponsorblock_expires ON sponsorblock_segments(exp
 -- KEYBOARD SHORTCUTS
 -- ============================
 CREATE TABLE IF NOT EXISTS keyboard_shortcuts (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     action TEXT NOT NULL,
     key_combination TEXT NOT NULL,
@@ -333,7 +333,7 @@ CREATE INDEX IF NOT EXISTS idx_sponsorblock_expires ON sponsorblock_segments(exp
 -- KEYBOARD SHORTCUTS
 -- ============================
 CREATE TABLE IF NOT EXISTS keyboard_shortcuts (
-    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     action TEXT NOT NULL,
     key_combination TEXT NOT NULL,

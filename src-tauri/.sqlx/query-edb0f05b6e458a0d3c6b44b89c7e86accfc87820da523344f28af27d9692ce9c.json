@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id: String\",\n                episode_id as \"episode_id: String\",\n                quality as \"quality: String\",\n                format as \"format: _\",\n                file_path as \"file_path: String\",\n                file_size as \"file_size: Option<i64>\",\n                status as \"status: _\",\n                progress as \"progress: f64\",\n                error_message as \"error_message: Option<String>\",\n                created_at as \"created_at: String\",\n                completed_at as \"completed_at: Option<String>\"\n             FROM downloads ORDER BY created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "episode_id: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "quality: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "format: _",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_size: Option<i64>",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "status: _",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "progress: f64",
+        "ordinal": 7,
+        "type_info": "Float"
+      },
+      {
+        "name": "error_message: Option<String>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at: String",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at: Option<String>",
+        "ordinal": 10,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "edb0f05b6e458a0d3c6b44b89c7e86accfc87820da523344f28af27d9692ce9c"
+}

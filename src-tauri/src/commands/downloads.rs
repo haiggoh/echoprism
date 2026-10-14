@@ -11,6 +11,7 @@ pub async fn start_download(
     quality: String,
     format: DownloadFormat,
 ) -> std::result::Result<Download, String> {
+    let now = chrono::Utc::now().to_rfc3339();
     // Start download via yt-dlp
     Ok(Download {
         id: uuid::Uuid::new_v4().to_string(),
@@ -22,7 +23,7 @@ pub async fn start_download(
         status: DownloadStatus::Pending,
         progress: 0.0,
         error_message: None,
-        created_at: chrono::Utc::now(),
+        created_at: now,
         completed_at: None,
     })
 }

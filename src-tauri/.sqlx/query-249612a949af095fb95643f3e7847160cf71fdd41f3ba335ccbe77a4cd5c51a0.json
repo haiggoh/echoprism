@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n            id,\n            url,\n            type as \"instance_type: _\",\n            health as \"health: _\",\n            latency_ms as \"latency_ms: Option<i64>\",\n            last_checked as \"last_checked: Option<String>\",\n            auto_failover,\n            supports_sabr,\n            supports_age_restricted,\n            region as \"region: Option<String>\",\n            country as \"country: Option<String>\",\n            pinned,\n            created_at,\n            updated_at\n        FROM instances ORDER BY pinned DESC, last_checked DESC",
+  "query": "SELECT\n            id,\n            url,\n            type as \"instance_type: _\",\n            health as \"health: _\",\n            latency_ms,\n            last_checked,\n            auto_failover,\n            supports_sabr,\n            supports_age_restricted,\n            region,\n            country,\n            pinned,\n            created_at,\n            updated_at\n        FROM instances ORDER BY pinned DESC, last_checked DESC",
   "describe": {
     "columns": [
       {
@@ -24,44 +24,44 @@
         "type_info": "Text"
       },
       {
-        "name": "latency_ms: Option<i64>",
+        "name": "latency_ms",
         "ordinal": 4,
         "type_info": "Int64"
       },
       {
-        "name": "last_checked: Option<String>",
+        "name": "last_checked",
         "ordinal": 5,
         "type_info": "Text"
       },
       {
         "name": "auto_failover",
         "ordinal": 6,
-        "type_info": "Bool"
+        "type_info": "Int64"
       },
       {
         "name": "supports_sabr",
         "ordinal": 7,
-        "type_info": "Bool"
+        "type_info": "Int64"
       },
       {
         "name": "supports_age_restricted",
         "ordinal": 8,
-        "type_info": "Bool"
+        "type_info": "Int64"
       },
       {
-        "name": "region: Option<String>",
+        "name": "region",
         "ordinal": 9,
         "type_info": "Text"
       },
       {
-        "name": "country: Option<String>",
+        "name": "country",
         "ordinal": 10,
         "type_info": "Text"
       },
       {
         "name": "pinned",
         "ordinal": 11,
-        "type_info": "Bool"
+        "type_info": "Int64"
       },
       {
         "name": "created_at",
@@ -78,7 +78,7 @@
       "Right": 0
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       false,
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "dc470083595083659b0e5469445df07a2ca5a66a975e39f7f611236ae3495fb2"
+  "hash": "249612a949af095fb95643f3e7847160cf71fdd41f3ba335ccbe77a4cd5c51a0"
 }

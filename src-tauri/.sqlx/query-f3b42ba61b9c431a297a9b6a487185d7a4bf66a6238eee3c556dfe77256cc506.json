@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n            id as \"id: String\",\n            user_id as \"user_id: String\",\n            action as \"action: String\",\n            key_combination as \"key_combination: String\",\n            context as \"context: _\",\n            enabled as \"enabled: bool\",\n            is_custom as \"is_custom: bool\",\n            created_at as \"created_at: _\",\n            updated_at as \"updated_at: _\"\n         FROM keyboard_shortcuts WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "action: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "key_combination: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "context: _",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "enabled: bool",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "is_custom: bool",
+        "ordinal": 6,
+        "type_info": "Int64"
+      },
+      {
+        "name": "created_at: _",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: _",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f3b42ba61b9c431a297a9b6a487185d7a4bf66a6238eee3c556dfe77256cc506"
+}

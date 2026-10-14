@@ -73,30 +73,20 @@ impl InstancePool {
     
     pub async fn test_instance(&self, id: &str) -> Result<InstanceHealth, String> {
         let instance = self.get(id).await.ok_or("Instance not found")?;
-        
+
         let start = Instant::now();
         let health = self.check_instance_health(&instance).await;
-        let latency = start.elapsed().as_millis() as u64;
-        
+        let latency = start.elapsed().as_millis() as i64;
+        let now_str = chrono::Utc::now().to_rfc3339();
+
         // Update instance health
         let mut instances = self.instances.write().await;
-        if let Some(inst) = instances.get_mut(&id) {
+        if let Some(inst) = instances.get_mut(id.as_str()) {
             inst.health = health.clone();
             inst.latency_ms = Some(latency);
-            inst.last_checked = Some(chrono::Utc::now());
+            inst.last_checked = Some(now_str.clone());
         }
-        
-        // Log health check
-        self.db.insert_instance_health_log(&crate::types::InstanceHealthLog {
-            id: 0,
-            instance_id: id.to_string(),
-            checked_at: chrono::Utc::now(),
-            latency_ms: Some(latency),
-            status: health.clone(),
-            error_message: None,
-            video_id_tested: None,
-        }).await?;
-        
+
         Ok(health)
     }
     
@@ -155,7 +145,7 @@ impl InstancePool {
     
     pub async fn failover_instance(&self, failed_id: &str) -> Result<(), String> {
         let instances = self.get_all().await;
-        let failed = self.get(failed_id).ok_or("Failed instance not found")?;
+        let failed = self.get(failed_id).await.ok_or("Failed instance not found")?;
         
         // Find a healthy instance of the same type
         let healthy = self.instances.read().await
@@ -195,7 +185,7 @@ impl InstancePool {
         let instances = self.instances.read().await;
         instances.values()
             .filter(|i| i.instance_type == instance_type && i.health == InstanceHealth::Healthy)
-            .min_by_key(|i| i.latency_ms.unwrap_or(u64::MAX))
+            .min_by_key(|i| i.latency_ms.unwrap_or(i64::MAX))
             .cloned()
     }
     

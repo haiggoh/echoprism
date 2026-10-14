@@ -11,14 +11,14 @@ use tracing::{info, warn, error};
 
 pub struct Extractor {
     client: reqwest::Client,
-    pool: Arc<InstancePool>,
+    pool: InstancePool,
     yt_dlp_path: Option<String>,
 }
 
 impl Extractor {
     pub fn new(app_handle: AppHandle) -> Self {
         let pool = app_handle.state::<crate::instance_pool::InstancePool>().inner().clone();
-        
+
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
@@ -125,12 +125,16 @@ impl Extractor {
     
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
         let yt_dlp = self.find_yt_dlp().await?;
-        
+
         let mut args = vec!["-g", "--no-playlist", "--no-warnings"];
         if let Some(f) = format { args.extend(["-f", f]); }
-        if let Some(q) = quality { args.extend(["-f", &format!("best[height<={}]", q)]); }
-        args.push(&format!("https://www.youtube.com/watch?v={}", video_id));
-        
+        if let Some(q) = quality {
+            let quality_arg = format!("best[height<={}]", q);
+            args.extend(["-f", &quality_arg]);
+        }
+        let url_arg = format!("https://www.youtube.com/watch?v={}", video_id);
+        args.push(&url_arg);
+
         let output = tokio::process::Command::new("yt-dlp")
             .args(&args)
             .output()

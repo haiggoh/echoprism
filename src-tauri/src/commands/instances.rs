@@ -23,6 +23,7 @@ pub async fn list_instances(db: State<'_, Database>, pool: State<'_, InstancePoo
 
 #[command]
 pub async fn add_instance(db: State<'_, Database>, pool: State<'_, InstancePool>, url: String, instance_type: InstanceType) -> std::result::Result<Instance, String> {
+    let now = chrono::Utc::now().to_rfc3339();
     let instance = Instance {
         id: uuid::Uuid::new_v4().to_string(),
         url,
@@ -36,8 +37,8 @@ pub async fn add_instance(db: State<'_, Database>, pool: State<'_, InstancePool>
         region: None,
         country: None,
         pinned: false,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
+        created_at: now.clone(),
+        updated_at: now,
     };
 
     db.insert_instance(&instance).await?;
@@ -61,7 +62,7 @@ pub async fn test_instance(pool: State<'_,  InstancePool>, id: String) -> std::r
 
 #[command]
 pub async fn failover_instance(pool: State<'_,  InstancePool>, from_id: String, to_id: String) -> std::result::Result<(), String> {
-    pool.failover(&from_id, &to_id).await
+    pool.failover(from_id, to_id).await
 }
 
 #[command]
@@ -86,8 +87,8 @@ pub struct InstanceHealthResponse {
     pub url: String,
     pub instance_type: InstanceType,
     pub health: InstanceHealth,
-    pub latency_ms: Option<u64>,
-    pub last_checked: Option<chrono::DateTime<chrono::Utc>>,
+    pub latency_ms: Option<i64>,
+    pub last_checked: Option<String>,
     pub supports_sabr: bool,
     pub supports_age_restricted: bool,
     pub region: Option<String>,
