@@ -1,9 +1,7 @@
 //! Core types for EchoPrism
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use sqlx::{Type, FromRow};
 use std::str::FromStr;
 
 // Helper type for DateTimeUtc stored as TEXT (RFC3339)
