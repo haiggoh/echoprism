@@ -5,6 +5,7 @@ use crate::instance_pool::InstancePool;
 use crate::matcher::EpisodeMatcher;
 use crate::sponsorblock::SponsorBlockManager;
 use crate::podcast::PodcastManager;
+use crate::types::{InstanceHealth};
 use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
@@ -19,27 +20,27 @@ pub async fn start_all(app_handle: tauri::AppHandle) {
     let podcast = app_handle.state::<crate::podcast::PodcastManager>().inner().clone();
 
     // Start instance health checks
-    start_instance_health_checks(pool.clone());
+    start_instance_health_checks(pool);
 
     // Start smart episode linking
-    start_smart_linking(matcher.clone());
+    start_smart_linking(matcher);
 
     // Start podcast feed fetching
-    start_feed_fetching(podcast.clone());
+    start_feed_fetching(podcast);
 
     // Start SponsorBlock sync
-    start_sponsorblock_sync(sponsorblock.clone());
+    start_sponsorblock_sync(sponsorblock);
 
     // Start cleanup task
     start_cleanup(db);
 }
 
-async fn start_instance_health_checks(pool: std::sync::Arc<crate::instance_pool::InstancePool>) {
+async fn start_instance_health_checks(pool: InstancePool) {
     let pool_clone = pool.clone();
     let _ = tokio::spawn(run_instance_health_checks(pool_clone));
 }
 
-async fn run_instance_health_checks(pool: std::sync::Arc<crate::instance_pool::InstancePool>) {
+async fn run_instance_health_checks(pool: InstancePool) {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
     loop {
         interval.tick().await;

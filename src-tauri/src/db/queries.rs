@@ -808,27 +808,59 @@ pub async fn play_next(pool: &SqlitePool, episode_id: String) -> DbResult<()> {
 
 pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) -> DbResult<Vec<EpisodeLink>> {
     let min_conf = confidence_min.unwrap_or(0.0);
-    query_as!(
-        EpisodeLink,
+
+    #[derive(sqlx::FromRow)]
+    struct EpisodeLinkRow {
+        id: String,
+        podcast_guid: String,
+        youtube_video_id: String,
+        confidence: f64,
+        matched_at: DateTimeUtc,
+        matched_by: MatchSource,
+        title_similarity: Option<f64>,
+        date_diff_days: Option<i64>,
+        duration_diff_seconds: Option<i64>,
+        user_confirmed: bool,
+        created_at: DateTimeUtc,
+        updated_at: DateTimeUtc,
+    }
+
+    let rows = query_as!(
+        EpisodeLinkRow,
         r#"SELECT
-            id as "id: String",
-            podcast_guid as "podcast_guid: String",
-            youtube_video_id as "youtube_video_id: String",
-            confidence as "confidence: f64",
-            matched_at as "matched_at: _",
-            matched_by as "matched_by: _",
-            title_similarity as "title_similarity: Option<f64>",
-            date_diff_days as "date_diff_days: Option<i64>",
-            duration_diff_seconds as "duration_diff_seconds: Option<i64>",
-            user_confirmed as "user_confirmed: bool",
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
+            id,
+            podcast_guid,
+            youtube_video_id,
+            confidence,
+            matched_at,
+            matched_by,
+            title_similarity,
+            date_diff_days,
+            duration_diff_seconds,
+            user_confirmed,
+            created_at,
+            updated_at
          FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC"#,
         min_conf
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| EpisodeLink {
+        id: r.id,
+        podcast_guid: r.podcast_guid,
+        youtube_video_id: r.youtube_video_id,
+        confidence: r.confidence,
+        matched_at: r.matched_at,
+        matched_by: r.matched_by,
+        title_similarity: r.title_similarity,
+        date_diff_days: r.date_diff_days,
+        duration_diff_seconds: r.duration_diff_seconds,
+        user_confirmed: r.user_confirmed,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+    }).collect())
 }
 
 pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
@@ -851,18 +883,18 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
     let row = query_as!(
         PrefRow,
         r#"SELECT
-            user_id as "user_id: String",
-            default_instance_id as "default_instance_id: Option<String>",
-            default_format as "default_format: _",
-            queue_behavior as "queue_behavior: _",
-            audio_only_default as "audio_only_default: bool",
-            auto_download_wifi as "auto_download_wifi: bool",
-            sponsorblock_enabled as "sponsorblock_enabled: bool",
-            sponsorblock_categories as "sponsorblock_categories: String",
-            keyboard_shortcuts_enabled as "keyboard_shortcuts_enabled: bool",
-            theme as "theme: _",
-            cross_device_sync_enabled as "cross_device_sync_enabled: bool",
-            updated_at as "updated_at: _"
+            user_id,
+            default_instance_id,
+            default_format,
+            queue_behavior,
+            audio_only_default,
+            auto_download_wifi,
+            sponsorblock_enabled,
+            sponsorblock_categories,
+            keyboard_shortcuts_enabled,
+            theme,
+            cross_device_sync_enabled,
+            updated_at
          FROM user_preferences WHERE user_id = 'current-user'"#
     )
     .fetch_optional(pool)
@@ -890,45 +922,78 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
 
 pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> DbResult<()> {
     let cats_json = serde_json::to_string(&prefs.sponsorblock_categories).unwrap_or_default();
+    let default_format = prefs.default_format.to_string();
+    let queue_behavior = prefs.queue_behavior.to_string();
+    let audio_only_default = prefs.audio_only_default as i64;
+    let auto_download_wifi = prefs.auto_download_wifi as i64;
+    let sponsorblock_enabled = prefs.sponsorblock_enabled as i64;
+    let keyboard_shortcuts_enabled = prefs.keyboard_shortcuts_enabled as i64;
+    let theme = prefs.theme.to_string();
+    let cross_device_sync_enabled = prefs.cross_device_sync_enabled as i64;
+    let now = chrono::Utc::now().to_rfc3339();
+
     query!(
         "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, updated_at = ? WHERE user_id = 'current-user'",
-        prefs.default_format as Format,
-        prefs.queue_behavior as QueueBehavior,
-        prefs.audio_only_default,
-        prefs.auto_download_wifi,
-        prefs.sponsorblock_enabled,
+        default_format,
+        queue_behavior,
+        audio_only_default,
+        auto_download_wifi,
+        sponsorblock_enabled,
         cats_json,
-        prefs.keyboard_shortcuts_enabled,
-        prefs.theme as Theme,
-        prefs.cross_device_sync_enabled,
-        chrono::Utc::now().to_rfc3339()
+        keyboard_shortcuts_enabled,
+        theme,
+        cross_device_sync_enabled,
+        now
     ).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
 pub async fn get_playback_state(pool: &SqlitePool) -> DbResult<PlaybackState> {
-    query_as!(
-        PlaybackState,
+    #[derive(sqlx::FromRow)]
+    struct PlaybackStateRow {
+        user_id: String,
+        episode_id: Option<String>,
+        position_seconds: f64,
+        duration_seconds: Option<f64>,
+        playback_rate: f64,
+        volume: f64,
+        is_audio_mode: i64,
+        is_pip: i64,
+        current_instance_id: Option<String>,
+        last_updated: DateTimeUtc,
+    }
+
+    let row = query_as!(
+        PlaybackStateRow,
         r#"SELECT
-            user_id as "user_id: String",
-            episode_id as "episode_id: Option<String>",
-            position_seconds as "position_seconds: f64",
-            duration_seconds as "duration_seconds: Option<f64>",
-            playback_rate as "playback_rate: f64",
-            volume as "volume: f64",
-            is_audio_mode as "is_audio_mode: bool",
-            is_pip as "is_pip: bool",
-            current_instance_id as "current_instance_id: Option<String>",
-            last_updated as "last_updated: _"
+            user_id,
+            episode_id,
+            position_seconds,
+            duration_seconds,
+            playback_rate,
+            volume,
+            is_audio_mode,
+            is_pip,
+            current_instance_id,
+            last_updated
          FROM playback_state WHERE user_id = 'current-user'"#
     )
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?
-    .ok_or_else(|| "No playback state".to_string())
-    .map(|state| PlaybackState {
-        last_updated: DateTimeUtc::from(state.last_updated),
-        ..state
+    .ok_or_else(|| "No playback state".to_string())?;
+
+    Ok(PlaybackState {
+        user_id: row.user_id,
+        episode_id: row.episode_id,
+        position_seconds: row.position_seconds,
+        duration_seconds: row.duration_seconds,
+        playback_rate: row.playback_rate,
+        volume: row.volume,
+        is_audio_mode: row.is_audio_mode != 0,
+        is_pip: row.is_pip != 0,
+        current_instance_id: row.current_instance_id,
+        last_updated: row.last_updated,
     })
 }
 
@@ -944,12 +1009,36 @@ pub async fn update_playback_state(pool: &SqlitePool, params: crate::commands::p
 pub async fn list_history(pool: &SqlitePool, limit: Option<u32>, offset: Option<u32>) -> DbResult<Vec<HistoryEntry>> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
-    query_as!(
-        HistoryEntry,
-        "SELECT id, user_id, episode_id, position_seconds, duration_seconds, completed, played_at FROM history WHERE user_id = 'current-user' ORDER BY played_at DESC LIMIT ? OFFSET ?",
+
+    #[derive(sqlx::FromRow)]
+    struct HistoryEntryRow {
+        id: String,
+        user_id: String,
+        episode_id: String,
+        position_seconds: f64,
+        duration_seconds: Option<f64>,
+        completed: i64,
+        played_at: DateTimeUtc,
+    }
+
+    let rows = query_as!(
+        HistoryEntryRow,
+        "SELECT id, user_id, episode_id, position_seconds, duration_seconds, completed, played_at FROM history WHERE user_id = 'current-user' ORDER BY played_at DESC LIMIT $1 OFFSET $2",
         limit as i64, offset as i64
     )
-    .fetch_all(pool).await.map_err(|e| e.to_string())
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| HistoryEntry {
+        id: r.id,
+        user_id: r.user_id,
+        episode_id: r.episode_id,
+        position_seconds: r.position_seconds,
+        duration_seconds: r.duration_seconds,
+        completed: r.completed != 0,
+        played_at: r.played_at,
+    }).collect())
 }
 
 pub async fn clear_history(pool: &SqlitePool) -> DbResult<()> {
@@ -958,68 +1047,131 @@ pub async fn clear_history(pool: &SqlitePool) -> DbResult<()> {
 }
 
 pub async fn list_downloads(pool: &SqlitePool, status: Option<String>) -> DbResult<Vec<Download>> {
+    #[derive(sqlx::FromRow)]
+    struct DownloadRow {
+        id: String,
+        episode_id: String,
+        quality: String,
+        format: DownloadFormat,
+        file_path: String,
+        file_size: Option<i64>,
+        status: DownloadStatus,
+        progress: f64,
+        error_message: Option<String>,
+        created_at: String,
+        completed_at: Option<String>,
+    }
+
     if let Some(status) = status {
-        query_as!(
-            Download,
+        let rows = query_as!(
+            DownloadRow,
             r#"SELECT
-                id as "id: String",
-                episode_id as "episode_id: String",
-                quality as "quality: String",
-                format as "format: _",
-                file_path as "file_path: String",
-                file_size as "file_size: Option<i64>",
-                status as "status: _",
-                progress as "progress: f64",
-                error_message as "error_message: Option<String>",
-                created_at as "created_at: String",
-                completed_at as "completed_at: Option<String>"
+                id,
+                episode_id,
+                quality,
+                format,
+                file_path,
+                file_size,
+                status,
+                progress,
+                error_message,
+                created_at,
+                completed_at
              FROM downloads WHERE status = ? ORDER BY created_at DESC"#,
             status
         )
-        .fetch_all(pool).await.map_err(|e| e.to_string())
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+        Ok(rows.into_iter().map(|r| Download {
+            id: r.id,
+            episode_id: r.episode_id,
+            quality: r.quality,
+            format: r.format,
+            file_path: r.file_path,
+            file_size: r.file_size,
+            status: r.status,
+            progress: r.progress,
+            error_message: r.error_message,
+            created_at: r.created_at,
+            completed_at: r.completed_at,
+        }).collect())
     } else {
-        query_as!(
-            Download,
+        let rows = query_as!(
+            DownloadRow,
             r#"SELECT
-                id as "id: String",
-                episode_id as "episode_id: String",
-                quality as "quality: String",
-                format as "format: _",
-                file_path as "file_path: String",
-                file_size as "file_size: Option<i64>",
-                status as "status: _",
-                progress as "progress: f64",
-                error_message as "error_message: Option<String>",
-                created_at as "created_at: String",
-                completed_at as "completed_at: Option<String>"
+                id,
+                episode_id,
+                quality,
+                format,
+                file_path,
+                file_size,
+                status,
+                progress,
+                error_message,
+                created_at,
+                completed_at
              FROM downloads ORDER BY created_at DESC"#
         )
-        .fetch_all(pool).await.map_err(|e| e.to_string())
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+        Ok(rows.into_iter().map(|r| Download {
+            id: r.id,
+            episode_id: r.episode_id,
+            quality: r.quality,
+            format: r.format,
+            file_path: r.file_path,
+            file_size: r.file_size,
+            status: r.status,
+            progress: r.progress,
+            error_message: r.error_message,
+            created_at: r.created_at,
+            completed_at: r.completed_at,
+        }).collect())
     }
 }
 
 pub async fn list_shortcuts(pool: &SqlitePool) -> DbResult<Vec<KeyboardShortcut>> {
-    query_as!(
-        KeyboardShortcut,
+    #[derive(sqlx::FromRow)]
+    struct KeyboardShortcutRow {
+        id: String,
+        user_id: String,
+        action: String,
+        key_combination: String,
+        context: ShortcutContext,
+        enabled: i64,
+        is_custom: i64,
+        created_at: DateTimeUtc,
+        updated_at: DateTimeUtc,
+    }
+
+    let rows = query_as!(
+        KeyboardShortcutRow,
         r#"SELECT
-            id as "id: String",
-            user_id as "user_id: String",
-            action as "action: String",
-            key_combination as "key_combination: String",
-            context as "context: _",
-            enabled as "enabled: bool",
-            is_custom as "is_custom: bool",
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
+            id,
+            user_id,
+            action,
+            key_combination,
+            context,
+            enabled,
+            is_custom,
+            created_at,
+            updated_at
          FROM keyboard_shortcuts WHERE user_id = 'current-user'"#
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| e.to_string())
-    .map(|shortcuts| shortcuts.into_iter().map(|s| KeyboardShortcut {
-        created_at: DateTimeUtc::from(s.created_at),
-        updated_at: DateTimeUtc::from(s.updated_at),
-        ..s
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| KeyboardShortcut {
+        id: r.id,
+        user_id: r.user_id,
+        action: r.action,
+        key_combination: r.key_combination,
+        context: r.context,
+        enabled: r.enabled != 0,
+        is_custom: r.is_custom != 0,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
     }).collect())
 }
 
@@ -1046,6 +1198,11 @@ pub async fn get_youtube_videos(pool: &SqlitePool) -> DbResult<Vec<YoutubeVideo>
 }
 
 pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbResult<()> {
+    let matched_at = link.matched_at.to_rfc3339();
+    let matched_by = link.matched_by.to_string();
+    let created_at = link.created_at.to_rfc3339();
+    let updated_at = link.updated_at.to_rfc3339();
+
     query!(
         r#"INSERT INTO episode_links (id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by, title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
@@ -1053,14 +1210,14 @@ pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbRes
         link.podcast_guid,
         link.youtube_video_id,
         link.confidence,
-        link.matched_at.to_rfc3339(),
-        link.matched_by.to_string(),
+        matched_at,
+        matched_by,
         link.title_similarity,
         link.date_diff_days,
         link.duration_diff_seconds,
         link.user_confirmed,
-        link.created_at.to_rfc3339(),
-        link.updated_at.to_rfc3339(),
+        created_at,
+        updated_at,
     )
     .execute(pool)
     .await

@@ -79,13 +79,23 @@ impl SponsorBlockManager {
             return Err(format!("SponsorBlock API error: {}", response.status()));
         }
         
-        let segments: Vec<SponsorBlockSegment> = response.json().await
+        // Parse the raw API response
+        #[derive(Deserialize)]
+        struct SponsorBlockApiSegment {
+            start_time: f64,
+            end_time: f64,
+            category: String,
+            uuid: String,
+            votes: Option<u32>,
+        }
+
+        let segments: Vec<SponsorBlockApiSegment> = response.json().await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
-        
+
         // Filter and convert
         let segments: Vec<SponsorSegment> = segments
             .into_iter()
-            .filter(|s| s.votes > 0) // Only segments with positive votes
+            .filter(|s| s.votes.unwrap_or(0) > 0) // Only segments with positive votes
             .map(|s| SponsorSegment {
                 start_time: s.start_time,
                 end_time: s.end_time,

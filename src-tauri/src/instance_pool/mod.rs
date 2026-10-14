@@ -11,11 +11,11 @@ use reqwest::Client;
 use tracing::{info, warn, error};
 
 pub struct InstancePool {
-    instances: Arc<RwLock<HashMap<String, Instance>>>,
+    pub instances: Arc<RwLock<HashMap<String, Instance>>>,
     client: Client,
     db: Arc<Database>,
     app_handle: AppHandle,
-    auto_failover: Arc<RwLock<bool>>,
+    pub auto_failover: Arc<RwLock<bool>>,
     health_check_interval: Duration,
 }
 
@@ -81,7 +81,7 @@ impl InstancePool {
 
         // Update instance health
         let mut instances = self.instances.write().await;
-        if let Some(inst) = instances.get_mut(id.as_str()) {
+        if let Some(inst) = instances.get_mut(id) {
             inst.health = health.clone();
             inst.latency_ms = Some(latency);
             inst.last_checked = Some(now_str.clone());

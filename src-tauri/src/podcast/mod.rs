@@ -234,13 +234,13 @@ impl PodcastManager {
             language: feed_data.language,
             author: feed_data.author,
             categories: Some(feed_data.categories),
-            last_fetched_at: Some(chrono::Utc::now()),
+            last_fetched_at: Some(DateTimeUtc::from(chrono::Utc::now())),
             last_episode_published_at: None,
             fetch_interval_minutes: 60,
             auto_download: false,
             is_active: true,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: DateTimeUtc::from(chrono::Utc::now()),
+            updated_at: DateTimeUtc::from(chrono::Utc::now()),
         };
         
         // Insert into database

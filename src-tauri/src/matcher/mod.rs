@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use levenshtein::levenshtein;
 use stop_words::get;
 use stop_words::LANGUAGE;
@@ -76,7 +77,7 @@ impl EpisodeMatcher {
         let youtube_videos = self.db.get_youtube_videos().await?;
         
         let mut matched = 0;
-        let mut errors = Vec::new();
+        let mut errors: Vec<String> = Vec::new();
         
         for podcast in unmatched_podcasts {
             if let Some(link) = self.find_best_match(&podcast, &youtube_videos).await? {
@@ -102,19 +103,20 @@ impl EpisodeMatcher {
             
             if confidence > self.matching_config.min_confidence && confidence > best_confidence {
                 best_confidence = confidence;
+                let now = DateTimeUtc::from(chrono::Utc::now());
                 best_match = Some(EpisodeLink {
                     id: uuid::Uuid::new_v4().to_string(),
                     podcast_guid: podcast.guid.clone(),
                     youtube_video_id: video.id.clone(),
                     confidence,
-                    matched_at: chrono::Utc::now(),
-                    matched_by: "auto".to_string(),
+                    matched_at: now,
+                    matched_by: MatchSource::Auto,
                     title_similarity: Some(self.title_similarity(&podcast.title, &video.title)),
-                    date_diff_days: Some(self.date_diff(&podcast.published_at, &video.published_at)),
-                    duration_diff_seconds: Some(self.duration_diff(podcast.duration_seconds, video.duration_seconds)),
+                    date_diff_days: self.date_diff(podcast.published_at, video.published_at),
+                    duration_diff_seconds: self.duration_diff(podcast.duration_seconds, video.duration_seconds),
                     user_confirmed: false,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
+                    created_at: now,
+                    updated_at: now,
                 });
             }
         }
@@ -187,10 +189,10 @@ impl EpisodeMatcher {
             .collect()
     }
     
-    fn date_score(&self, date1: Option<DateTime<Utc>>, date2: Option<DateTime<Utc>>) -> f64 {
+    fn date_score(&self, date1: Option<DateTimeUtc>, date2: Option<DateTimeUtc>) -> f64 {
         match (date1, date2) {
             (Some(d1), Some(d2)) => {
-                let diff = (d1 - d2).num_days().abs();
+                let diff = (d1.inner() - d2.inner()).num_days().abs();
                 if diff <= self.matching_config.max_date_diff_days {
                     1.0 - (diff as f64 / self.matching_config.max_date_diff_days as f64)
                 } else {
@@ -225,17 +227,17 @@ impl EpisodeMatcher {
         Ok(0.5)
     }
     
-    fn date_diff(&self, d1: Option<DateTime<Utc>>, d2: Option<DateTime<Utc>>) -> i64 {
+    fn date_diff(&self, d1: Option<DateTimeUtc>, d2: Option<DateTimeUtc>) -> Option<i64> {
         match (d1, d2) {
-            (Some(d1), Some(d2)) => (d1 - d2).num_days(),
-            _ => 0,
+            (Some(d1), Some(d2)) => Some((d1.inner() - d2.inner()).num_days()),
+            _ => None,
         }
     }
 
-    fn duration_diff(&self, d1: Option<u64>, d2: Option<u64>) -> u64 {
+    fn duration_diff(&self, d1: Option<u64>, d2: Option<u64>) -> Option<i64> {
         match (d1, d2) {
-            (Some(d1), Some(d2)) => if d1 > d2 { d1 - d2 } else { d2 - d1 },
-            _ => 0,
+            (Some(d1), Some(d2)) => Some(if d1 > d2 { (d1 - d2) as i64 } else { (d2 - d1) as i64 }),
+            _ => None,
         }
     }
 }

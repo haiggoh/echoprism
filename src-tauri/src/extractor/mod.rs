@@ -126,14 +126,14 @@ impl Extractor {
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
         let yt_dlp = self.find_yt_dlp().await?;
 
-        let mut args = vec!["-g", "--no-playlist", "--no-warnings"];
-        if let Some(f) = format { args.extend(["-f", f]); }
+        let mut args: Vec<String> = vec!["-g".to_string(), "--no-playlist".to_string(), "--no-warnings".to_string()];
+        if let Some(f) = format { args.extend(["-f".to_string(), f.to_string()]); }
         if let Some(q) = quality {
             let quality_arg = format!("best[height<={}]", q);
-            args.extend(["-f", &quality_arg]);
+            args.extend(["-f".to_string(), quality_arg]);
         }
         let url_arg = format!("https://www.youtube.com/watch?v={}", video_id);
-        args.push(&url_arg);
+        args.push(url_arg);
 
         let output = tokio::process::Command::new("yt-dlp")
             .args(&args)
