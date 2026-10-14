@@ -825,13 +825,32 @@ pub struct KeyboardShortcut {
     pub updated_at: DateTimeUtc,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type, strum::Display, strum::EnumString)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT")]
 #[strum(serialize_all = "snake_case")]
 pub enum ShortcutContext {
     Global,
     Player,
     Queue,
     Feed,
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for ShortcutContext {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<'_, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|_| format!("Invalid ShortcutContext: {}", s).into())
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for ShortcutContext {
+    fn encode_by_ref(&self, buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>) -> sqlx::encode::IsNull {
+        let s: String = self.to_string();
+        <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode(s, buf)
+    }
+}
+
+impl sqlx::Type<sqlx::Sqlite> for ShortcutContext {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
 }

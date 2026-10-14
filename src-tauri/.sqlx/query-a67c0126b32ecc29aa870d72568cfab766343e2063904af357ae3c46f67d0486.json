@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n            user_id,\n            default_instance_id,\n            default_format,\n            queue_behavior,\n            audio_only_default,\n            auto_download_wifi,\n            sponsorblock_enabled,\n            sponsorblock_categories,\n            keyboard_shortcuts_enabled,\n            theme,\n            cross_device_sync_enabled,\n            updated_at\n         FROM user_preferences WHERE user_id = 'current-user'",
+  "query": "SELECT\n            user_id,\n            default_instance_id,\n            default_format as \"default_format: _\",\n            queue_behavior as \"queue_behavior: _\",\n            audio_only_default,\n            auto_download_wifi,\n            sponsorblock_enabled,\n            sponsorblock_categories,\n            keyboard_shortcuts_enabled,\n            theme as \"theme: _\",\n            cross_device_sync_enabled,\n            updated_at as \"updated_at: _\"\n         FROM user_preferences WHERE user_id = 'current-user'",
   "describe": {
     "columns": [
       {
@@ -14,12 +14,12 @@
         "type_info": "Text"
       },
       {
-        "name": "default_format",
+        "name": "default_format: _",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "queue_behavior",
+        "name": "queue_behavior: _",
         "ordinal": 3,
         "type_info": "Text"
       },
@@ -49,7 +49,7 @@
         "type_info": "Int64"
       },
       {
-        "name": "theme",
+        "name": "theme: _",
         "ordinal": 9,
         "type_info": "Text"
       },
@@ -59,7 +59,7 @@
         "type_info": "Int64"
       },
       {
-        "name": "updated_at",
+        "name": "updated_at: _",
         "ordinal": 11,
         "type_info": "Text"
       }
@@ -82,5 +82,5 @@
       false
     ]
   },
-  "hash": "0892b542708bb57131dd21f6e89197df32d241b3f59014bfa735b3333f1929ff"
+  "hash": "a67c0126b32ecc29aa870d72568cfab766343e2063904af357ae3c46f67d0486"
 }

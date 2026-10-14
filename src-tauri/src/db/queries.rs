@@ -4,6 +4,7 @@ use crate::types::*;
 use sqlx::{SqlitePool, Row, FromRow, query_as, query};
 use chrono::Utc;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 // Local Result type for database queries
 pub type DbResult<T> = std::result::Result<T, String>;
@@ -255,6 +256,8 @@ pub async fn list_channels(
 pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()> {
     let format_pref = channel.format_preference.to_string();
     let channel_type_str = channel.channel_type.to_string();
+    let is_subscribed = channel.is_subscribed as i64;
+    let notifications_enabled = channel.notifications_enabled as i64;
     query!(
         r#"INSERT INTO channels (id, user_id, external_id, title, handle, thumbnail_url,
               description, subscriber_count, is_subscribed, subscribed_at,
@@ -269,9 +272,9 @@ pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()
         channel.thumbnail_url,
         channel.description,
         channel.subscriber_count,
-        channel.is_subscribed as i64,
+        is_subscribed,
         channel.subscribed_at,
-        channel.notifications_enabled as i64,
+        notifications_enabled,
         format_pref,
         channel.instance_id,
         channel_type_str,
@@ -332,6 +335,8 @@ pub async fn get_feed(
     }
 
     if let Some(et) = ep_type {
+        let limit_i64 = limit as i64;
+        let offset_i64 = offset as i64;
         let rows = sqlx::query_as!(
             EpisodeRow,
             r#"SELECT
@@ -365,8 +370,8 @@ pub async fn get_feed(
              ORDER BY e.published_at DESC
              LIMIT ? OFFSET ?"#,
             et,
-            limit as i64,
-            offset as i64
+            limit_i64,
+            offset_i64
         )
         .fetch_all(pool)
         .await
@@ -399,6 +404,8 @@ pub async fn get_feed(
             updated_at: r.updated_at,
         }).collect())
     } else {
+        let limit_i64 = limit as i64;
+        let offset_i64 = offset as i64;
         let rows = sqlx::query_as!(
             EpisodeRow,
             r#"SELECT
@@ -429,8 +436,8 @@ pub async fn get_feed(
              FROM episodes e
              ORDER BY e.published_at DESC
              LIMIT ? OFFSET ?"#,
-            limit as i64,
-            offset as i64
+            limit_i64,
+            offset_i64
         )
         .fetch_all(pool)
         .await
@@ -623,13 +630,7 @@ pub async fn search_episodes(
          JOIN episodes_fts fts ON e.rowid = fts.rowid
          WHERE episodes_fts MATCH ?
          ORDER BY e.published_at DESC
-         LIMIT ?"#,
-        query_str,
-        limit as i64
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+         LIMIT ?}"#
 
     Ok(rows.into_iter().map(|r| Episode {
         id: r.id,
@@ -672,7 +673,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
         updated_at: String,
     }
 
-    let row = sqlx::query_as!(
+    let queue_row = sqlx::query_as!(
         QueueRow,
         r#"SELECT
             id,
@@ -689,59 +690,62 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
     .await
     .map_err(|e| e.to_string())?;
 
-    if let Some(row) = row {
-        #[derive(sqlx::FromRow)]
-        struct QueueItemRow {
-            id: String,
-            queue_id: String,
-            episode_id: String,
-            position: i64,
-            added_at: String,
-            source: QueueSource,
-            play_mode: PlayMode,
-            smart_link_id: Option<String>,
-        }
+    match queue_row {
+        Some(queue_row) => {
+            #[derive(sqlx::FromRow)]
+            struct QueueItemRow {
+                id: String,
+                queue_id: String,
+                episode_id: String,
+                position: i64,
+                added_at: String,
+                source: QueueSource,
+                play_mode: PlayMode,
+                smart_link_id: Option<String>,
+            }
 
-        let items = sqlx::query_as!(
-            QueueItemRow,
-            r#"SELECT
-                id,
-                queue_id,
-                episode_id,
-                position,
-                added_at,
-                source as "source: _",
-                play_mode as "play_mode: _",
-                smart_link_id
-             FROM queue_items WHERE queue_id = ? ORDER BY position"#,
-            row.id
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+            let items = sqlx::query_as!(
+                QueueItemRow,
+                r#"SELECT
+                    id,
+                    queue_id,
+                    episode_id,
+                    position,
+                    added_at,
+                    source as "source: _",
+                    play_mode as "play_mode: _",
+                    smart_link_id
+                 FROM queue_items WHERE queue_id = ? ORDER BY position"#,
+                queue_row.id
+            )
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
-        Ok(Queue {
-            id: row.id,
-            user_id: row.user_id,
-            current_index: row.current_index,
-            repeat_mode: row.repeat_mode,
-            shuffle: row.shuffle != 0,
-            audio_only_mode: row.audio_only_mode != 0,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            items: items.into_iter().map(|r| QueueItem {
-                id: r.id,
-                queue_id: r.queue_id,
-                episode_id: r.episode_id,
-                position: r.position,
-                added_at: r.added_at,
-                source: r.source,
-                play_mode: r.play_mode,
-                smart_link_id: r.smart_link_id,
-            }).collect(),
+            Ok(Queue {
+                id: queue_row.id,
+                user_id: queue_row.user_id,
+                current_index: queue_row.current_index,
+                repeat_mode: queue_row.repeat_mode,
+                shuffle: queue_row.shuffle != 0,
+                audio_only_mode: queue_row.audio_only_mode != 0,
+                created_at: queue_row.created_at,
+                updated_at: queue_row.updated_at,
+                items: items.into_iter().map(|r| QueueItem {
+                    id: r.id,
+                    queue_id: r.queue_id,
+                    episode_id: r.episode_id,
+                    position: r.position,
+                    added_at: r.added_at,
+                    source: r.source,
+                    play_mode: r.play_mode,
+                    smart_link_id: r.smart_link_id,
+                }).collect(),
         })
     } else {
         let now = chrono::Utc::now().to_rfc3339();
+        let now2 = now.clone();
+        let now3 = now2.clone();
         let queue = Queue {
             id: uuid::Uuid::new_v4().to_string(),
             user_id: "current-user".to_string(),
@@ -750,14 +754,19 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             shuffle: false,
             audio_only_mode: false,
             created_at: now.clone(),
-            updated_at: now,
+            updated_at: now2,
             items: vec![],
         };
+        let repeat_mode = queue.repeat_mode as RepeatMode;
+        let shuffle = queue.shuffle as i64;
+        let audio_only = queue.audio_only_mode as i64;
+        let created = now;
+        let updated = now3;
         query!(
             "INSERT INTO queues (id, user_id, current_index, repeat_mode, shuffle, audio_only_mode, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            queue.id, queue.user_id, queue.current_index, queue.repeat_mode as RepeatMode,
-            queue.shuffle as i64, queue.audio_only_mode as i64, now.clone(), now
+            queue.id, queue.user_id, queue.current_index, repeat_mode,
+            shuffle, audio_only, created, updated
         ).execute(pool).await.map_err(|e| e.to_string())?;
         Ok(queue)
     }
@@ -908,14 +917,14 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         r#"SELECT
             user_id,
             default_instance_id,
-            default_format,
-            queue_behavior,
+            default_format as "default_format: _",
+            queue_behavior as "queue_behavior: _",
             audio_only_default,
             auto_download_wifi,
             sponsorblock_enabled,
             sponsorblock_categories,
             keyboard_shortcuts_enabled,
-            theme,
+            theme as "theme: _",
             cross_device_sync_enabled,
             updated_at
          FROM user_preferences WHERE user_id = 'current-user'"#
@@ -1044,10 +1053,12 @@ pub async fn list_history(pool: &SqlitePool, limit: Option<u32>, offset: Option<
         played_at: DateTimeUtc,
     }
 
+    let limit_i64 = limit as i64;
+    let offset_i64 = offset as i64;
     let rows = query_as!(
         HistoryEntryRow,
         "SELECT id, user_id, episode_id, position_seconds, duration_seconds, completed, played_at FROM history WHERE user_id = 'current-user' ORDER BY played_at DESC LIMIT ? OFFSET ?",
-        limit as i64, offset as i64
+        limit_i64, offset_i64
     )
     .fetch_all(pool)
     .await
@@ -1160,11 +1171,11 @@ pub async fn list_shortcuts(pool: &SqlitePool) -> DbResult<Vec<KeyboardShortcut>
         user_id: String,
         action: String,
         key_combination: String,
-        context: ShortcutContext,
+        context: String,
         enabled: i64,
         is_custom: i64,
-        created_at: DateTimeUtc,
-        updated_at: DateTimeUtc,
+        created_at: String,
+        updated_at: String,
     }
 
     let rows = query_as!(
@@ -1190,11 +1201,11 @@ pub async fn list_shortcuts(pool: &SqlitePool) -> DbResult<Vec<KeyboardShortcut>
         user_id: r.user_id,
         action: r.action,
         key_combination: r.key_combination,
-        context: r.context,
+        context: ShortcutContext::from_str(&r.context).unwrap_or(ShortcutContext::Global),
         enabled: r.enabled != 0,
         is_custom: r.is_custom != 0,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
+        created_at: DateTimeUtc::from(r.created_at),
+        updated_at: DateTimeUtc::from(r.updated_at),
     }).collect())
 }
 
