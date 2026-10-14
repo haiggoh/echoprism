@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id,\n                episode_id,\n                quality,\n                format,\n                file_path,\n                file_size,\n                status,\n                progress,\n                error_message,\n                created_at,\n                completed_at\n             FROM downloads ORDER BY created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "episode_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "quality",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "format",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_size",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "status",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "progress",
+        "ordinal": 7,
+        "type_info": "Float"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at",
+        "ordinal": 10,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "65e8f7a749d33fc8b525a2c919067a08874060986b92c11467fd442a1686f16c"
+}

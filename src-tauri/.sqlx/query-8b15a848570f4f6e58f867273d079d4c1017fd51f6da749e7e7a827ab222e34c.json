@@ -1,30 +1,30 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id as \"id: String\",\n                queue_id as \"queue_id: String\",\n                episode_id as \"episode_id: String\",\n                position as \"position: i64\",\n                added_at as \"added_at: String\",\n                source as \"source: _\",\n                play_mode as \"play_mode: _\",\n                smart_link_id as \"smart_link_id: Option<String>\"\n             FROM queue_items WHERE queue_id = ? ORDER BY position",
+  "query": "SELECT\n                id,\n                queue_id,\n                episode_id,\n                position,\n                added_at,\n                source as \"source: _\",\n                play_mode as \"play_mode: _\",\n                smart_link_id\n             FROM queue_items WHERE queue_id = ? ORDER BY position",
   "describe": {
     "columns": [
       {
-        "name": "id: String",
+        "name": "id",
         "ordinal": 0,
         "type_info": "Text"
       },
       {
-        "name": "queue_id: String",
+        "name": "queue_id",
         "ordinal": 1,
         "type_info": "Text"
       },
       {
-        "name": "episode_id: String",
+        "name": "episode_id",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "position: i64",
+        "name": "position",
         "ordinal": 3,
         "type_info": "Int64"
       },
       {
-        "name": "added_at: String",
+        "name": "added_at",
         "ordinal": 4,
         "type_info": "Text"
       },
@@ -39,7 +39,7 @@
         "type_info": "Text"
       },
       {
-        "name": "smart_link_id: Option<String>",
+        "name": "smart_link_id",
         "ordinal": 7,
         "type_info": "Text"
       }
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "7a99e4d6b70dd65cbd20c68defa77f2cdb5764d72a9de8af0d9a74f3ddf034bc"
+  "hash": "8b15a848570f4f6e58f867273d079d4c1017fd51f6da749e7e7a827ab222e34c"
 }

@@ -71,6 +71,16 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
 pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult<()> {
     let instance_type_str = instance.instance_type.to_string();
     let health_str = instance.health.to_string();
+    let auto_failover = instance.auto_failover as i64;
+    let supports_sabr = instance.supports_sabr as i64;
+    let supports_age_restricted = instance.supports_age_restricted as i64;
+    let pinned = instance.pinned as i64;
+    let latency_ms = instance.latency_ms;
+    let last_checked = instance.last_checked.as_deref();
+    let region = instance.region.as_deref();
+    let country = instance.country.as_deref();
+    let created_at = instance.created_at.clone();
+    let updated_at = instance.updated_at.clone();
     query!(
         r#"INSERT INTO instances (id, url, type, health, latency_ms, last_checked,
               auto_failover, supports_sabr, supports_age_restricted, region, country,
@@ -80,16 +90,16 @@ pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult
         instance.url,
         instance_type_str,
         health_str,
-        instance.latency_ms,
-        instance.last_checked,
-        instance.auto_failover,
-        instance.supports_sabr,
-        instance.supports_age_restricted,
-        instance.region,
-        instance.country,
-        instance.pinned,
-        instance.created_at,
-        instance.updated_at,
+        latency_ms,
+        last_checked,
+        auto_failover,
+        supports_sabr,
+        supports_age_restricted,
+        region,
+        country,
+        pinned,
+        created_at,
+        updated_at,
     )
     .execute(pool)
     .await
@@ -139,25 +149,25 @@ pub async fn list_channels(
         let rows = sqlx::query_as!(
             ChannelRow,
             r#"SELECT
-                id as "id: String",
-                user_id as "user_id: String",
-                external_id as "external_id: String",
-                title as "title: String",
-                handle as "handle: Option<String>",
-                thumbnail_url as "thumbnail_url: Option<String>",
-                description as "description: Option<String>",
-                subscriber_count as "subscriber_count: Option<i64>",
-                is_subscribed as "is_subscribed: i64",
-                subscribed_at as "subscribed_at: String",
-                notifications_enabled as "notifications_enabled: i64",
-                format_preference as "format_preference: _",
-                instance_id as "instance_id: Option<String>",
+                id,
+                user_id,
+                external_id,
+                title,
+                handle,
+                thumbnail_url,
+                description,
+                subscriber_count,
+                is_subscribed,
+                subscribed_at,
+                notifications_enabled,
+                format_preference,
+                instance_id,
                 type as "channel_type: _",
-                podcast_feed_url as "podcast_feed_url: Option<String>",
-                podcast_guid as "podcast_guid: Option<String>",
-                last_fetched_at as "last_fetched_at: Option<String>",
-                created_at as "created_at: String",
-                updated_at as "updated_at: String"
+                podcast_feed_url,
+                podcast_guid,
+                last_fetched_at,
+                created_at,
+                updated_at
              FROM channels
              WHERE type = ?
              ORDER BY subscribed_at DESC"#,
@@ -192,25 +202,25 @@ pub async fn list_channels(
         let rows = sqlx::query_as!(
             ChannelRow,
             r#"SELECT
-                id as "id: String",
-                user_id as "user_id: String",
-                external_id as "external_id: String",
-                title as "title: String",
-                handle as "handle: Option<String>",
-                thumbnail_url as "thumbnail_url: Option<String>",
-                description as "description: Option<String>",
-                subscriber_count as "subscriber_count: Option<i64>",
-                is_subscribed as "is_subscribed: i64",
-                subscribed_at as "subscribed_at: String",
-                notifications_enabled as "notifications_enabled: i64",
-                format_preference as "format_preference: _",
-                instance_id as "instance_id: Option<String>",
+                id,
+                user_id,
+                external_id,
+                title,
+                handle,
+                thumbnail_url,
+                description,
+                subscriber_count,
+                is_subscribed,
+                subscribed_at,
+                notifications_enabled,
+                format_preference,
+                instance_id,
                 type as "channel_type: _",
-                podcast_feed_url as "podcast_feed_url: Option<String>",
-                podcast_guid as "podcast_guid: Option<String>",
-                last_fetched_at as "last_fetched_at: Option<String>",
-                created_at as "created_at: String",
-                updated_at as "updated_at: String"
+                podcast_feed_url,
+                podcast_guid,
+                last_fetched_at,
+                created_at,
+                updated_at
              FROM channels
              ORDER BY subscribed_at DESC"#
         )
@@ -259,9 +269,9 @@ pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()
         channel.thumbnail_url,
         channel.description,
         channel.subscriber_count,
-        channel.is_subscribed,
+        channel.is_subscribed as i64,
         channel.subscribed_at,
-        channel.notifications_enabled,
+        channel.notifications_enabled as i64,
         format_pref,
         channel.instance_id,
         channel_type_str,
@@ -291,7 +301,7 @@ pub async fn get_feed(
 ) -> DbResult<Vec<Episode>> {
     let ep_type = params.as_ref().and_then(|p| p.episode_type.as_deref());
     let limit = params.as_ref().and_then(|p| p.limit).unwrap_or(50);
-    let offset = params.unwrap_or_default().offset.unwrap_or(0);
+    let offset = params.as_ref().and_then(|p| p.offset).unwrap_or(0);
 
     #[derive(sqlx::FromRow)]
     struct EpisodeRow {
@@ -314,7 +324,7 @@ pub async fn get_feed(
         chapters: Option<String>,
         sponsors: Option<String>,
         transcript_url: Option<String>,
-        is_downloaded: bool,
+        is_downloaded: i64,
         download_quality: Option<String>,
         progress_seconds: f64,
         created_at: String,
@@ -382,7 +392,7 @@ pub async fn get_feed(
             chapters: r.chapters,
             sponsors: r.sponsors,
             transcript_url: r.transcript_url,
-            is_downloaded: r.is_downloaded,
+            is_downloaded: r.is_downloaded != 0,
             download_quality: r.download_quality,
             progress_seconds: r.progress_seconds,
             created_at: r.created_at,
@@ -446,7 +456,7 @@ pub async fn get_feed(
             chapters: r.chapters,
             sponsors: r.sponsors,
             transcript_url: r.transcript_url,
-            is_downloaded: r.is_downloaded,
+            is_downloaded: r.is_downloaded != 0,
             download_quality: r.download_quality,
             progress_seconds: r.progress_seconds,
             created_at: r.created_at,
@@ -477,7 +487,7 @@ pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episod
         chapters: Option<String>,
         sponsors: Option<String>,
         transcript_url: Option<String>,
-        is_downloaded: bool,
+        is_downloaded: i64,
         download_quality: Option<String>,
         progress_seconds: f64,
         created_at: String,
@@ -539,7 +549,7 @@ pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episod
         chapters: row.chapters,
         sponsors: row.sponsors,
         transcript_url: row.transcript_url,
-        is_downloaded: row.is_downloaded,
+        is_downloaded: row.is_downloaded != 0,
         download_quality: row.download_quality,
         progress_seconds: row.progress_seconds,
         created_at: row.created_at,
@@ -575,7 +585,7 @@ pub async fn search_episodes(
         chapters: Option<String>,
         sponsors: Option<String>,
         transcript_url: Option<String>,
-        is_downloaded: bool,
+        is_downloaded: i64,
         download_quality: Option<String>,
         progress_seconds: f64,
         created_at: String,
@@ -641,7 +651,7 @@ pub async fn search_episodes(
         chapters: r.chapters,
         sponsors: r.sponsors,
         transcript_url: r.transcript_url,
-        is_downloaded: r.is_downloaded,
+        is_downloaded: r.is_downloaded != 0,
         download_quality: r.download_quality,
         progress_seconds: r.progress_seconds,
         created_at: r.created_at,
@@ -650,16 +660,29 @@ pub async fn search_episodes(
 }
 
 pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
-    let row = query!(
+    #[derive(sqlx::FromRow)]
+    struct QueueRow {
+        id: String,
+        user_id: String,
+        current_index: i64,
+        repeat_mode: RepeatMode,
+        shuffle: i64,
+        audio_only_mode: i64,
+        created_at: String,
+        updated_at: String,
+    }
+
+    let row = sqlx::query_as!(
+        QueueRow,
         r#"SELECT
-            id as "id: String",
-            user_id as "user_id: String",
-            current_index as "current_index: i64",
-            repeat_mode as "repeat_mode: _",
-            shuffle as "shuffle: bool",
-            audio_only_mode as "audio_only_mode: bool",
-            created_at as "created_at: String",
-            updated_at as "updated_at: String"
+            id,
+            user_id,
+            current_index,
+            repeat_mode,
+            shuffle,
+            audio_only_mode,
+            created_at,
+            updated_at
          FROM queues WHERE user_id = 'current-user' LIMIT 1"#
     )
     .fetch_optional(pool)
@@ -679,7 +702,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             smart_link_id: Option<String>,
         }
 
-        let items = query_as!(
+        let items = sqlx::query_as!(
             QueueItemRow,
             r#"SELECT
                 id,
@@ -702,8 +725,8 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             user_id: row.user_id,
             current_index: row.current_index,
             repeat_mode: row.repeat_mode,
-            shuffle: row.shuffle,
-            audio_only_mode: row.audio_only_mode,
+            shuffle: row.shuffle != 0,
+            audio_only_mode: row.audio_only_mode != 0,
             created_at: row.created_at,
             updated_at: row.updated_at,
             items: items.into_iter().map(|r| QueueItem {
@@ -734,7 +757,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
             "INSERT INTO queues (id, user_id, current_index, repeat_mode, shuffle, audio_only_mode, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             queue.id, queue.user_id, queue.current_index, queue.repeat_mode as RepeatMode,
-            queue.shuffle, queue.audio_only_mode, now.clone(), now
+            queue.shuffle as i64, queue.audio_only_mode as i64, now.clone(), now
         ).execute(pool).await.map_err(|e| e.to_string())?;
         Ok(queue)
     }
@@ -820,12 +843,12 @@ pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) 
         title_similarity: Option<f64>,
         date_diff_days: Option<i64>,
         duration_diff_seconds: Option<i64>,
-        user_confirmed: bool,
+        user_confirmed: i64,
         created_at: DateTimeUtc,
         updated_at: DateTimeUtc,
     }
 
-    let rows = query_as!(
+    let rows = sqlx::query_as!(
         EpisodeLinkRow,
         r#"SELECT
             id,
@@ -833,7 +856,7 @@ pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) 
             youtube_video_id,
             confidence,
             matched_at,
-            matched_by,
+            matched_by as "matched_by: _",
             title_similarity,
             date_diff_days,
             duration_diff_seconds,
@@ -857,7 +880,7 @@ pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) 
         title_similarity: r.title_similarity,
         date_diff_days: r.date_diff_days,
         duration_diff_seconds: r.duration_diff_seconds,
-        user_confirmed: r.user_confirmed,
+        user_confirmed: r.user_confirmed != 0,
         created_at: r.created_at,
         updated_at: r.updated_at,
     }).collect())
@@ -870,13 +893,13 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         default_instance_id: Option<String>,
         default_format: Format,
         queue_behavior: QueueBehavior,
-        audio_only_default: bool,
-        auto_download_wifi: bool,
-        sponsorblock_enabled: bool,
+        audio_only_default: i64,
+        auto_download_wifi: i64,
+        sponsorblock_enabled: i64,
         sponsorblock_categories: String,
-        keyboard_shortcuts_enabled: bool,
+        keyboard_shortcuts_enabled: i64,
         theme: Theme,
-        cross_device_sync_enabled: bool,
+        cross_device_sync_enabled: i64,
         updated_at: DateTimeUtc,
     }
 
@@ -909,13 +932,13 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         default_instance_id: row.default_instance_id,
         default_format: row.default_format,
         queue_behavior: row.queue_behavior,
-        audio_only_default: row.audio_only_default,
-        auto_download_wifi: row.auto_download_wifi,
-        sponsorblock_enabled: row.sponsorblock_enabled,
+        audio_only_default: row.audio_only_default != 0,
+        auto_download_wifi: row.auto_download_wifi != 0,
+        sponsorblock_enabled: row.sponsorblock_enabled != 0,
         sponsorblock_categories: categories,
-        keyboard_shortcuts_enabled: row.keyboard_shortcuts_enabled,
+        keyboard_shortcuts_enabled: row.keyboard_shortcuts_enabled != 0,
         theme: row.theme,
-        cross_device_sync_enabled: row.cross_device_sync_enabled,
+        cross_device_sync_enabled: row.cross_device_sync_enabled != 0,
         updated_at: row.updated_at,
     })
 }
@@ -1023,7 +1046,7 @@ pub async fn list_history(pool: &SqlitePool, limit: Option<u32>, offset: Option<
 
     let rows = query_as!(
         HistoryEntryRow,
-        "SELECT id, user_id, episode_id, position_seconds, duration_seconds, completed, played_at FROM history WHERE user_id = 'current-user' ORDER BY played_at DESC LIMIT $1 OFFSET $2",
+        "SELECT id, user_id, episode_id, position_seconds, duration_seconds, completed, played_at FROM history WHERE user_id = 'current-user' ORDER BY played_at DESC LIMIT ? OFFSET ?",
         limit as i64, offset as i64
     )
     .fetch_all(pool)
@@ -1215,7 +1238,7 @@ pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbRes
         link.title_similarity,
         link.date_diff_days,
         link.duration_diff_seconds,
-        link.user_confirmed,
+        link.user_confirmed as i64,
         created_at,
         updated_at,
     )
