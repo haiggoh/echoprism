@@ -11,13 +11,13 @@ use tracing::{info, warn, error};
 
 pub struct Extractor {
     client: reqwest::Client,
-    pool: InstancePool,
+    pool: Arc<InstancePool>,
     yt_dlp_path: Option<String>,
 }
 
 impl Extractor {
     pub fn new(app_handle: AppHandle) -> Self {
-        let pool = app_handle.state::<crate::instance_pool::InstancePool>().inner().clone();
+        let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
 
         Self {
             client: reqwest::Client::builder()
@@ -205,13 +205,13 @@ impl Extractor {
         VideoInfo {
             id: resp.video_id,
             title: resp.title,
-            description: resp.description,
-            duration: resp.length_seconds,
+            description: Some(resp.description),
+            duration: Some(resp.length_seconds),
             thumbnail: resp.video_thumbnails.last().map(|t| t.url.clone()),
-            channel: resp.author,
-            channel_id: resp.author_id,
+            channel: Some(resp.author),
+            channel_id: Some(resp.author_id),
             upload_date: resp.published_text,
-            view_count: resp.view_count,
+            view_count: Some(resp.view_count),
             formats: resp.adaptive_formats.into_iter().map(|f| VideoFormat {
                 format_id: f.format_id,
                 ext: f.container,

@@ -55,16 +55,16 @@ impl EpisodeMatcher {
         app_handle: AppHandle,
         config: Option<MatchingConfig>,
     ) -> Self {
-        let pool = app_handle.state::<crate::instance_pool::InstancePool>().inner().clone();
-        let db = app_handle.state::<Database>().inner().clone();
-        let extractor = app_handle.state::<Extractor>().inner().clone();
+        let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
+        let db = app_handle.state::<Arc<Database>>().inner().clone();
+        let extractor = app_handle.state::<Arc<Extractor>>().inner().clone();
 
         let stop_words: std::collections::HashSet<String> = get(LANGUAGE::English).into_iter().collect();
 
         Self {
-            db: Arc::new(db),
-            pool: Arc::new(pool),
-            extractor: Arc::new(extractor),
+            db: db,
+            pool: pool,
+            extractor: extractor,
             fuzzy: fuzzy_matcher::skim::SkimMatcherV2::default(),
             stop_words,
             matching_config: config.unwrap_or_default(),
@@ -184,7 +184,7 @@ impl EpisodeMatcher {
     fn normalize_text(&self, text: &str) -> Vec<String> {
         text.to_lowercase()
             .split_whitespace()
-            .filter(|w| w.len() > 2 && !self.stop_words.contains(w))
+            .filter(|w| w.len() > 2 && self.stop_words.contains(*w))
             .map(|w| w.to_string())
             .collect()
     }

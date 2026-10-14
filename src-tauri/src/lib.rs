@@ -15,6 +15,7 @@ mod podcast;
 mod sponsorblock;
 mod background_tasks;
 
+use std::sync::Arc;
 use tauri::Manager;
 
 fn single_instance_handler(app: &tauri::AppHandle, _args: Vec<String>, _cwd: String) {
@@ -39,15 +40,31 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Initialize database
-            let db = db::Database::new(app.handle())?;
+            let db = tauri::async_runtime::block_on(db::Database::new(app.handle()))?;
             app.manage(db);
 
             // Initialize instance pool
             let pool = instance_pool::InstancePool::new(app.handle().clone());
             app.manage(pool);
 
+            // Initialize extractor
+            let extractor = extractor::Extractor::new(app.handle().clone());
+            app.manage(extractor);
+
+            // Initialize matcher
+            let matcher = matcher::EpisodeMatcher::new(app.handle().clone(), None);
+            app.manage(matcher);
+
+            // Initialize podcast manager
+            let podcast = podcast::PodcastManager::new(app.handle().clone());
+            app.manage(podcast);
+
+            // Initialize SponsorBlock manager
+            let sponsorblock = sponsorblock::SponsorBlockManager::new(Arc::new(db.clone()));
+            app.manage(sponsorblock);
+
             // Start background tasks
-            background_tasks::start_all(app.handle().clone());
+            tauri::async_runtime::block_on(background_tasks::start_all(app.handle().clone()));
 
             Ok(())
         });

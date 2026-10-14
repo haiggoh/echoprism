@@ -23,16 +23,14 @@ pub struct SponsorBlockCacheEntry {
 }
 
 impl SponsorBlockManager {
-    pub fn new(app_handle: tauri::AppHandle) -> Self {
-        let db = app_handle.state::<crate::db::Database>().inner().clone();
-        
+    pub fn new(db: Arc<crate::db::Database>) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
                 .user_agent("EchoPrism/0.1 (https://github.com/echoprism/echoprism)")
                 .build()
                 .expect("Failed to create HTTP client"),
-            db: Arc::new(app_handle.state::<crate::db::Database>().inner().clone()),
+            db,
             cache: Arc::new(parking_lot::RwLock::new(HashMap::new())),
         }
     }

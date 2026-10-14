@@ -13,11 +13,11 @@ use chrono::Utc;
 use tracing::{info, warn, error};
 
 pub async fn start_all(app_handle: tauri::AppHandle) {
-    let pool = app_handle.state::<crate::instance_pool::InstancePool>().inner().clone();
-    let db = app_handle.state::<Database>().inner().clone();
-    let matcher = app_handle.state::<crate::matcher::EpisodeMatcher>().inner().clone();
-    let sponsorblock = app_handle.state::<crate::sponsorblock::SponsorBlockManager>().inner().clone();
-    let podcast = app_handle.state::<crate::podcast::PodcastManager>().inner().clone();
+    let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
+    let db = app_handle.state::<Arc<Database>>().inner().clone();
+    let matcher = app_handle.state::<Arc<crate::matcher::EpisodeMatcher>>().inner().clone();
+    let sponsorblock = app_handle.state::<Arc<crate::sponsorblock::SponsorBlockManager>>().inner().clone();
+    let podcast = app_handle.state::<Arc<crate::podcast::PodcastManager>>().inner().clone();
 
     // Start instance health checks
     start_instance_health_checks(pool);
@@ -35,12 +35,12 @@ pub async fn start_all(app_handle: tauri::AppHandle) {
     start_cleanup(db);
 }
 
-async fn start_instance_health_checks(pool: InstancePool) {
+async fn start_instance_health_checks(pool: Arc<InstancePool>) {
     let pool_clone = pool.clone();
     let _ = tokio::spawn(run_instance_health_checks(pool_clone));
 }
 
-async fn run_instance_health_checks(pool: InstancePool) {
+async fn run_instance_health_checks(pool: Arc<InstancePool>) {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
     loop {
         interval.tick().await;
