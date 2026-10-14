@@ -570,6 +570,7 @@ pub async fn search_episodes(
     params: Option<crate::commands::episodes::SearchParams>,
 ) -> DbResult<Vec<Episode>> {
     let limit = params.as_ref().and_then(|p| p.limit).unwrap_or(50);
+    let limit_i64 = limit as i64;
 
     #[derive(sqlx::FromRow)]
     struct EpisodeRow {
@@ -630,7 +631,13 @@ pub async fn search_episodes(
          JOIN episodes_fts fts ON e.rowid = fts.rowid
          WHERE episodes_fts MATCH ?
          ORDER BY e.published_at DESC
-         LIMIT ?}"#
+         LIMIT ?"#,
+        query_str,
+        limit_i64
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(rows.into_iter().map(|r| Episode {
         id: r.id,
@@ -742,7 +749,8 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
                     smart_link_id: r.smart_link_id,
                 }).collect(),
         })
-    } else {
+    },
+    None => {
         let now = chrono::Utc::now().to_rfc3339();
         let now2 = now.clone();
         let now3 = now2.clone();
@@ -770,6 +778,7 @@ pub async fn get_queue(pool: &SqlitePool) -> DbResult<Queue> {
         ).execute(pool).await.map_err(|e| e.to_string())?;
         Ok(queue)
     }
+}
 }
 
 pub async fn add_to_queue(
@@ -896,35 +905,18 @@ pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) 
 }
 
 pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
-    #[derive(sqlx::FromRow)]
-    struct PrefRow {
-        user_id: String,
-        default_instance_id: Option<String>,
-        default_format: Format,
-        queue_behavior: QueueBehavior,
-        audio_only_default: i64,
-        auto_download_wifi: i64,
-        sponsorblock_enabled: i64,
-        sponsorblock_categories: String,
-        keyboard_shortcuts_enabled: i64,
-        theme: Theme,
-        cross_device_sync_enabled: i64,
-        updated_at: DateTimeUtc,
-    }
-
-    let row = query_as!(
-        PrefRow,
+    let row = query!(
         r#"SELECT
             user_id,
             default_instance_id,
-            default_format as "default_format: _",
-            queue_behavior as "queue_behavior: _",
+            default_format,
+            queue_behavior,
             audio_only_default,
             auto_download_wifi,
             sponsorblock_enabled,
             sponsorblock_categories,
             keyboard_shortcuts_enabled,
-            theme as "theme: _",
+            theme,
             cross_device_sync_enabled,
             updated_at
          FROM user_preferences WHERE user_id = 'current-user'"#
@@ -937,18 +929,18 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
     let categories: Vec<String> = serde_json::from_str(&row.sponsorblock_categories).unwrap_or_default();
 
     Ok(UserPreferences {
-        user_id: row.user_id,
+        user_id: row.user_id.expect("user_id is not null"),
         default_instance_id: row.default_instance_id,
-        default_format: row.default_format,
-        queue_behavior: row.queue_behavior,
+        default_format: Format::from_str(&row.default_format).unwrap_or(Format::Unified),
+        queue_behavior: QueueBehavior::from_str(&row.queue_behavior).unwrap_or(QueueBehavior::PlayNext),
         audio_only_default: row.audio_only_default != 0,
         auto_download_wifi: row.auto_download_wifi != 0,
         sponsorblock_enabled: row.sponsorblock_enabled != 0,
         sponsorblock_categories: categories,
         keyboard_shortcuts_enabled: row.keyboard_shortcuts_enabled != 0,
-        theme: row.theme,
+        theme: Theme::from_str(&row.theme).unwrap_or(Theme::System),
         cross_device_sync_enabled: row.cross_device_sync_enabled != 0,
-        updated_at: row.updated_at,
+        updated_at: DateTimeUtc::from(row.updated_at),
     })
 }
 
@@ -981,22 +973,7 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
 }
 
 pub async fn get_playback_state(pool: &SqlitePool) -> DbResult<PlaybackState> {
-    #[derive(sqlx::FromRow)]
-    struct PlaybackStateRow {
-        user_id: String,
-        episode_id: Option<String>,
-        position_seconds: f64,
-        duration_seconds: Option<f64>,
-        playback_rate: f64,
-        volume: f64,
-        is_audio_mode: i64,
-        is_pip: i64,
-        current_instance_id: Option<String>,
-        last_updated: DateTimeUtc,
-    }
-
-    let row = query_as!(
-        PlaybackStateRow,
+    let row = query!(
         r#"SELECT
             user_id,
             episode_id,
@@ -1016,7 +993,7 @@ pub async fn get_playback_state(pool: &SqlitePool) -> DbResult<PlaybackState> {
     .ok_or_else(|| "No playback state".to_string())?;
 
     Ok(PlaybackState {
-        user_id: row.user_id,
+        user_id: row.user_id.expect("user_id is not null"),
         episode_id: row.episode_id,
         position_seconds: row.position_seconds,
         duration_seconds: row.duration_seconds,
@@ -1025,7 +1002,7 @@ pub async fn get_playback_state(pool: &SqlitePool) -> DbResult<PlaybackState> {
         is_audio_mode: row.is_audio_mode != 0,
         is_pip: row.is_pip != 0,
         current_instance_id: row.current_instance_id,
-        last_updated: row.last_updated,
+        last_updated: DateTimeUtc::from(row.last_updated),
     })
 }
 
@@ -1236,6 +1213,7 @@ pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbRes
     let matched_by = link.matched_by.to_string();
     let created_at = link.created_at.to_rfc3339();
     let updated_at = link.updated_at.to_rfc3339();
+    let user_confirmed = link.user_confirmed as i64;
 
     query!(
         r#"INSERT INTO episode_links (id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by, title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at)
@@ -1249,7 +1227,7 @@ pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbRes
         link.title_similarity,
         link.date_diff_days,
         link.duration_diff_seconds,
-        link.user_confirmed as i64,
+        user_confirmed,
         created_at,
         updated_at,
     )

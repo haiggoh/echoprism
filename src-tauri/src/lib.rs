@@ -41,6 +41,7 @@ fn main() {
         .setup(|app| {
             // Initialize database
             let db = tauri::async_runtime::block_on(db::Database::new(app.handle()))?;
+            let db_for_sponsorblock = db.clone();
             app.manage(db);
 
             // Initialize instance pool
@@ -60,7 +61,7 @@ fn main() {
             app.manage(podcast);
 
             // Initialize SponsorBlock manager
-            let sponsorblock = sponsorblock::SponsorBlockManager::new(Arc::new(db.clone()));
+            let sponsorblock = sponsorblock::SponsorBlockManager::new(Arc::new(db_for_sponsorblock));
             app.manage(sponsorblock);
 
             // Start background tasks

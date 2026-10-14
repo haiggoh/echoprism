@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id,\n                queue_id,\n                episode_id,\n                position,\n                added_at,\n                source as \"source: _\",\n                play_mode as \"play_mode: _\",\n                smart_link_id\n             FROM queue_items WHERE queue_id = ? ORDER BY position",
+  "query": "SELECT\n                    id,\n                    queue_id,\n                    episode_id,\n                    position,\n                    added_at,\n                    source as \"source: _\",\n                    play_mode as \"play_mode: _\",\n                    smart_link_id\n                 FROM queue_items WHERE queue_id = ? ORDER BY position",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "8b15a848570f4f6e58f867273d079d4c1017fd51f6da749e7e7a827ab222e34c"
+  "hash": "3fe51528aa00de0d7f325ed61a32aa8f73fa864d9e0bd9fbbd70341bd5bdafdc"
 }
