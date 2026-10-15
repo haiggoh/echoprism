@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "replica-architect": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-architect/SKILL.md",
+      "computedHash": "f15a94237590270b9f221f274636529eab9e8d6272a824dd0ccf937b625fcab1"
+    },
+    "replica-backend": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-backend/SKILL.md",
+      "computedHash": "91720124898d0be30745cf89911103613bbf6537de9b6167f3b85b820be21114"
+    },
+    "replica-brand": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-brand/SKILL.md",
+      "computedHash": "991a79db98c05a99f4848c1a9e36b8f2976e59aaf883c76a84d688248402a346"
+    },
+    "replica-build": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-build/SKILL.md",
+      "computedHash": "7b159d6e76f70fd301afe4d5d4c8005b6daef37f7c75f2651311cc56343efbb0"
+    },
+    "replica-deploy": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-deploy/SKILL.md",
+      "computedHash": "fec97153e5deedfa0586261ae9689792e0dc3787ac17f7e75ebe48a89ac8f243"
+    },
+    "replica-design": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-design/SKILL.md",
+      "computedHash": "70b7c6c902e78ae411b08f29513a539a971f554efea62c6b28d51d7d7541d120"
+    },
+    "replica-diff": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-diff/SKILL.md",
+      "computedHash": "b1ecfa7c633410b25c6990b29cec60fda7e0cdd2c70e1b57c96e6447d2790d75"
+    },
+    "replica-entrepreneur": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-entrepreneur/SKILL.md",
+      "computedHash": "9ec8cd4f96b95e4bee80128a4fefee30c5cc476b9843c2f05c07d688a43e996f"
+    },
+    "replica-launch": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-launch/SKILL.md",
+      "computedHash": "e61cd7cd93c4128abdad03f0dac51f2d8bcfb69c689e486d247f5ee1a30abe83"
+    },
+    "replica-recon": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-recon/SKILL.md",
+      "computedHash": "9c735848099741afd85bcc61103b36b8314674998558dd7bb2ce580f92101bff"
+    },
+    "replica-test": {
+      "source": "Jakeschincariol/replica-skill",
+      "sourceType": "github",
+      "skillPath": "replica-test/SKILL.md",
+      "computedHash": "d69b8382d5f377a0e846dcac282efc58e513d65cf1f15149adfddd44ccd22121"
+    }
+  }
+}

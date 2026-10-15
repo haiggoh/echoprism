@@ -1,0 +1,421 @@
+/* EchoPrism v2.0 Design Tokens - Convergence System
+   Generated from tokens.json. replica-brand swaps values; names stay. */
+
+:root {
+  /* Core surfaces */
+  --bg: #0A0E1A;
+  --bg-elevated: #111827;
+  --surface: #1A2332;
+  --surface-hover: #222D3D;
+
+  /* Borders */
+  --border: #6A7AA8;
+  --border-input: #5A6A88;
+
+  /* Text */
+  --text: #E8EDF5;
+  --text-muted: #7A8BA8;
+  --text-subtle: #8A9BC5;
+
+  /* Accent (Unified Stream - Emerald) */
+  --accent: #10F0A8;
+  --accent-soft: rgba(16, 240, 168, 0.12);
+  --accent-glow: rgba(16, 240, 168, 0.4);
+  --on-accent: #0A0E1A;
+
+  /* Semantic */
+  --danger: #FF4444;
+  --danger-soft: rgba(255, 68, 68, 0.12);
+  --success: #10F0A8;
+  --success-soft: rgba(16, 240, 168, 0.12);
+  --warning: #FFB340;
+  --warning-soft: rgba(255, 179, 64, 0.12);
+
+  /* Stream Colors (Convergence) */
+  --stream-audio: #FF8C42;
+  --stream-audio-soft: rgba(255, 140, 66, 0.12);
+  --stream-video: #00D4C8;
+  --stream-video-soft: rgba(0, 212, 200, 0.12);
+  --stream-unified: #10F0A8;
+
+  /* Chromatic Aberration (Input colors = Audio=Warm, Video=Cool) */
+  --ca-warm: #FF8C42;
+  --ca-cool: #00D4C8;
+
+  /* Typography */
+  --font-display: "Space Grotesk", Inter, system-ui, -apple-system, sans-serif;
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Type Scale */
+  --type-xs-size: 12px;
+  --type-xs-line: 16px;
+  --type-xs-weight: 500;
+
+  --type-sm-size: 14px;
+  --type-sm-line: 20px;
+  --type-sm-weight: 400;
+
+  --type-base-size: 16px;
+  --type-base-line: 24px;
+  --type-base-weight: 400;
+
+  --type-lg-size: 20px;
+  --type-lg-line: 28px;
+  --type-lg-weight: 600;
+
+  --type-xl-size: 28px;
+  --type-xl-line: 34px;
+  --type-xl-weight: 700;
+
+  --type-display-size: 40px;
+  --type-display-line: 44px;
+  --type-display-weight: 700;
+
+  /* Spacing (4px base) */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
+  --shadow-pop: 0 12px 32px rgba(16,24,40,.16);
+  --shadow-unified-glow: 0 0 12px var(--stream-unified);
+  --shadow-converge-glow: 0 0 8px var(--stream-unified);
+
+  /* Motion */
+  --motion-instant: 0ms;
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 300ms;
+  --motion-converge: 400ms;
+  --motion-emerge: 400ms;
+  --motion-ease: cubic-bezier(.2,.8,.2,1);
+  --motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Dark mode (default) - already defined above */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #F8FAFC;
+    --bg-elevated: #FFFFFF;
+    --surface: #F1F5F9;
+    --surface-hover: #E2E8F0;
+    --border: #94A3B8;
+    --border-input: #CBD5E1;
+    --text: #0F172A;
+    --text-muted: #64748B;
+    --text-subtle: #475569;
+    --accent: #059669;
+    --accent-soft: rgba(5, 150, 105, 0.12);
+    --accent-glow: rgba(5, 150, 105, 0.4);
+    --on-accent: #FFFFFF;
+    --danger: #DC2626;
+    --danger-soft: rgba(220, 38, 38, 0.12);
+    --success: #059669;
+    --success-soft: rgba(5, 150, 105, 0.12);
+    --warning: #D97706;
+    --warning-soft: rgba(217, 119, 6, 0.12);
+    --stream-audio: #EA580C;
+    --stream-audio-soft: rgba(234, 88, 12, 0.12);
+    --stream-video: #0D9488;
+    --stream-video-soft: rgba(13, 148, 136, 0.12);
+    --stream-unified: #059669;
+    --ca-warm: #EA580C;
+    --ca-cool: #0D9488;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-converge: 0ms;
+    --motion-emerge: 0ms;
+    --motion-spring: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: more) {
+  :root {
+    --border: #FFFFFF;
+    --border-input: #FFFFFF;
+    --text-muted: #CBD5E1;
+    --text-subtle: #94A3B8;
+  }
+}
+
+/* Focus visible - uses convergence glow */
+:focus-visible {
+  outline: none;
+  ring: 2px solid var(--accent);
+  ring-offset: 2px;
+  ring-offset-color: var(--bg);
+  filter:
+    drop-shadow(2px 0 var(--ca-warm))
+    drop-shadow(-2px 0 var(--ca-cool))
+    drop-shadow(0 0 12px var(--stream-unified));
+}
+
+/* Chromatic Aberration utilities */
+.ca-thumbnail {
+  filter:
+    drop-shadow(0.5px 0 var(--ca-warm))
+    drop-shadow(-0.5px 0 var(--ca-cool));
+}
+
+.ca-thumbnail:hover {
+  filter:
+    drop-shadow(1px 0 var(--ca-warm))
+    drop-shadow(-1px 0 var(--ca-cool))
+    drop-shadow(0 0 8px var(--stream-unified));
+}
+
+.ca-thumbnail:focus-visible {
+  filter:
+    drop-shadow(2px 0 var(--ca-warm))
+    drop-shadow(-2px 0 var(--ca-cool))
+    drop-shadow(0 0 12px var(--stream-unified));
+}
+
+.ca-thumbnail.playing {
+  filter: drop-shadow(0 0 12px var(--stream-unified));
+}
+
+/* Convergence animations */
+@keyframes converge-audio {
+  from { opacity: 0; stroke-dashoffset: 100; }
+  to { opacity: 1; stroke-dashoffset: 0; }
+}
+
+@keyframes converge-video {
+  from { opacity: 0; stroke-dashoffset: 100; }
+  to { opacity: 1; stroke-dashoffset: 0; }
+}
+
+@keyframes emerge-unified {
+  from { opacity: 0; stroke-dashoffset: 50; }
+  to { opacity: 1; stroke-dashoffset: 0; }
+}
+
+@keyframes pulse-unified {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.converge-audio {
+  animation: converge-audio var(--motion-converge) var(--motion-spring);
+}
+
+.converge-video {
+  animation: converge-video var(--motion-converge) var(--motion-spring);
+}
+
+.emerge-unified {
+  animation: emerge-unified var(--motion-emerge) var(--motion-spring);
+  animation-delay: 200ms;
+  animation-fill-mode: both;
+}
+
+.pulse-unified {
+  animation: pulse-unified 800ms ease-in-out infinite;
+}
+
+/* Format switch transition */
+.format-switch {
+  transition: all var(--motion-slow) var(--motion-ease);
+}
+
+/* Queue item format indicators */
+.queue-item {
+  border-left: 3px solid var(--stream-unified);
+  transition: border-color var(--motion-base) var(--motion-ease), background var(--motion-base) var(--motion-ease);
+}
+
+.queue-item.playing {
+  border-left-color: var(--stream-unified);
+  background: var(--accent-soft);
+}
+
+.queue-item.audio-mode {
+  border-left-color: var(--stream-audio);
+}
+
+.queue-item.video-mode {
+  border-left-color: var(--stream-video);
+}
+
+/* PrismConvergeToggle */
+.prism-converge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prism-converge-toggle .beam-audio {
+  stroke: var(--stream-audio);
+  animation: converge-audio var(--motion-converge) var(--motion-spring);
+}
+
+.prism-converge-toggle .beam-video {
+  stroke: var(--stream-video);
+  animation: converge-video var(--motion-converge) var(--motion-spring);
+}
+
+.prism-converge-toggle .beam-unified {
+  stroke: var(--stream-unified);
+  animation: emerge-unified var(--motion-emerge) var(--motion-spring);
+  animation-delay: 200ms;
+  animation-fill-mode: both;
+}
+
+.prism-converge-toggle.state-unified .beam-audio,
+.prism-converge-toggle.state-unified .beam-video {
+  opacity: 1;
+}
+
+.prism-converge-toggle.state-unified .beam-unified {
+  opacity: 1;
+}
+
+.prism-converge-toggle.state-audio .beam-video {
+  opacity: 0.2;
+}
+
+.prism-converge-toggle.state-audio .beam-unified {
+  stroke: var(--stream-audio);
+}
+
+.prism-converge-toggle.state-video .beam-audio {
+  opacity: 0.2;
+}
+
+.prism-converge-toggle.state-video .beam-unified {
+  stroke: var(--stream-video);
+}
+
+/* Episode Link Badge */
+.episode-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  border: 1px solid var(--stream-unified);
+  font-size: var(--type-xs-size);
+  line-height: var(--type-xs-line);
+  font-weight: var(--type-xs-weight);
+}
+
+.episode-link .icon-audio { color: var(--stream-audio); }
+.episode-link .icon-video { color: var(--stream-video); }
+.episode-link .icon-link { color: var(--stream-unified); }
+
+/* Button variants */
+.btn {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: all var(--motion-base) var(--motion-ease);
+  position: relative;
+}
+
+.btn-unified {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.btn-unified::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 12px; right: 12px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    var(--stream-audio) 0%,
+    var(--stream-unified) 50%,
+    var(--stream-video) 100%);
+  opacity: 0.6;
+}
+
+.btn-audio {
+  background: transparent;
+  border: 1px solid var(--stream-audio);
+  color: var(--stream-audio);
+}
+
+.btn-audio:hover {
+  background: var(--stream-audio);
+  color: var(--bg);
+}
+
+.btn-video {
+  background: transparent;
+  border: 1px solid var(--stream-video);
+  color: var(--stream-video);
+}
+
+.btn-video:hover {
+  background: var(--stream-video);
+  color: var(--bg);
+}
+
+/* Empty state */
+.empty-state-convergence {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.empty-state-convergence .prism-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.empty-state-convergence .copy {
+  color: var(--text-muted);
+  font-size: var(--type-base-size);
+  line-height: var(--type-base-line);
+}
+
+/* Loading state */
+.loading-convergence .prism-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.loading-convergence .beam-audio {
+  animation: converge-audio var(--motion-converge) var(--motion-spring);
+}
+
+.loading-convergence .beam-video {
+  animation: converge-video var(--motion-converge) var(--motion-spring);
+}
+
+.loading-convergence .beam-unified {
+  animation: emerge-unified var(--motion-emerge) var(--motion-spring);
+  animation-delay: 200ms;
+  animation-fill-mode: both;
+}

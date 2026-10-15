@@ -1,4 +1,4 @@
-interface EmptyStateProps {
+export interface EmptyStateProps {
   variant: 'feed' | 'queue' | 'search' | 'history' | 'downloads' | 'onboarding' | 'channels' | 'smart-links';
   query?: string;
   onAction?: () => void;
