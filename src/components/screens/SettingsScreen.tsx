@@ -1,19 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { instanceCommands, settingsCommands, channelCommands } from '../../hooks/useTauriCommands';
+import { instanceCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
-import { InstanceHealthGrid } from '../settings/InstanceHealthGrid';
-import { useUIStore } from '../../store/slices/uiSlice';
 
 export function SettingsScreen() {
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'shortcuts' | 'about'>('instances');
-  const { data: instances } = useQuery({ queryKey: ['instances'], queryFn: instanceCommands.list });
-  const { data: preferences } = useQuery({ queryKey: ['preferences'], queryFn: settingsCommands.get });
 
-  const tabs = [
+  const tabs: { id: 'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'shortcuts' | 'about'; label: string; icon: string }[] = [
     { id: 'instances', label: 'Instances', icon: 'server' },
     { id: 'preferences', label: 'Preferences', icon: 'settings' },
     { id: 'podcasts', label: 'Podcasts', icon: 'mic' },
@@ -88,8 +83,8 @@ function InstanceSettingsTab() {
   const [newInstanceType, setNewInstanceType] = useState<'invidious' | 'piped'>('invidious');
 
   const addMutation = useMutation({
-    mutationFn: ({ url, type }: { url: string; type: 'invidious' | 'piped' }) => 
-      import('../../hooks/useTauriCommands').then(m => m.instanceCommands.add(url, type)),
+    mutationFn: ({ url, type }: { url: string; type: 'invidious' | 'piped' }) =>
+      instanceCommands.add(url, type),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] });
       setShowAddDialog(false);
@@ -166,7 +161,7 @@ function PreferencesTab() {
   const queryClient = useQueryClient();
 
   const updateMutation = useMutation({
-    mutationFn: (prefs: Partial<any>) => import('../../hooks/useTauriCommands').then(m => m.settingsCommands.update(prefs)),
+    mutationFn: (prefs: Partial<any>) => settingsCommands.update(prefs),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
   });
 

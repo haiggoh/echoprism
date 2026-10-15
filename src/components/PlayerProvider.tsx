@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { usePlayerStore } from '../../store/slices/playerSlice';
-import { useQueueStore } from '../../store/slices/queueSlice';
+import { usePlayerStore } from '../store/slices/playerSlice';
+import { useQueueStore } from '../store/slices/queueSlice';
+import { Episode, PlayMode } from '../types';
 
 interface PlayerContextType {
-  // State
-  currentEpisode: any;
+  currentEpisode: Episode | null;
   isPlaying: boolean;
   isAudioMode: boolean;
   isPip: boolean;
@@ -13,9 +13,7 @@ interface PlayerContextType {
   progress: number;
   currentTime: number;
   duration: number;
-  
-  // Actions
-  play: (episode: any, mode?: 'video' | 'audio' | 'unified') => void;
+  play: (episode: Episode, mode?: PlayMode) => void;
   pause: () => void;
   togglePlay: () => void;
   seek: (position: number) => void;
@@ -27,94 +25,78 @@ interface PlayerContextType {
   previousTrack: () => void;
 }
 
-const PlayerContext = createContext<{
-  currentEpisode: any;
-  isPlaying: boolean;
-  isAudioMode: boolean;
-  isPip: boolean;
-  volume: number;
-  playbackRate: number;
-  progress: number;
-  currentTime: number;
-  duration: number;
-  play: (episode: any, mode?: 'video' | 'audio' | 'unified') => void;
-  pause: () => void;
-  togglePlay: () => void;
-  seek: (position: number) => void;
-  setVolume: (volume: number) => void;
-  setPlaybackRate: (rate: number) => void;
-  setAudioMode: (mode: boolean) => void;
-  togglePip: () => void;
-  nextTrack: () => void;
-  previousTrack: () => void;
-} | undefined>(undefined);
+const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  const { isPlaying, isAudioMode, isPip, volume, playbackRate, setPlaying, setAudioMode, setPip, setVolume, setPlaybackRate } = usePlayerStore();
-  const { items, currentIndex, nextTrack, previousTrack } = useQueueStore();
-  const currentItem = items[currentIndex];
-  const episode = currentItem?.episode;
+  // Zustand actions are stable references, so destructuring them keeps the
+  // callbacks below dependency-stable.
+  const {
+    isPlaying,
+    isAudioMode,
+    isPip,
+    volume,
+    playbackRate,
+    playbackState,
+    setPlaying,
+    setPlaybackState,
+    setAudioMode,
+    setPip,
+    setVolume,
+    setPlaybackRate,
+  } = usePlayerStore();
+  const { items, currentIndex, nextTrack: queueNext, previousTrack: queuePrev } = useQueueStore();
 
-  const play = useCallback((ep: any, mode?: 'video' | 'audio' | 'unified') => {
-    // Play episode
-  }, []);
+  const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
 
-  const pause = useCallback(() => {
-    // Pause
-  }, []);
+  const play = useCallback((ep: Episode, mode?: PlayMode) => {
+    setCurrentEpisode(ep);
+    if (mode) setAudioMode(mode === 'audio');
+    setPlaybackState({
+      episode_id: ep.id,
+      position_seconds: ep.progress_seconds ?? 0,
+      duration_seconds: ep.duration_seconds,
+    });
+    setPlaying(true);
+  }, [setAudioMode, setPlaybackState, setPlaying]);
 
-  const togglePlay = useCallback(() => {
-    // Toggle play/pause
-  }, []);
+  const pause = useCallback(() => setPlaying(false), [setPlaying]);
 
-  const seek = useCallback((position: number) => {
-    // Seek to position
-  }, []);
+  const togglePlay = useCallback(() => setPlaying(!isPlaying), [isPlaying, setPlaying]);
 
-  const setVolume = useCallback((vol: number) => {
-    // Set volume
-  }, []);
+  const seek = useCallback(
+    (position: number) => setPlaybackState({ position_seconds: position }),
+    [setPlaybackState]
+  );
 
-  const setPlaybackRate = useCallback((rate: number) => {
-    // Set playback rate
-  }, []);
+  const togglePip = useCallback(() => setPip(!isPip), [isPip, setPip]);
 
-  const setAudioMode = useCallback((mode: boolean) => {
-    // Set audio mode
-  }, []);
+  const nextTrack = useCallback(() => queueNext(), [queueNext]);
 
-  const togglePip = useCallback(() => {
-    // Toggle PiP
-  }, []);
+  const previousTrack = useCallback(() => queuePrev(), [queuePrev]);
 
-  const nextTrack = useCallback(() => {
-    // Next track
-  }, []);
+  const position = playbackState?.position_seconds ?? 0;
+  const duration = playbackState?.duration_seconds ?? 0;
 
-  const previousTrack = useCallback(() => {
-    // Previous track
-  }, []);
-
-  const value = {
-    currentEpisode: null,
-    isPlaying: false,
-    isAudioMode: false,
-    isPip: false,
-    volume: 1,
-    playbackRate: 1,
-    progress: 0,
-    currentTime: 0,
-    duration: 0,
-    play: () => {},
-    pause: () => {},
-    togglePlay: () => {},
-    seek: () => {},
-    setVolume: () => {},
-    setPlaybackRate: () => {},
-    setAudioMode: () => {},
-    togglePip: () => {},
-    nextTrack: () => {},
-    previousTrack: () => {},
+  const value: PlayerContextType = {
+    currentEpisode: currentEpisode ?? items[currentIndex]?.episode ?? null,
+    isPlaying,
+    isAudioMode,
+    isPip,
+    volume,
+    playbackRate,
+    progress: duration > 0 ? (position / duration) * 100 : 0,
+    currentTime: position,
+    duration,
+    play,
+    pause,
+    togglePlay,
+    seek,
+    setVolume,
+    setPlaybackRate,
+    setAudioMode,
+    togglePip,
+    nextTrack,
+    previousTrack,
   };
 
   return (

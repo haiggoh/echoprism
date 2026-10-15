@@ -132,6 +132,12 @@ export interface Episode {
   is_downloaded: boolean;
   download_quality?: string;
   progress_seconds: number;
+  smart_link_id?: string;
+  channel?: {
+    id: string;
+    title: string;
+    thumbnail_url?: string;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -185,6 +191,7 @@ export interface QueueItem {
   source: QueueSource;
   play_mode: PlayMode;
   smart_link_id?: string;
+  episode?: Episode;
 }
 
 // ============================
@@ -303,7 +310,7 @@ export interface KeyboardShortcut {
 // API RESPONSES
 // ============================
 
-export interface InstanceHealth {
+export interface InstanceHealthReport {
   id: string;
   url: string;
   type: 'invidious' | 'piped';
@@ -333,10 +340,6 @@ export interface EpisodeWithChannel extends Episode {
 // ============================
 // UI STATE
 // ============================
-
-export type PlayMode = 'video' | 'audio' | 'unified';
-export type QueueSource = 'feed' | 'search' | 'manual' | 'history' | 'smart_link';
-export type PlayModeType = 'video' | 'audio' | 'unified';
 
 export interface UIState {
   sidebarOpen: boolean;

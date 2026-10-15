@@ -5,7 +5,7 @@ interface InstanceHealthIndicatorProps {
 }
 
 export function InstanceHealthIndicator({ health, latencyMs, className = '' }: InstanceHealthIndicatorProps) {
-  const healthConfig = {
+  const healthConfig: Record<string, { color: string; label: string; pulse: boolean; slow?: boolean }> = {
     healthy: { color: 'text-success', label: 'Healthy', pulse: true },
     degraded: { color: 'text-warning', label: 'Degraded', pulse: true, slow: true },
     failed: { color: 'text-danger', label: 'Failed', pulse: false },

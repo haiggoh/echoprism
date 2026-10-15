@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { useUIStore } from '../../store/slices/uiSlice';
-import { useQueueStore } from '../../store/slices/queueSlice';
+import { useUIStore } from '../store/slices/uiSlice';
+import { useQueueStore } from '../store/slices/queueSlice';
 
 const navItems = [
   { path: '/feed', label: 'Feed', icon: 'home' },
@@ -13,8 +12,8 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { sidebarOpen, sidebarCollapsed, toggleSidebar, setSidebarCollapsed, currentRoute } = useUIStore();
-  const { audioOnlyMode } = useQueueStore();
+  const { sidebarOpen, sidebarCollapsed, setSidebarCollapsed } = useUIStore();
+  const { audioOnlyMode, setAudioOnlyMode } = useQueueStore();
 
   if (!sidebarOpen && !sidebarCollapsed) return null;
 
@@ -40,7 +39,7 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={() => {}}
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
@@ -106,8 +105,8 @@ export function Sidebar() {
           <span className="text-sm text-text-muted">Audio only mode</span>
           <input
             type="checkbox"
-            checked={false}
-            onChange={() => {}}
+            checked={audioOnlyMode}
+            onChange={(e) => setAudioOnlyMode(e.target.checked)}
             className="w-4 h-4 accent-accent rounded border-border"
           />
         </label>

@@ -1,59 +1,81 @@
 @import "tailwindcss";
 
-@theme inline {
-  /* Colors are defined in tailwind.config.ts */
+/* EchoPrism theme — Tailwind v4 generates utilities from @theme tokens.
+   Values follow the convergence design system (replica/design/tokens.css):
+   Amber (audio) + Cyan (video) converging to Emerald (unified). */
+@theme {
+  /* Core surfaces */
+  --color-bg: #0A0E1A;
+  --color-bg-elevated: #111827;
+  --color-bg-overlay: rgba(10, 14, 26, 0.9);
+  --color-surface: #1A2332;
+  --color-surface-hover: #223045;
+
+  /* Borders */
+  --color-border: #2A3648;
+  --color-border-input: #3A4658;
+  --color-border-strong: #3A4658;
+
+  /* Text */
+  --color-text: #E8EDF5;
+  --color-text-muted: #7A8BA8;
+  --color-text-inverse: #0A0E1A;
+  --color-text-disabled: #4A5A6A;
+
+  /* Accent (Unified Stream - Emerald) */
+  --color-accent: #10F0A8;
+  --color-accent-hover: #00D890;
+  --color-accent-soft: rgba(16, 240, 168, 0.12);
+
+  /* Streams */
+  --color-audio: #FF8C42;
+  --color-audio-hover: #FF7020;
+  --color-audio-soft: rgba(255, 140, 66, 0.12);
+  --color-video: #00D4C8;
+  --color-video-hover: #00B8AC;
+  --color-video-soft: rgba(0, 212, 200, 0.12);
+  --color-stream-audio: #FF8C42;
+  --color-stream-video: #00D4C8;
+  --color-stream-unified: #10F0A8;
+  --color-stream-audio-soft: rgba(255, 140, 66, 0.12);
+  --color-stream-video-soft: rgba(0, 212, 200, 0.12);
+
+  /* Semantic */
+  --color-danger: #EF4444;
+  --color-danger-hover: #DC2626;
+  --color-danger-soft: rgba(239, 68, 68, 0.12);
+  --color-success: #10B981;
+  --color-success-soft: rgba(16, 185, 129, 0.12);
+  --color-warning: #F59E0B;
+  --color-warning-soft: rgba(245, 158, 11, 0.12);
+
+  /* Focus, chromatic aberration, glows */
+  --color-focus-ring: #10F0A8;
+  --color-ca-warm: #FF8C42;
+  --color-ca-cool: #00D4C8;
+  --color-unified-glow: rgba(16, 240, 168, 0.4);
+  --color-unified-glow-strong: rgba(16, 240, 168, 0.6);
+  --color-audio-glow: rgba(255, 140, 66, 0.5);
+  --color-video-glow: rgba(0, 212, 200, 0.5);
+
+  /* Typography */
+  --font-display: "Space Grotesk", Inter, system-ui, -apple-system, sans-serif;
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Elevation */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-pop: 0 4px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 @layer base {
-  :root {
-    --color-bg: #0A0E1A;
-    --color-bg-elevated: #111827;
-    --color-bg-overlay: rgba(10, 14, 26, 0.9);
-    --color-surface: #1A2332;
-    --color-surface-hover: #223045;
-    --color-border: #2A3648;
-    --color-border-input: #3A4658;
-    --color-border-strong: #3A4658;
-    --color-text: #E8EDF5;
-    --color-text-muted: #7A8BA8;
-    --color-text-inverse: #0A0E1A;
-    --color-text-disabled: #4A5A6A;
-    --color-accent: #10F0A8;
-    --color-accent-hover: #00D890;
-    --color-accent-soft: rgba(16, 240, 168, 0.12);
-    --color-audio: #FF8C42;
-    --color-audio-hover: #FF7020;
-    --color-audio-soft: rgba(255, 140, 66, 0.12);
-    --color-video: #00D4C8;
-    --color-video-hover: #00B8AC;
-    --color-video-soft: rgba(0, 212, 200, 0.12);
-    --color-danger: #EF4444;
-    --color-danger-hover: #DC2626;
-    --color-danger-soft: rgba(239, 68, 68, 0.12);
-    --color-success: #10B981;
-    --color-success-soft: rgba(16, 185, 129, 0.12);
-    --color-warning: #F59E0B;
-    --color-warning-soft: rgba(245, 158, 11, 0.12);
-    --color-focus-ring: #10F0A8;
-    --color-ca-warm: #FF8C42;
-    --color-ca-cool: #00D4C8;
-    --color-unified-glow: rgba(16, 240, 168, 0.4);
-    --color-unified-glow-strong: rgba(16, 240, 168, 0.6);
-    --color-ca-warm: #FF8C42;
-    --color-ca-cool: #00D4C8;
-    --color-unified-glow: rgba(16, 240, 168, 0.4);
-    --color-unified-glow-strong: rgba(16, 240, 168, 0.6);
-    --color-audio-glow: rgba(255, 140, 66, 0.5);
-    --color-video-glow: rgba(0, 212, 200, 0.5);
-  }
-
   * {
     @apply border-border;
   }
 
   body {
     @apply bg-bg text-text antialiased;
-    font-family: var(--font-ui);
+    font-family: var(--font-sans);
   }
 
   html {
@@ -104,32 +126,32 @@
 }
 
 @layer components {
-  /* Convergence beam animation */
+  /* Convergence beam animations */
   .convergence-beam {
-    @apply animate-beam-travel;
+    animation: beam-travel 600ms linear infinite;
   }
 
   .converge-animation {
-    @apply animate-converge;
+    animation: converge 800ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
   .emerge-animation {
-    @apply animate-emerge;
+    animation: emerge 600ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
   .pulse-glow {
-    @apply animate-pulse-glow;
+    animation: pulse-glow 2s ease-in-out infinite;
   }
 
   .ripple-animation {
-    @apply animate-ripple;
+    animation: ripple 1.2s ease-out infinite;
   }
 
   .converge-spring {
     transition-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
-  /* Chromatic aberration utilities */
+  /* Chromatic aberration utilities (warm = audio stream, cool = video stream) */
   .ca-subtle {
     filter: drop-shadow(0.5px 0 var(--color-ca-warm)) drop-shadow(-0.5px 0 var(--color-ca-cool));
   }
@@ -155,13 +177,38 @@
     }
   }
 
-  /* Convergence beam SVG animations */
-  .beam-travel {
-    animation: beam-travel 600ms linear infinite;
+  /* Convergence loader (spinning stream ring + prism core) */
+  .convergence-loader {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .converge-spring {
-    transition-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  .convergence-loader-beams {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: conic-gradient(
+      from 0deg,
+      var(--color-stream-audio),
+      var(--color-stream-unified),
+      var(--color-stream-video),
+      var(--color-stream-audio)
+    );
+    opacity: 0.85;
+    animation: loader-spin 1.2s linear infinite;
+  }
+
+  .convergence-loader-prism {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    background: var(--color-bg-elevated);
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    animation: loader-pulse 1.2s ease-in-out infinite;
   }
 }
 
@@ -172,17 +219,6 @@
 
   .animate-in {
     animation: animate-in 200ms ease-out;
-  }
-
-  @keyframes animate-in {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
   }
 
   .scrollbar-hide {
@@ -203,5 +239,87 @@
 
   .ca-disable {
     filter: none !important;
+  }
+}
+
+/* Keyframes for the convergence motion system */
+@keyframes beam-travel {
+  from {
+    opacity: 0;
+    stroke-dashoffset: 100;
+  }
+  to {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes converge {
+  from {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes emerge {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
   }
 }

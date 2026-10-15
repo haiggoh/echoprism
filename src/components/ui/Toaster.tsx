@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 interface Toast {
   id: string;
@@ -6,12 +6,6 @@ interface Toast {
   description?: string;
   variant?: 'default' | 'success' | 'warning' | 'danger';
   duration?: number;
-}
-
-interface ToastState {
-  toasts: Toast[];
-  addToast: (toast: Omit<Toast, 'id'>) => void;
-  removeToast: (id: string) => void;
 }
 
 let toastStore: { toasts: Toast[] } = { toasts: [] };
@@ -23,20 +17,34 @@ function notify() {
 
 export function useToasts() {
   const [toasts, setToasts] = useState<Toast[]>(toastStore.toasts);
-  
+
+  useEffect(() => {
+    // Subscribe to the module-level toast store so this hook re-renders on notify()
+    const listener = () => setToasts([...toastStore.toasts]);
+    listeners.push(listener);
+    return () => {
+      listeners = listeners.filter(l => l !== listener);
+    };
+  }, []);
+
   const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).slice(2);
     const newToast = { ...toast, id };
     toastStore.toasts = [...toastStore.toasts, newToast];
     notify();
+    // Auto-dismiss unless the caller chose a duration
+    setTimeout(() => {
+      toastStore.toasts = toastStore.toasts.filter(t => t.id !== id);
+      notify();
+    }, toast.duration ?? 5000);
   }, []);
-  
+
   const removeToast = useCallback((id: string) => {
     toastStore.toasts = toastStore.toasts.filter(t => t.id !== id);
     notify();
   }, []);
-  
-  return { toasts: toastStore.toasts, addToast, removeToast };
+
+  return { toasts, addToast, removeToast };
 }
 
 export function Toaster() {
@@ -80,5 +88,3 @@ function ToastItem({ toast, onClose }: { toast: { id: string; title: string; des
     </div>
   );
 }
-
-export { useToasts };

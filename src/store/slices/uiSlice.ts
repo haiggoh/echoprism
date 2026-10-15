@@ -1,4 +1,3 @@
-import { createSlice, PayloadAction } from 'zustand';
 import { create } from 'zustand';
 import { ViewMode, UIState } from '../../types';
 
@@ -21,7 +20,7 @@ const initialState: UIState = {
   sidebarCollapsed: false,
 };
 
-export const useUIStore = create<UIStore>()((set, get) => ({
+export const useUIStore = create<UIStore>()((set) => ({
   ...initialState,
   setViewMode: (mode) => set({ 
     currentRoute: mode === 'feed' ? '/feed' : 

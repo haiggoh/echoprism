@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { PlaybackState, PlayMode } from '../../types';
+import { PlaybackState } from '../../types';
 
 interface PlayerState {
   playbackState: PlaybackState | null;
@@ -22,17 +22,6 @@ interface PlayerState {
   setInstance: (instanceId?: string) => void;
   reset: () => void;
 }
-
-const initialPlaybackState: PlaybackState = {
-  user_id: '',
-  position_seconds: 0,
-  duration_seconds: 0,
-  playback_rate: 1.0,
-  volume: 1.0,
-  is_audio_mode: false,
-  is_pip: false,
-  last_updated: new Date().toISOString(),
-};
 
 export const usePlayerStore = create<PlayerState>((set) => ({
   playbackState: null,
@@ -68,13 +57,13 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 }));
 
 // Selectors
-export const selectIsPlaying = (state) => state.isPlaying;
-export const selectIsAudioMode = (state) => state.isAudioMode;
-export const selectVolume = (state) => state.volume;
-export const selectPlaybackRate = (state) => state.playbackRate;
-export const selectCurrentPosition = (state) => state.playbackState?.position_seconds ?? 0;
-export const selectDuration = (state) => state.playbackState?.duration_seconds ?? 0;
-export const selectProgress = (state) => {
+export const selectIsPlaying = (state: PlayerState) => state.isPlaying;
+export const selectIsAudioMode = (state: PlayerState) => state.isAudioMode;
+export const selectVolume = (state: PlayerState) => state.volume;
+export const selectPlaybackRate = (state: PlayerState) => state.playbackRate;
+export const selectCurrentPosition = (state: PlayerState) => state.playbackState?.position_seconds ?? 0;
+export const selectDuration = (state: PlayerState) => state.playbackState?.duration_seconds ?? 0;
+export const selectProgress = (state: PlayerState) => {
   const { playbackState } = state;
   if (!playbackState || !playbackState.duration_seconds) return 0;
   return (playbackState.position_seconds / playbackState.duration_seconds) * 100;

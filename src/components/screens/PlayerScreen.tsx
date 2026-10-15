@@ -1,19 +1,35 @@
 import { useParams } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
-import { MiniPlayer } from '../player/MiniPlayer';
+import { usePlayer } from '../PlayerProvider';
+import { useQueueStore } from '../../store/slices/queueSlice';
+import { useConvergence } from '../../hooks/useConvergence';
+import { Episode } from '../../types';
 
 export function PlayerScreen() {
   const { episodeId } = useParams<{ episodeId: string }>();
-  const [episode, setEpisode] = useState<any>(null);
+  const [episode, setEpisode] = useState<Episode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [playMode, setPlayMode] = useState<'unified' | 'audio' | 'video'>('unified');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [isPip, setIsPip] = useState(false);
+  const {
+    isPlaying,
+    isAudioMode,
+    isPip,
+    volume,
+    currentTime,
+    duration,
+    togglePlay,
+    seek,
+    setVolume,
+    setAudioMode,
+    togglePip,
+    nextTrack,
+    previousTrack,
+  } = usePlayer();
+  const { shuffle, setShuffle, repeatMode, setRepeatMode } = useQueueStore();
+  const { state, setMode } = useConvergence();
+  const progressBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (episodeId) {
@@ -34,10 +50,32 @@ export function PlayerScreen() {
     }
   };
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds?: number) => {
+    if (!seconds) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSeek = (e: MouseEvent<HTMLDivElement>) => {
+    if (duration <= 0 || !progressBarRef.current) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    seek(ratio * duration);
+  };
+
+  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const cycleRepeat = () => {
+    setRepeatMode(repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off');
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen();
+    }
   };
 
   if (isLoading) {
@@ -75,7 +113,7 @@ export function PlayerScreen() {
           </div>
         ) : (
           <>
-            {/* Video element would go here */}
+            {/* Media element wired in the playback engine milestone */}
             <div className="absolute inset-0 flex items-center justify-center bg-black">
               <div className="text-center p-8">
                 <p className="text-text-muted">Video player implementation in progress</p>
@@ -84,13 +122,13 @@ export function PlayerScreen() {
                 </p>
               </div>
             </div>
-            
-            {/* Picture-in-Picture placeholder */}
+
+            {/* Picture-in-Picture */}
             <div className="absolute bottom-4 right-4 z-10">
-              <button 
-                onClick={() => {}}
+              <button
+                onClick={togglePip}
                 className="btn-ghost btn-sm"
-                aria-label="Picture in Picture"
+                aria-label={isPip ? 'Exit Picture in Picture' : 'Picture in Picture'}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path>
@@ -107,11 +145,15 @@ export function PlayerScreen() {
         {/* Progress Bar */}
         <div className="mb-4">
           <div className="flex items-center gap-3 mb-2">
-            <span className="text-sm text-text-muted w-12 text-right">{'0:00'}</span>
-            <div className="flex-1 h-1.5 bg-surface rounded-full relative overflow-hidden">
-              <div 
+            <span className="text-sm text-text-muted w-12 text-right">{formatTime(currentTime)}</span>
+            <div
+              ref={progressBarRef}
+              className="flex-1 h-1.5 bg-surface rounded-full relative overflow-hidden cursor-pointer"
+              onClick={handleSeek}
+            >
+              <div
                 className="bg-accent h-full rounded-full transition-all duration-100"
-                style={{ width: `${progress}%` }}
+                style={{ width: `${progressPct}%` }}
               />
             </div>
             <span className="text-sm text-text-muted w-12">{formatTime(duration)}</span>
@@ -120,10 +162,10 @@ export function PlayerScreen() {
 
         {/* Main Controls */}
         <div className="flex items-center justify-center gap-6 mb-4">
-          <button 
+          <button
             className="btn-ghost p-2"
             aria-label="Shuffle"
-            onClick={() => {}}
+            onClick={() => setShuffle(!shuffle)}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="16 3 22 3 22 9"></polyline>
@@ -132,11 +174,11 @@ export function PlayerScreen() {
               <line x1="21" y1="21" x2="9" y2="9"></line>
             </svg>
           </button>
-          
-          <button 
+
+          <button
             className="btn-ghost p-2"
             aria-label="Previous"
-            onClick={() => {}}
+            onClick={previousTrack}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="19 20 9 12 19 4 19 20"></polygon>
@@ -144,9 +186,9 @@ export function PlayerScreen() {
             </svg>
           </button>
 
-          <button 
+          <button
             className={`btn-unified p-3 rounded-full ${isPlaying ? 'bg-danger' : ''}`}
-            onClick={() => {}}
+            onClick={togglePlay}
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
@@ -161,10 +203,10 @@ export function PlayerScreen() {
             )}
           </button>
 
-          <button 
+          <button
             className="btn-ghost p-2"
             aria-label="Next"
-            onClick={() => {}}
+            onClick={nextTrack}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 4 15 12 5 20 5 4"></polygon>
@@ -172,10 +214,10 @@ export function PlayerScreen() {
             </svg>
           </button>
 
-          <button 
+          <button
             className="btn-ghost p-2"
-            aria-label="Repeat"
-            onClick={() => {}}
+            aria-label={`Repeat: ${repeatMode}`}
+            onClick={cycleRepeat}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="1 4 1 10 7 10"></polyline>
@@ -188,14 +230,14 @@ export function PlayerScreen() {
         {/* Secondary Controls */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <PrismConvergeToggle mode="unified" onModeChange={() => {}} />
-            
+            <PrismConvergeToggle mode={state.mode} onModeChange={setMode} />
+
             <div className="flex items-center gap-2 ml-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={false}
-                  onChange={() => {}}
+                  checked={isAudioMode}
+                  onChange={(e) => setAudioMode(e.target.checked)}
                   className="w-4 h-4 accent-accent rounded border-border"
                 />
                 <span className="text-sm text-text-muted">Audio only</span>
@@ -210,22 +252,22 @@ export function PlayerScreen() {
               </svg>
             </button>
             <div className="w-32">
-              <input 
-                type="range" 
-                min="0" 
-                max="1" 
-                step="0.1" 
-                value={1}
-                onChange={() => {}}
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={volume}
+                onChange={(e) => setVolume(parseFloat(e.target.value))}
                 className="w-full h-1.5 bg-surface rounded-full appearance-none accent-accent"
               />
             </div>
-            <button className="btn-ghost p-2" aria-label="Fullscreen">
+            <button className="btn-ghost p-2" aria-label="Fullscreen" onClick={toggleFullscreen}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3m0-18V9a2 2 0 0 1 2-2h3"></path>
               </svg>
             </button>
-            <button className="btn-ghost p-2" aria-label="Picture in Picture">
+            <button className="btn-ghost p-2" aria-label="Picture in Picture" onClick={togglePip}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path>
                 <rect x="1" y="1" width="10" height="10" rx="1"></rect>
@@ -236,10 +278,4 @@ export function PlayerScreen() {
       </div>
     </div>
   );
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }

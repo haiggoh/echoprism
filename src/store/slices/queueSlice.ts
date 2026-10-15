@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Queue, QueueItem, PlayMode, QueueSource } from '../../types';
+import { Queue, QueueItem } from '../../types';
 
 interface QueueState {
   queue: Queue | null;
@@ -124,9 +124,9 @@ export const useQueueStore = create<QueueState>((set, get) => ({
 }));
 
 // Selectors
-export const selectCurrentItem = (state) => state.items[state.currentIndex] || null;
-export const selectQueueItems = (state) => state.items;
-export const selectCurrentIndex = (state) => state.currentIndex;
-export const selectRepeatMode = (state) => state.repeatMode;
-export const selectShuffle = (state) => state.shuffle;
-export const selectAudioOnlyMode = (state) => state.audioOnlyMode;
+export const selectCurrentItem = (state: QueueState) => state.items[state.currentIndex] || null;
+export const selectQueueItems = (state: QueueState) => state.items;
+export const selectCurrentIndex = (state: QueueState) => state.currentIndex;
+export const selectRepeatMode = (state: QueueState) => state.repeatMode;
+export const selectShuffle = (state: QueueState) => state.shuffle;
+export const selectAudioOnlyMode = (state: QueueState) => state.audioOnlyMode;

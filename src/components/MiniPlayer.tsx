@@ -1,14 +1,23 @@
 import { useState } from 'react';
-import { useQueueStore } from '../../store/slices/queueSlice';
-import { usePlayerStore } from '../../store/slices/playerSlice';
-import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
-import { Button } from '../ui/Button';
+import { useQueueStore } from '../store/slices/queueSlice';
+import { usePlayerStore } from '../store/slices/playerSlice';
+import { PrismConvergeToggle } from './player/PrismConvergeToggle';
+import { useConvergence } from '../hooks/useConvergence';
 
 export function MiniPlayer() {
-  const { items, currentIndex, isAudioMode, setAudioOnlyMode } = useQueueStore();
-  const { isPlaying, volume, playbackRate, isPip, setAudioMode, setPlaying, setPip, setVolume, setPlaybackRate } = usePlayerStore();
+  const {
+    items,
+    currentIndex,
+    shuffle,
+    setShuffle,
+    audioOnlyMode,
+    setAudioOnlyMode,
+    nextTrack,
+    previousTrack,
+  } = useQueueStore();
+  const { isPlaying, volume, playbackState, setPlaying, setVolume } = usePlayerStore();
+  const { state, setMode } = useConvergence();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showVolume, setShowVolume] = useState(false);
 
   const currentItem = items[currentIndex];
   const episode = currentItem?.episode;
@@ -17,17 +26,19 @@ export function MiniPlayer() {
     return null;
   }
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds?: number) => {
+    if (!seconds) return '';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const collapsedHeight = 72;
-  const expandedHeight = 200;
+  const position = playbackState?.position_seconds ?? 0;
+  const duration = playbackState?.duration_seconds ?? episode.duration_seconds ?? 0;
+  const progressPct = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
-    <div 
+    <div
       className={`fixed bottom-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out bg-bg-elevated border-t border-border ${
         isExpanded ? 'h-[200px]' : 'h-18'
       }`}
@@ -38,24 +49,24 @@ export function MiniPlayer() {
       <div className="h-18 flex items-center justify-between px-4">
         {/* Episode info */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <img 
-            src={currentItem?.episode?.thumbnail_url || ''} 
-            alt="" 
+          <img
+            src={episode.thumbnail_url || ''}
+            alt=""
             className="w-12 h-12 rounded-md object-cover flex-shrink-0"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
           <div className="min-w-0 flex-1" aria-hidden="true">
-            <p className="font-medium text-text truncate">{currentItem?.episode?.title || 'Unknown'}</p>
-            <p className="text-sm text-text-muted truncate">{currentItem?.episode?.channel?.title || 'Unknown channel'}</p>
+            <p className="font-medium text-text truncate">{episode.title || 'Unknown'}</p>
+            <p className="text-sm text-text-muted truncate">{episode.channel?.title || 'Unknown channel'}</p>
           </div>
         </div>
 
         {/* Center controls */}
         <div className="flex items-center gap-4">
-          <button 
+          <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
             aria-label="Shuffle"
-            onClick={() => {}}
+            onClick={() => setShuffle(!shuffle)}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="16 3 22 3 22 9"></polyline>
@@ -65,10 +76,10 @@ export function MiniPlayer() {
             </svg>
           </button>
 
-          <button 
+          <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
             aria-label="Previous"
-            onClick={() => {}}
+            onClick={previousTrack}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="19 20 9 12 19 4 19 20"></polygon>
@@ -76,9 +87,9 @@ export function MiniPlayer() {
             </svg>
           </button>
 
-          <button 
+          <button
             className={`p-3 rounded-full transition-all ${isPlaying ? 'bg-danger' : 'bg-accent'} text-text-inverse`}
-            onClick={() => {}}
+            onClick={() => setPlaying(!isPlaying)}
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
@@ -93,10 +104,10 @@ export function MiniPlayer() {
             )}
           </button>
 
-          <button 
+          <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
             aria-label="Next"
-            onClick={() => {}}
+            onClick={nextTrack}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 4 15 12 5 20 5 4"></polygon>
@@ -107,13 +118,13 @@ export function MiniPlayer() {
 
         {/* Right side: PrismConvergeToggle + Audio toggle + Volume */}
         <div className="flex items-center gap-4">
-          <PrismConvergeToggle mode="unified" onModeChange={() => {}} size="sm" />
-          
+          <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="sm" />
+
           <label className="flex items-center gap-2 cursor-pointer hidden md:flex">
             <input
               type="checkbox"
-              checked={false}
-              onChange={() => {}}
+              checked={audioOnlyMode}
+              onChange={(e) => setAudioOnlyMode(e.target.checked)}
               className="w-4 h-4 accent-accent rounded border-border"
               aria-label="Audio only mode"
             />
@@ -121,35 +132,32 @@ export function MiniPlayer() {
           </label>
 
           {/* Volume */}
-          <div className="relative">
-            <button 
+          <div className="relative group">
+            <button
               className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-              onMouseEnter={() => {}}
-              onMouseLeave={() => {}}
               aria-label="Volume"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
               </svg>
             </button>
-            <div className={`absolute bottom-full right-0 mb-2 w-32 opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible`}>
-              <input 
-                type="range" 
-                min="0" 
-                max="1" 
-                step="0.1" 
-                value={1}
-                onChange={() => {}}
+            <div className="absolute bottom-full right-0 mb-2 w-32 opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={volume}
+                onChange={(e) => setVolume(parseFloat(e.target.value))}
                 className="w-full h-1.5 bg-surface rounded-full appearance-none accent-accent"
-                orient="vertical"
               />
             </div>
           </div>
 
           {/* Expand button */}
-          <button 
+          <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-            onClick={() => {}}
+            onClick={() => setIsExpanded(!isExpanded)}
             aria-label="Expand mini player"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -164,20 +172,20 @@ export function MiniPlayer() {
         <div className="px-4 py-2 border-t border-border">
           {/* Progress bar with time */}
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-sm text-text-muted w-12 text-right">0:00</span>
+            <span className="text-sm text-text-muted w-12 text-right">{formatTime(position)}</span>
             <div className="flex-1 h-1.5 bg-surface rounded-full relative overflow-hidden">
-              <div 
+              <div
                 className="bg-accent h-full rounded-full transition-all duration-100"
-                style={{ width: `${0}%` }}
+                style={{ width: `${progressPct}%` }}
               />
             </div>
-            <span className="text-sm text-text-muted w-12 text-right">0:00</span>
+            <span className="text-sm text-text-muted w-12 text-right">{formatTime(duration)}</span>
           </div>
 
           {/* Expanded controls */}
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Shuffle">
+              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Shuffle" onClick={() => setShuffle(!shuffle)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="16 3 22 3 22 9"></polyline>
                   <polyline points="8 21 2 21 2 15"></polyline>
@@ -185,24 +193,31 @@ export function MiniPlayer() {
                   <line x1="21" y1="21" x2="9" y2="9"></line>
                 </svg>
               </button>
-              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Previous">
+              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Previous" onClick={previousTrack}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polygon points="19 20 9 12 19 4 19 20"></polygon>
                   <line x1="5" y1="19" x2="5" y2="5"></line>
                 </svg>
               </button>
-              <button className="p-3 rounded-full bg-accent text-text-inverse" aria-label="Play">
+              <button className="p-3 rounded-full bg-accent text-text-inverse" aria-label="Play" onClick={() => setPlaying(!isPlaying)}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  {isPlaying ? (
+                    <>
+                      <rect x="6" y="4" width="4" height="16"></rect>
+                      <rect x="14" y="4" width="4" height="16"></rect>
+                    </>
+                  ) : (
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  )}
                 </svg>
               </button>
-              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Next">
+              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Next" onClick={nextTrack}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polygon points="5 4 15 12 5 20 5 4"></polygon>
                   <line x1="19" y1="5" x2="19" y2="19"></line>
                 </svg>
               </button>
-              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Repeat">
+              <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Repeat" onClick={() => {}}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="1 4 1 10 7 10"></polyline>
                   <polyline points="23 20 23 14 17 14"></polyline>
@@ -212,14 +227,14 @@ export function MiniPlayer() {
             </div>
 
             <div className="flex items-center gap-4">
-              <PrismConvergeToggle mode="unified" onModeChange={() => {}} size="sm" />
-              
+              <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="sm" />
+
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={false}
-                    onChange={() => {}}
+                    checked={audioOnlyMode}
+                    onChange={(e) => setAudioOnlyMode(e.target.checked)}
                     className="w-4 h-4 accent-accent rounded border-border"
                     aria-label="Audio only mode"
                   />
@@ -233,13 +248,13 @@ export function MiniPlayer() {
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                   </svg>
                 </button>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.1" 
-                  value={1}
-                  onChange={() => {}}
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
                   className="w-32 h-1.5 bg-surface rounded-full appearance-none accent-accent opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible"
                 />
               </div>

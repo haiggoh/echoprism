@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 
 interface PrismConvergeToggleProps {
   mode: 'unified' | 'audio' | 'video';
@@ -9,12 +9,11 @@ interface PrismConvergeToggleProps {
   loading?: boolean;
 }
 
-export function PrismConvergeToggle({ 
-  mode, 
-  onModeChange, 
-  size = 'md', 
-  disabled = false,
-  loading = false 
+export function PrismConvergeToggle({
+  mode,
+  onModeChange,
+  size = 'md',
+  disabled = false
 }: PrismConvergeToggleProps) {
   const [isConverging, setIsConverging] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -29,7 +28,9 @@ export function PrismConvergeToggle({
 
   // Trigger convergence animation on mode change
   useEffect(() => {
-    // Trigger convergence animation
+    setIsConverging(true);
+    const timer = setTimeout(() => setIsConverging(false), 800);
+    return () => clearTimeout(timer);
   }, [mode]);
 
   const beamPath = (x1: number, y1: number, x2: number, y2: number, curve: number) => {
@@ -37,7 +38,7 @@ export function PrismConvergeToggle({
   };
 
   return (
-    <div className="relative inline-flex items-center justify-center" role="group" aria-label="Format toggle">
+    <div className={`relative inline-flex items-center justify-center ${isConverging ? 'converging' : ''}`} role="group" aria-label="Format toggle">
       <svg 
         ref={svgRef}
         width={config.width} 
@@ -206,7 +207,7 @@ export function PrismConvergeToggle({
         ))}
       </div>
 
-      <style jsx>{`
+      <style>{`
         .beam-visible {
           opacity: 1;
         }
@@ -233,9 +234,4 @@ export function PrismConvergeToggle({
       </style>
     </div>
   );
-}
-
-// Fallback without framer-motion
-function AnimatePresence({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
 }

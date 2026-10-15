@@ -1,11 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
-import { useUIStore } from '../../store/slices/uiSlice';
 import { instanceCommands } from '../../hooks/useTauriCommands';
 
 export function OnboardingScreen() {
   const [step, setStep] = useState(1);
-  const { setViewMode } = useUIStore();
+  const navigate = useNavigate();
   const [instanceUrl, setInstanceUrl] = useState('');
   const [instanceType, setInstanceType] = useState<'invidious' | 'piped'>('invidious');
 
@@ -21,7 +21,7 @@ export function OnboardingScreen() {
       setStep(step + 1);
     } else {
       // Complete onboarding
-      setViewMode('feed');
+      navigate('/feed');
     }
   };
 
@@ -179,39 +179,11 @@ export function OnboardingScreen() {
       <p className="text-text-muted mb-8 max-w-md mx-auto">
         EchoPrism is ready. Your unified feed is waiting.
       </p>
-      <Button className="w-full md:w-auto" onClick={() => setViewMode('feed')} size="lg">
+      <Button className="w-full md:w-auto" onClick={() => navigate('/feed')} size="lg">
         Open Feed
       </Button>
     </div>
   );
-
-
-const handleNext = async () => {
-    if (step === 2 && instanceUrl.trim()) {
-      try {
-        await instanceCommands.add(instanceUrl, instanceType);
-        setStep(step + 1);
-      } catch (error) {
-        console.error('Failed to add instance:', error);
-      }
-    } else if (step < 4) {
-      setStep(step + 1);
-    } else {
-      // Complete onboarding
-      setViewMode('feed');
-    }
-  };
-
-  const handleBack = () => {
-    if (step > 1) setStep(step - 1);
-  };
-
-  const steps = [
-    { number: 1, title: 'Welcome', description: 'Welcome to EchoPrism — where two streams become one.' },
-    { number: 2, title: 'Add Instance', description: 'Add an Invidious or Piped instance to connect to YouTube.' },
-    { number: 3, title: 'Import Subscriptions', description: 'Import your YouTube subscriptions to build your feed.' },
-    { number: 4, title: 'Ready', description: 'You\'re all set! Start watching and listening.' },
-  ];
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
@@ -264,7 +236,7 @@ const handleNext = async () => {
               </Button>
             )}
             {step === 4 && (
-              <Button onClick={() => setViewMode('feed')} size="lg">
+              <Button onClick={() => navigate('/feed')} size="lg">
                 Start Using EchoPrism
               </Button>
             )}

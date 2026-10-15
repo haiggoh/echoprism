@@ -1,15 +1,12 @@
-import { useState } from 'react';
-import { useUIStore } from '../../store/slices/uiSlice';
-import { useQueueStore } from '../../store/slices/queueSlice';
-import { usePlayerStore } from '../../store/slices/playerSlice';
-import { Button } from '../ui/Button';
-import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
+import { useUIStore } from '../store/slices/uiSlice';
+import { useQueueStore } from '../store/slices/queueSlice';
+import { PrismConvergeToggle } from './player/PrismConvergeToggle';
+import { useConvergence } from '../hooks/useConvergence';
 
 export function Header() {
-  const { sidebarOpen, toggleSidebar, sidebarCollapsed } = useUIStore();
-  const { audioOnlyMode } = useQueueStore();
-  const { isPlaying } = usePlayerStore();
-  const [searchQuery, setSearchQuery] = useState('');
+  const { toggleSidebar } = useUIStore();
+  const { audioOnlyMode, setAudioOnlyMode } = useQueueStore();
+  const { state, setMode } = useConvergence();
 
   return (
     <header className="h-16 bg-bg-elevated border-b border-border flex items-center justify-between px-4">
@@ -33,7 +30,6 @@ export function Header() {
             type="search"
             placeholder="Search videos, podcasts, channels..."
             className="w-64 px-4 py-2 pl-10 bg-surface border border-border rounded-lg text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring transition-all"
-            placeholder="Search..."
           />
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8"></circle>
@@ -59,8 +55,8 @@ export function Header() {
         <label className="flex items-center gap-2 cursor-pointer hidden sm:flex">
           <input
             type="checkbox"
-            checked={false}
-            onChange={() => {}}
+            checked={audioOnlyMode}
+            onChange={(e) => setAudioOnlyMode(e.target.checked)}
             className="w-4 h-4 accent-accent rounded border-border"
             aria-label="Audio only mode"
           />
@@ -68,7 +64,7 @@ export function Header() {
         </label>
 
         {/* PrismConvergeToggle */}
-        <PrismConvergeToggle mode="unified" onModeChange={() => {}} size="md" />
+        <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="md" />
 
         {/* Notifications */}
         <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors relative" aria-label="Notifications">

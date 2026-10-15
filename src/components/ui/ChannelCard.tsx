@@ -3,7 +3,6 @@ import { clsx } from 'clsx';
 import { Bell, Plus, MoreHorizontal } from 'lucide-react';
 
 export interface ChannelCardProps {
-  variant?: 'subscribed' | 'not-subscribed';
   size?: 'feed' | 'compact' | 'expanded';
   title: string;
   handle?: string;
@@ -27,7 +26,6 @@ const formatCount = (count: number): string => {
 
 export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(
   ({
-    variant = 'not-subscribed',
     size = 'feed',
     title,
     handle,

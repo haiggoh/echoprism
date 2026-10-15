@@ -7,7 +7,7 @@ interface EpisodeCardProps {
   onQueue?: (mode: 'play_next' | 'add_end') => void;
 }
 
-export function EpisodeCard({ episode, variant = 'video', onClick, onQueue }: EpisodeCardProps) {
+export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
   const formatTime = (seconds?: number) => {
     if (!seconds) return '';
     const mins = Math.floor(seconds / 60);
@@ -144,11 +144,4 @@ export function EpisodeCard({ episode, variant = 'video', onClick, onQueue }: Ep
       </div>
     </article>
   );
-}
-
-function formatTime(seconds?: number): string {
-  if (!seconds) return '';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }

@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { episodeCommands, channelCommands } from '../../hooks/useTauriCommands';
 import { EpisodeCard } from '../feed/EpisodeCard';
-import { FeedFilterTabs } from '../feed/FeedFilterTabs';
 import { ChannelCard } from '../feed/ChannelCard';
 import { EmptyState } from '../ui/EmptyState';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -60,11 +59,10 @@ export function FeedScreen() {
           <div className="flex items-center gap-2">
             <input
               type="search"
-              placeholder="Search..."
-              value=""
-              onChange={() => {}}
-              className="w-64 px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
               placeholder="Search feed..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-64 px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { EpisodeCard } from '../feed/EpisodeCard';
@@ -7,7 +7,7 @@ import { EmptyState } from '../ui/EmptyState';
 
 export function SearchScreen() {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'channel'>('all');
+  const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
   const [showResults, setShowResults] = useState(false);
 
   const { data: episodes, isLoading, error } = useQuery({

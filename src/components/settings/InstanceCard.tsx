@@ -73,21 +73,21 @@ export function InstanceCard({ instance, onTest, onRemove, onPin }: InstanceCard
       </div>
 
       <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
-        <button className="btn-ghost btn-sm flex-1" onClick={() => {}}>
+        <button className="btn-ghost btn-sm flex-1" onClick={() => onTest?.()}>
           Test
         </button>
-        <button className="btn-ghost btn-sm" onClick={() => {}}>
+        <button className="btn-ghost btn-sm" onClick={() => window.open(instance.url, '_blank')} aria-label="Open instance">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14"></path>
           </svg>
         </button>
-        <button className="btn-ghost btn-sm text-danger hover:bg-danger-soft" aria-label="Remove instance">
+        <button className="btn-ghost btn-sm text-danger hover:bg-danger-soft" aria-label="Remove instance" onClick={() => onRemove?.()}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
           </svg>
         </button>
-        <button className={`btn-ghost btn-sm ${true ? 'text-amber-400' : ''}`} aria-label="Pin instance">
+        <button className={`btn-ghost btn-sm ${instance.pinned ? 'text-amber-400' : ''}`} aria-label="Pin instance" onClick={() => onPin?.()}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 17v5"></path>
             <path d="M12 3v5"></path>
@@ -100,10 +100,3 @@ export function InstanceCard({ instance, onTest, onRemove, onPin }: InstanceCard
     </article>
   );
 }
-
-const healthLabels = {
-  healthy: 'Healthy',
-  degraded: 'Degraded',
-  failed: 'Failed',
-  unknown: 'Unknown',
-};
