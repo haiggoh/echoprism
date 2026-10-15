@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""Feature parity check for EchoPrism."""
+"""Feature parity check for EchoPrism.
+
+Usage: check_parity.py [features.csv]
+
+What it does: scores feature parity from a feature-matrix CSV.
+Arguments: optional path to the CSV (default: features.csv in the
+current directory).
+Environment variables: none.
+
+Scoring: weighted credit (must=3, should=2, could=1) from the clone
+column over original=yes rows only. Clone-only rows (original=no) are
+excluded from the score and reported separately in the SCOPE section.
+Exits 0 when shippable (every scored must has credit), 1 otherwise.
+"""
 
 import csv
 import sys
@@ -64,8 +77,34 @@ def score(rows):
     return counted, skipped, extras, problems
 
 
+def print_scope(rows, extras):
+    """Honest scope reporting: what the parity score covers and what it ignores."""
+    excluded_musts = [r for r in extras if r.get("priority", "").lower() in ("must", "p0")]
+    print()
+    print("SCOPE")
+    print(f"  Data rows total: {len(rows)}")
+    print(f"  Scored (original=yes): {len(rows) - len(extras)}")
+    print(f"  Excluded as clone-only extras (original=no): {len(extras)}")
+    print(f"  Excluded with priority=must: {len(excluded_musts)}")
+    if excluded_musts:
+        for r in excluded_musts:
+            print(f"    - {r['feature']}")
+        print("  These are clone-only must-haves the parity score says NOTHING about.")
+    else:
+        print("    (none)")
+
+
 def main():
-    path = "/Users/bra0002h/ClaudeWorkspace/echoprism/features.csv"
+    args = [a for a in sys.argv[1:]]
+    flags = [a for a in args if a.startswith("-")]
+    if flags:
+        if all(f in ("-h", "--help") for f in flags):
+            print((__doc__ or "").strip())
+            sys.exit(0)
+        print(f"check_parity.py: unknown option(s): {' '.join(flags)}", file=sys.stderr)
+        print("Usage: check_parity.py [features.csv]", file=sys.stderr)
+        sys.exit(2)
+    path = args[0] if args else "features.csv"
     rows = load(path)
     counted, skipped, extras, problems = score(rows)
 
@@ -101,11 +140,14 @@ def main():
 
     if must_done_count < must_total_count:
         print("NOT SHIPPABLE: Missing must-haves")
+        print_scope(rows, extras)
         sys.exit(1)
     elif score_pct >= 80:
         print("SHIPPABLE")
     else:
         print("SHIPPABLE (but below 80% target)")
+
+    print_scope(rows, extras)
 
 
 if __name__ == "__main__":

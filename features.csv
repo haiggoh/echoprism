@@ -2,70 +2,53 @@ feature,area,priority,original,clone,notes
 # Core Loop Features
 Discover channels via chronological feed,discovery,must,yes,yes,replaces algorithmic feed
 Subscribe to channels (video + podcast),subscription,must,yes,yes,unified subscription model
-Unified queue: play next / add to end / reorder,queue,must,no,yes,core UX innovation
+Unified queue: play next / add to end / reorder,queue,must,no,yes,core UX innovation; one-click from feed
 Play video (YouTube via Invidious/Piped),playback,must,yes,yes,via instance pool
 Play podcast (RSS via podcast parser),playback,must,yes,yes,unified player
 Audio-only mode with background playback,playback,must,no,yes,continues when screen off/backgrounded
-Smart Episode Linking: audio↔video match,core,must,no,yes,KILLER FEATURE: auto-match on WiFi
-Unified search (YouTube + podcasts),discovery,must,no,yes,single search box
+Smart Episode Linking: audio↔video match,core,must,no,yes,KILLER FEATURE: auto-match on WiFi; background task, local SQLite
+Unified search with filters (video/podcast/channel),discovery,must,yes,yes,single search box
 Chronological subscription feed (newest first),feed,must,no,yes,replaces algorithmic feed
 Smart Episode Link badge + one-tap switch,core,must,no,yes,shows when match exists
-Instance pool with auto-failover,core,must,no,yes,Invidious/Piped pool with health checks
+Instance pool with auto-failover,core,must,no,yes,Invidious/Piped pool with health checks; seamless switching
 Client-side SABR via yt-dlp/Shaka,playback,must,no,yes,no server-side SABR needed
-SponsorBlock integration,playback,should,no,yes,community skip segments
-Background audio playback (OS lifecycle),playback,must,no,yes,handles OS kill, Bluetooth, calls
-Picture-in-Picture (reliable),playback,should,no,yes,fixes native broken PiP
+SponsorBlock integration (auto-skip + configurable categories),playback,should,no,yes,community skip segments; user chooses categories; configurable categories
+Background audio playback (OS lifecycle),playback,must,no,yes,handles OS kill, Bluetooth, calls; handles gracefully
+Picture-in-Picture (reliable on all platforms),playback,should,no,yes,fixes native broken PiP
 Offline downloads (video + audio),offline,should,no,yes,configurable quality
-OPML import/export for podcasts,data,should,yes,yes,portability
+OPML import/export for podcasts (with deduplication),data,should,yes,yes,portability; merge duplicates
 YouTube subscription import (via yt-dlp),data,should,yes,yes,no API key needed
 Instance pool management,core,should,no,yes,add/remove/test/auto-failover
-Instance health dashboard,core,should,no,yes,latency, failover, manual override
-Smart Episode Linking manager,core,should,no,yes,view/edit matches, confidence, bulk
+Instance health dashboard,core,should,no,yes,latency, failover, manual override; real-time latency, failover
+Smart Episode Linking manager,core,should,no,yes,view/edit matches, confidence, bulk; link/unlink, confidence display; select all, confirm, unlink
 Keyboard shortcuts (global + contextual),ui,should,yes,yes,power-user essential
 Theme: dark/light/system + accent,ui,should,yes,yes,customization
-Variable playback speed (0.5x - 3x),playback,should,yes,yes,standard feature
-Sleep timer,audio,should,no,yes,podcast-style feature
+Variable playback speed with pitch correction (0.5x - 3x),playback,should,yes,yes,standard feature; audio quality at speed; with pitch correction
+Sleep timer with fade out,audio,should,no,yes,podcast-style feature; gentle fade
 Chapter markers / timeline nav,playback,should,yes,yes,video + audio
-SponsorBlock categories config,playback,should,no,yes,user chooses categories
 Auto-download on WiFi,offline,should,no,yes,configurable
 Storage management (auto-cleanup),offline,should,no,yes,configurable retention
 History + continue watching,playback,should,yes,yes,synced across devices
-Search: unified + filters (video/podcast/channel),discovery,must,yes,yes,single search box
 Feed filter tabs (All/Video/Podcast/Queue),feed,should,yes,yes,quick filtering
 Channel page with tabs (Videos/Playlists/Podcasts),browse,should,yes,yes,unified channel view
-Mini-player / persistent background bar,ui,must,no,yes,always accessible
+Mini-player (persistent bottom bar + expand/collapse),ui,must,no,yes,always accessible; persistent bottom bar
 Keyboard shortcuts help overlay,ui,should,yes,yes,searchable, categorized
-Instance health dashboard,core,should,no,yes,real-time latency, failover
-Smart Episode Linking auto-match (WiFi bg),core,must,no,yes,background task, local SQLite
-Smart Episode Linking manual override,core,should,no,yes,link/unlink, confidence display
 Position sync on format switch,core,must,no,yes,preserves timestamp % across formats
-Background audio lifecycle (OS kill/Bluetooth/call),playback,must,no,yes,handles gracefully
-Picture-in-Picture (reliable, all platforms),playback,should,no,yes,fixes native broken PiP
-Variable speed + pitch correction,playback,should,no,yes,audio quality at speed
-Sleep timer + fade out,audio,should,no,yes,gentle fade
-OPML import with deduplication,data,should,no,yes,merge duplicates
 YouTube subscription export (portability),data,should,no,yes,JSON/OPML export
-Instance auto-failover on error,core,must,no,yes,seamless switching
-Instance manual override,core,should,no,yes,user can pin instance
-SponsorBlock auto-skip,playback,should,no,yes,configurable categories
+Instance manual override (pin),core,should,no,yes,user can pin instance; user can force instance
 Smart Episode Link confidence scoring,core,must,no,yes,title/date/duration similarity
-Episode link bulk actions,core,should,no,yes,select all, confirm, unlink
-Queue: play next / add to end / move to top,queue,must,no,yes,one-click from feed
 Queue: shuffle / repeat modes,queue,should,yes,yes,standard
 Queue: clear / save as playlist,queue,should,no,yes,persist queues
-Mini-player expand/collapse,ui,must,no,yes,persistent bottom bar
 Player: quality selector (auto/240p-4K),playback,should,yes,yes,auto adapts
-Player: speed selector (0.5x-3x),playback,should,yes,yes,with pitch correction
 Player: audio/video toggle (PrismConvergeToggle),core,must,no,yes,animated convergence
 Player: chapters / sponsors / transcript,playback,should,yes,yes,unified view
 Player: waveform (audio),playback,should,no,yes,seekable visualization
 Player: gesture controls (mobile),ui,should,yes,yes,swipe seek, volume, brightness
 Player: double-tap seek (configurable),ui,should,yes,yes,forward/back
-Instance manual pin/override,core,should,no,yes,user can force instance
 Instance latency display (ms),core,should,no,yes,real-time health
 Instance region/country display,core,should,no,yes,geo-awareness
 SponsorBlock community submissions,playback,could,no,yes,contribute back
 Smart Episode Link: bulk import from history,core,could,no,yes,match past watches
 Smart Episode Link: export/import matches,data,could,no,yes,portability
-Cross-device queue sync (optional, encrypted),sync,could,no,yes,WebRTC/Syncthing, no cloud
+Cross-device queue sync (optional + encrypted),sync,could,no,yes,WebRTC/Syncthing, no cloud
 Cross-device subscription sync (optional),sync,could,no,yes,WebRTC/Syncthing, no cloud

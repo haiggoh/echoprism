@@ -60,3 +60,4 @@ Thumbs.db
 # Build
 dist/
 build/
+__pycache__/
