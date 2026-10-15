@@ -6,33 +6,40 @@ interface ConvergenceState {
 }
 
 interface ConvergenceContextType {
-  isConverging: boolean;
-  mode: 'unified' | 'audio' | 'video';
+  state: ConvergenceState;
   triggerConvergence: () => void;
-  setMode: (mode: 'unified' | 'audio' | 'video') => void;
+  setMode: (mode: ConvergenceState['mode']) => void;
+  setConverging: (converging: boolean) => void;
 }
 
 const ConvergenceContext = createContext<ConvergenceContextType | undefined>(undefined);
 
 export function ConvergenceProvider({ children }: { children: ReactNode }) {
-  const [isConverging, setIsConverging] = useState(false);
-  const [mode, setMode] = useState<'unified' | 'audio' | 'video'>('unified');
-  
+  const [state, setState] = useState<ConvergenceState>({
+    isConverging: false,
+    mode: 'unified',
+  });
+
   const triggerConvergence = useCallback(() => {
-    // Trigger convergence animation
+    setState(prev => ({ ...prev, isConverging: true }));
+    // Reset after animation completes
+    setTimeout(() => {
+      setState(prev => ({ ...prev, isConverging: false }));
+    }, 800);
   }, []);
-  
-  const setMode = useCallback((mode: 'unified' | 'audio' | 'video') => {
-    // Set mode
+
+  const setMode = useCallback((mode: ConvergenceState['mode']) => {
+    setState(prev => ({ ...prev, mode }));
   }, []);
-  
+
+  const setConverging = useCallback((converging: boolean) => {
+    setState(prev => ({ ...prev, isConverging: converging }));
+  }, []);
+
+  const value = { state, setConverging, setMode, triggerConvergence };
+
   return (
-    <ConvergenceContext.Provider value={{ 
-      isConverging: false, 
-      mode: 'unified', 
-      triggerConvergence: () => {}, 
-      setMode: () => {} 
-    }}>
+    <ConvergenceContext.Provider value={value}>
       {children}
     </ConvergenceContext.Provider>
   );

@@ -112,7 +112,6 @@ export function Sidebar() {
           />
         </label>
       </div>
-    </nav>
   </aside>
   );
 }

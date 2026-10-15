@@ -155,9 +155,9 @@ function InstanceSettingsTab() {
               </button>
             </div>
           </div>
+        </div>
         )}
       </div>
-    </div>
   );
 }
 
@@ -242,7 +242,7 @@ function PreferencesTab() {
           <input
             type="checkbox"
             checked={preferences?.sponsorblock_enabled}
-            onChange={(e) => updateMutation.mutate({ sponsorblock_enabled: e.target.checked }))
+            onChange={(e) => updateMutation.mutate({ sponsorblock_enabled: e.target.checked })}
             className="w-4 h-4 accent-accent rounded border-border"
           />
           <span>SponsorBlock (skip sponsors)</span>
@@ -252,7 +252,7 @@ function PreferencesTab() {
           <input
             type="checkbox"
             checked={preferences?.keyboard_shortcuts_enabled}
-            onChange={(e) => updateMutation.mutate({ keyboard_shortcuts_enabled: e.target.checked }))
+            onChange={(e) => updateMutation.mutate({ keyboard_shortcuts_enabled: e.target.checked })}
             className="w-4 h-4 accent-accent rounded border-border"
           />
           <span>Keyboard shortcuts</span>
@@ -262,7 +262,7 @@ function PreferencesTab() {
           <input
             type="checkbox"
             checked={preferences?.cross_device_sync_enabled}
-            onChange={(e) => updateMutation.mutate({ cross_device_sync_enabled: e.target.checked }))
+            onChange={(e) => updateMutation.mutate({ cross_device_sync_enabled: e.target.checked })}
             className="w-4 h-4 accent-accent rounded border-border"
           />
           <span>Cross-device sync (experimental)</span>

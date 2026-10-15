@@ -97,16 +97,9 @@ export function InstanceCard({ instance, onTest, onRemove, onPin }: InstanceCard
           </svg>
         </button>
       </div>
-    </div>
+    </article>
   );
 }
-
-const healthColors = {
-  healthy: 'text-success border-success',
-  degraded: 'text-warning border-warning',
-  failed: 'text-danger border-danger',
-  unknown: 'text-text-muted border-border',
-};
 
 const healthLabels = {
   healthy: 'Healthy',
