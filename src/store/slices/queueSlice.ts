@@ -15,6 +15,7 @@ interface QueueState {
   setQueue: (queue: Queue | null) => void;
   setItems: (items: QueueItem[]) => void;
   addItem: (item: Omit<QueueItem, 'id' | 'position'>) => void;
+  playNextItem: (item: Omit<QueueItem, 'id' | 'position'>) => void;
   removeItem: (itemId: string) => void;
   reorderItems: (fromIndex: number, toIndex: number) => void;
   clearQueue: () => void;
@@ -45,12 +46,19 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   setItems: (items) => set({ items }),
   
   addItem: (item) => set((state) => ({
-    items: [...state.items, { 
-      ...item, 
-      id: crypto.randomUUID(), 
-      position: state.items.length 
+    items: [...state.items, {
+      ...item,
+      id: crypto.randomUUID(),
+      position: state.items.length
     }],
   })),
+
+  playNextItem: (item) => set((state) => {
+    const next = { ...item, id: crypto.randomUUID(), position: state.currentIndex + 1 };
+    const items = [...state.items];
+    items.splice(state.currentIndex + 1, 0, next);
+    return { items: items.map((it, i) => ({ ...it, position: i })) };
+  }),
   
   removeItem: (itemId) => set((state) => ({
     items: state.items

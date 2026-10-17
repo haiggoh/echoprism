@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
@@ -20,6 +20,11 @@ export default defineConfig({
     target: 'es2020',
     minify: 'esbuild',
     sourcemap: true,
+  },
+  test: {
+    // Only the app's own tests — the .claude/ skill templates ship .spec.ts
+    // examples that are not compiled code.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
   server: {
     port: 1420,

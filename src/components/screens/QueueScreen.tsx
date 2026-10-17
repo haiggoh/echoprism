@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { QueueItemComponent } from '../queue/QueueItem';
 import { QueueEmptyState } from '../queue/QueueEmptyState';
 import { useQueueStore } from '../../store/slices/queueSlice';
-import { useUIStore } from '../../store/slices/uiSlice';
+import { useNavigate } from 'react-router-dom';
 
 export function QueueScreen() {
   const {
@@ -17,7 +17,7 @@ export function QueueScreen() {
     setCurrentIndex,
     clearQueue,
   } = useQueueStore();
-  const { setViewMode } = useUIStore();
+  const navigate = useNavigate();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   return (
@@ -65,7 +65,7 @@ export function QueueScreen() {
           ) : (
             <QueueEmptyState
               audioMode={audioOnlyMode}
-              onAction={() => setViewMode('feed')}
+              onAction={() => navigate('/feed')}
             />
           )
         ) : (

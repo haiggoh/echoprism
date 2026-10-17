@@ -222,6 +222,33 @@ function PreferencesTab() {
         </div>
       </div>
 
+      <div>
+        <h3 className="font-semibold mb-4">Card Click Behavior</h3>
+        <div className="space-y-2">
+          {([
+            { value: 'auto', label: 'Smart (recommended)', hint: 'Play now when nothing is playing; add to queue otherwise' },
+            { value: 'play_now', label: 'Always play now', hint: 'Open the player and start playback immediately' },
+            { value: 'load_paused', label: 'Open paused', hint: 'Load the episode in the player without starting playback' },
+            { value: 'queue', label: 'Always add to queue', hint: 'Never interrupt current playback' },
+          ] as const).map((opt) => (
+            <label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-border hover:border-input transition-colors">
+              <input
+                type="radio"
+                name="card_click_action"
+                value={opt.value}
+                checked={preferences?.card_click_action === opt.value}
+                onChange={() => updateMutation.mutate({ card_click_action: opt.value })}
+                className="mt-1 w-4 h-4 accent-accent"
+              />
+              <span>
+                <span className="text-sm font-medium text-text block">{opt.label}</span>
+                <span className="text-xs text-text-muted">{opt.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-4">
         <label className="flex items-center gap-3 cursor-pointer">
           <input

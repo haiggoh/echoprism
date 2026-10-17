@@ -18,6 +18,7 @@ export interface UserPreferences {
   keyboard_shortcuts_enabled: boolean;
   theme: 'dark' | 'light' | 'system';
   cross_device_sync_enabled: boolean;
+  card_click_action: 'auto' | 'play_now' | 'load_paused' | 'queue';
   updated_at: string;
 }
 
