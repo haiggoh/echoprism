@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../tauri-bridge';
 import {
   Instance, InstanceHealthReport, Channel, Episode, EpisodeLink,
   Queue, QueueItem, PlaybackState, StreamInfo,
