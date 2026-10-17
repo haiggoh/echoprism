@@ -317,33 +317,3 @@ CREATE TABLE IF NOT EXISTS keyboard_shortcuts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_keyboard_shortcuts_user ON keyboard_shortcuts(user_id);
-
--- ============================
--- SPONSORBLOCK CACHE
--- ============================
-CREATE TABLE IF NOT EXISTS sponsorblock_segments (
-    video_id TEXT PRIMARY KEY,
-    segments TEXT NOT NULL,
-    fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_sponsorblock_expires ON sponsorblock_segments(expires_at);
-
--- ============================
--- KEYBOARD SHORTCUTS
--- ============================
-CREATE TABLE IF NOT EXISTS keyboard_shortcuts (
-    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    action TEXT NOT NULL,
-    key_combination TEXT NOT NULL,
-    context TEXT NOT NULL DEFAULT 'global' CHECK (context IN ('global','player','queue','feed')),
-    enabled INTEGER NOT NULL DEFAULT 1,
-    is_custom INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, action, context)
-);
-
-CREATE INDEX IF NOT EXISTS idx_keyboard_shortcuts_user ON keyboard_shortcuts(user_id);
