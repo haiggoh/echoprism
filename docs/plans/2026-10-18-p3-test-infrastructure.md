@@ -83,6 +83,9 @@ sync across both elements.
 **Discriminant:** temporarily break position-restore in PlayerProvider → the D3 test
 must fail; restore → green (run in a scratch copy, reverted immediately).
 **🧪 Receipt 1:** vitest output with test count and exit status.
+**Status: DONE 2026-10-18** — commit ea831e3f (`src/__tests__/player-engine.test.tsx`,
+9 behavioral tests; engine `load()` + unified resolve effect; RED proven by TS
+failure then TypeError, mutation discriminant applied on the guarded line).
 
 ### Phase 2 — dev-mode mock IPC layer
 **Objective:** `npm run dev` in a plain browser serves fixture data; flows testable
@@ -103,6 +106,9 @@ mock path chosen without Tauri globals, real invoke path untouched (vi.mock the
 fewer cards; restored → original count.
 **🧪 Receipt 2:** vitest run output; manual curl of `npm run dev` + note that feed
 renders (via Playwright in Phase 4 — receipt deferred there, honestly labelled).
+**Status: DONE 2026-10-18** — commit c93222e9 (`src/tauri-bridge.ts`,
+`src/mocks/{data,router}.ts`, bridge + router + contract tests, single choke
+point rewire of useTauriCommands).
 
 ### Phase 3 — db:seed script
 **Objective:** `npm run db:seed` populates the dev SQLite DB so `tauri:dev` runs
@@ -116,6 +122,10 @@ preferences=1); never touch a live DB in tests.
 **Discriminant:** seed.sql with a deliberately invalid statement fails the script
 non-zero in a scratch copy; repaired passes.
 **🧪 Receipt 3:** script stdout + row counts from the temp DB.
+**Status: DONE 2026-10-18** — `scripts/seed.mjs` + `scripts/seed.sql` + `db:seed`
+npm script; 4 script-contract tests (temp DBs only, never the live DB); suite
+27/27, build exit 0. Preference row inserts only `user_id` — D1/D2 values come
+from the schema DEFAULTs, so the test pins the schema itself.
 
 ### Phase 4 — Playwright + axe scaffold and first specs
 **Objective:** runnable e2e harness executing the headless-testable subset of the
