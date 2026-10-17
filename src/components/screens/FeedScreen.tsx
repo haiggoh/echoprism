@@ -14,7 +14,7 @@ import type { Episode } from '../../types';
 export function FeedScreen() {
   const navigate = useNavigate();
   const { addItem, playNextItem } = useQueueStore();
-  const { play, isPlaying } = usePlayer();
+  const { play, load, isPlaying } = usePlayer();
   const { addToast } = useToasts();
   const { data: preferences } = useQuery({ queryKey: ['preferences'], queryFn: settingsCommands.get });
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
@@ -48,6 +48,9 @@ export function FeedScreen() {
       return;
     }
     if (action === 'load_paused') {
+      // D2 'load_paused': the episode becomes the engine's current episode at
+      // its saved position; playback starts only when the user presses play.
+      load(episode, { paused: true });
       navigate(`/player/${episode.id}`);
       return;
     }

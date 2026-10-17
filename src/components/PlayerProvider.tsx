@@ -16,6 +16,10 @@ interface PlayerContextType {
   currentTime: number;
   duration: number;
   play: (episode: Episode, mode?: PlayMode) => void;
+  /** Load an episode into the engine WITHOUT playback (D2 'load_paused'):
+   *  it becomes the current episode at its saved position; pressing play
+   *  resolves and starts the stream. */
+  load: (episode: Episode, opts?: { paused?: boolean }) => void;
   pause: () => void;
   togglePlay: () => void;
   seek: (position: number) => void;
@@ -78,29 +82,66 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setCurrentEpisode(ep);
       const wantAudio = mode ? mode === 'audio' : isAudioModeRef.current;
       setAudioMode(wantAudio);
-      setPlaying(true); // optimistic; the sync effect starts playback once the src is set
+      setPlaying(true); // the resolve effect starts playback once the src is set
       setPlaybackState({
         episode_id: ep.id,
         position_seconds: ep.progress_seconds ?? 0,
         duration_seconds: ep.duration_seconds,
       });
-      episodeCommands
-        .stream(ep.id, wantAudio ? 'audio' : 'video')
-        .then((info) => setStreamUrl(info.url))
-        .catch(() => {
-          setPlaying(false);
-          setStreamUrl(null);
-          addToast({
-            title: 'Playback unavailable',
-            description:
-              'Could not resolve a stream for this episode. Add a healthy Invidious/Piped instance in Settings first.',
-            variant: 'danger',
-          });
-        });
+      // Changing episode invalidates any previous stream; resolution is owned
+      // by the resolve effect below (single code path, also serves load(paused)).
+      setStreamUrl(null);
     },
-    [setAudioMode, setPlaying, setPlaybackState, addToast]
+    [setAudioMode, setPlaying, setPlaybackState]
   );
   playRef.current = play;
+
+  const load = useCallback(
+    (ep: Episode, _opts?: { paused?: boolean }) => {
+      currentEpisodeRef.current = ep;
+      setCurrentEpisode(ep);
+      setPlaying(false);
+      setPlaybackState({
+        episode_id: ep.id,
+        position_seconds: ep.progress_seconds ?? 0,
+        duration_seconds: ep.duration_seconds,
+      });
+      setStreamUrl(null);
+    },
+    [setPlaying, setPlaybackState]
+  );
+
+  // Resolve the stream for the current episode once playback is requested.
+  // Single resolution path: play() and load(paused) only set state; this effect
+  // turns (isPlaying, current episode, no stream yet) into a stream_episode
+  // call. A stale resolution (episode switched mid-flight) is discarded.
+  const resolvingRef = useRef(false);
+  useEffect(() => {
+    if (!isPlaying || streamUrl || resolvingRef.current) return;
+    const ep = currentEpisodeRef.current;
+    if (!ep) return;
+    resolvingRef.current = true;
+    episodeCommands
+      .stream(ep.id, isAudioModeRef.current ? 'audio' : 'video')
+      .then((info) => {
+        // Only commit if this episode is still the one the engine is playing.
+        if (currentEpisodeRef.current?.id === ep.id) setStreamUrl(info.url);
+      })
+      .catch(() => {
+        if (currentEpisodeRef.current?.id !== ep.id) return;
+        setPlaying(false);
+        setStreamUrl(null);
+        addToast({
+          title: 'Playback unavailable',
+          description:
+            'Could not resolve a stream for this episode. Add a healthy Invidious/Piped instance in Settings first.',
+          variant: 'danger',
+        });
+      })
+      .finally(() => {
+        resolvingRef.current = false;
+      });
+  }, [isPlaying, streamUrl, setPlaying, addToast]);
 
   const pause = useCallback(() => setPlaying(false), [setPlaying]);
 
@@ -208,6 +249,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentTime: position,
     duration,
     play,
+    load,
     pause,
     togglePlay,
     seek,
