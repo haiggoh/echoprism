@@ -36,7 +36,20 @@ async fn create_fts(pool: &sqlx::SqlitePool) -> Result<(), String> {
     Ok(())
 }
 
-async fn migrate_data(_pool: &sqlx::SqlitePool) -> Result<(), String> {
-    // Future data migrations go here
+async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    // Idempotent column additions for databases created before a column
+    // existed (CREATE TABLE IF NOT EXISTS does not alter existing tables).
+    let alters = [
+        "ALTER TABLE user_preferences ADD COLUMN card_click_action TEXT NOT NULL DEFAULT 'auto'",
+    ];
+    for stmt in alters {
+        // "duplicate column name" means this database already has the column.
+        if let Err(e) = pool.execute(stmt).await {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column name") {
+                return Err(msg);
+            }
+        }
+    }
     Ok(())
 }

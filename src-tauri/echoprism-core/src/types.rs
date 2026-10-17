@@ -89,6 +89,18 @@ pub struct User {
     pub updated_at: DateTimeUtc,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString, Default)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum CardClickAction {
+    /// Context-aware: play now when nothing is playing, queue when media is active.
+    #[default]
+    Auto,
+    PlayNow,
+    LoadPaused,
+    Queue,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserPreferences {
     pub user_id: String,
@@ -102,6 +114,8 @@ pub struct UserPreferences {
     pub keyboard_shortcuts_enabled: bool,
     pub theme: Theme,
     pub cross_device_sync_enabled: bool,
+    #[serde(default)]
+    pub card_click_action: CardClickAction,
     pub updated_at: DateTimeUtc,
 }
 

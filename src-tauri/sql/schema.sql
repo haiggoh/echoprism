@@ -19,12 +19,13 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     default_format TEXT NOT NULL DEFAULT 'unified' CHECK (default_format IN ('video','audio','unified')),
     queue_behavior TEXT NOT NULL DEFAULT 'play_next' CHECK (queue_behavior IN ('play_next','add_end')),
     audio_only_default INTEGER NOT NULL DEFAULT 0,
-    auto_download_wifi INTEGER NOT NULL DEFAULT 1,
+    auto_download_wifi INTEGER NOT NULL DEFAULT 0,
     sponsorblock_enabled INTEGER NOT NULL DEFAULT 1,
     sponsorblock_categories TEXT NOT NULL DEFAULT '["sponsor","selfpromo","interaction","intro","outro","preview"]',
     keyboard_shortcuts_enabled INTEGER NOT NULL DEFAULT 1,
     theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('dark','light','system')),
     cross_device_sync_enabled INTEGER NOT NULL DEFAULT 0,
+    card_click_action TEXT NOT NULL DEFAULT 'auto' CHECK (card_click_action IN ('auto','play_now','load_paused','queue')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

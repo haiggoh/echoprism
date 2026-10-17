@@ -1,7 +1,7 @@
 //! Database queries
 
 use crate::types::*;
-use sqlx::{SqlitePool, Row, query_as, query};
+use sqlx::{SqlitePool, query_as, query};
 use std::str::FromStr;
 
 // Local Result type for database queries
@@ -916,6 +916,7 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
             keyboard_shortcuts_enabled,
             theme,
             cross_device_sync_enabled,
+            card_click_action,
             updated_at
          FROM user_preferences WHERE user_id = 'current-user'"#
     )
@@ -938,6 +939,7 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         keyboard_shortcuts_enabled: row.keyboard_shortcuts_enabled != 0,
         theme: Theme::from_str(&row.theme).unwrap_or(Theme::System),
         cross_device_sync_enabled: row.cross_device_sync_enabled != 0,
+        card_click_action: CardClickAction::from_str(&row.card_click_action).unwrap_or(CardClickAction::Auto),
         updated_at: DateTimeUtc::from(row.updated_at),
     })
 }
@@ -952,10 +954,11 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
     let keyboard_shortcuts_enabled = prefs.keyboard_shortcuts_enabled as i64;
     let theme = prefs.theme.to_string();
     let cross_device_sync_enabled = prefs.cross_device_sync_enabled as i64;
+    let card_click_action = prefs.card_click_action.to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
     query!(
-        "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, updated_at = ? WHERE user_id = 'current-user'",
+        "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, card_click_action = ?, updated_at = ? WHERE user_id = 'current-user'",
         default_format,
         queue_behavior,
         audio_only_default,
@@ -965,6 +968,7 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
         keyboard_shortcuts_enabled,
         theme,
         cross_device_sync_enabled,
+        card_click_action,
         now
     ).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
