@@ -128,6 +128,12 @@ npm script; 4 script-contract tests (temp DBs only, never the live DB); suite
 from the schema DEFAULTs, so the test pins the schema itself.
 
 ### Phase 4 — Playwright + axe scaffold and first specs
+**Status: DONE 2026-10-18** — commit 0c39698e: `playwright.config.ts` + 6 specs
+(F01/F02/F03/F04/F05 + axe scans on feed, settings, player), VP8/wav fixtures
+under `public/mock-media/`. e2e 6/6 green. Five real product defects found by
+the specs and fixed (AbortError cascade, podcast format selection, src
+attribute compare, Sidebar full-reload nav + overlay layout, unlabeled range
+inputs/labels); unit suite 31/31, build exit 0.
 **Objective:** runnable e2e harness executing the headless-testable subset of the
 113-case plan.
 **Tasks:** `npm i -D @playwright/test @axe-core/playwright`; `npx playwright

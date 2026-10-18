@@ -55,3 +55,18 @@ remains the designed end state — the frontend queue will sync through it once 
 mid-playback ("detect 403/404/timeout → pause → switch instance → resume"; the frontend toast is
 the slice stand-in, the real retry belongs partly backend-side in the instance pool); Tauri
 media-session plugin for background-audio lifecycle.
+
+## D5 — Play() AbortError is not a playback failure (decided 2026-10-18, from e2e finding)
+
+**Decision:** The media engine treats an `AbortError` from `activeEl.play()` as a
+self-inflicted interruption (our own `pause()` racing the play promise during the
+audio↔video element switch, or a user pause), NOT as a playback failure — it is
+swallowed and playback state is left untouched. Only genuine rejections
+(`NotAllowedError` autoplay block, unsupported media, etc.) flip `isPlaying` off.
+An element's play() promise rejects with "interrupted by a call to pause()"
+whenever pause() lands before playback actually started; treating that as failure
+kills global playback during every element switch.
+
+**Implemented as:** PlayerProvider sync effect's `play().catch` filtering
+`DOMException.name === 'AbortError'`; unit tests cover both the swallowed
+AbortError and the still-fatal NotAllowedError paths (commit 0c39698e).
