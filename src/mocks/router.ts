@@ -25,19 +25,45 @@ function requireEpisode(episodeId: string | undefined): Episode {
 
 type Handler = (args: Record<string, unknown> | undefined) => unknown;
 
+// D6 (design-decisions.md): smart links resolve at READ time on the choice
+// surfaces — every returned episode carries its cross-stream twin's id so
+// the user's pick is already linked. Derivation is per-request (fixtures
+// stay pristine); the real backend mirrors this in commands/episodes.rs.
+function withChannelAndLinks(episodes: Episode[]): Episode[] {
+  const byVideoId = new Map(db.episodes.filter((e) => e.video_id).map((e) => [e.video_id as string, e]));
+  const byPodcastGuid = new Map(db.episodes.filter((e) => e.podcast_guid).map((e) => [e.podcast_guid as string, e]));
+  return episodes.map((ep) => {
+    const link = db.smartLinks.find(
+      (l) =>
+        (ep.podcast_guid && l.podcast_guid === ep.podcast_guid) ||
+        (ep.video_id && l.youtube_video_id === ep.video_id)
+    );
+    if (!link) {
+      return { ...ep, channel: db.channels.find((ch) => ch.id === ep.channel_id) };
+    }
+    const twin =
+      (ep.podcast_guid && byVideoId.get(link.youtube_video_id)) ||
+      (ep.video_id && byPodcastGuid.get(link.podcast_guid)) ||
+      undefined;
+    return {
+      ...ep,
+      smart_link_id: link.id,
+      linked_episode_id: twin?.id,
+      channel: db.channels.find((ch) => ch.id === ep.channel_id),
+    };
+  });
+}
+
 const handlers: Record<string, Handler> = {
   // Episodes
-  get_feed: () => db.episodes.map((ep) => ({
-    ...ep,
-    channel: db.channels.find((ch) => ch.id === ep.channel_id),
-  })),
+  get_feed: () => withChannelAndLinks(db.episodes),
   get_episode: (args) => {
     const ep = requireEpisode(args?.episodeId as string);
-    return { ...ep, channel: db.channels.find((ch) => ch.id === ep.channel_id) };
+    return withChannelAndLinks([ep])[0];
   },
   search_episodes: (args) => {
     const q = String(args?.q ?? '').toLowerCase();
-    return db.episodes.filter((e) => e.title.toLowerCase().includes(q));
+    return withChannelAndLinks(db.episodes.filter((e) => e.title.toLowerCase().includes(q)));
   },
   stream_episode: (args): StreamInfo => {
     const ep = requireEpisode(args?.episodeId as string);

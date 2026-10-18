@@ -134,6 +134,9 @@ export interface Episode {
   download_quality?: string;
   progress_seconds: number;
   smart_link_id?: string;
+  /** Derived at read time (D6): the cross-stream twin's episode id, resolved
+   *  from the episode_links join — present only when a link exists. */
+  linked_episode_id?: string;
   channel?: {
     id: string;
     title: string;

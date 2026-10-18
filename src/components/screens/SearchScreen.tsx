@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { episodeCommands } from '../../hooks/useTauriCommands';
+import { useEpisodePlay } from '../../hooks/useEpisodePlay';
 import { EpisodeCard } from '../feed/EpisodeCard';
 import { FeedFilterTabs } from '../feed/FeedFilterTabs';
 import { EmptyState } from '../ui/EmptyState';
+import type { Episode } from '../../types';
 
 export function SearchScreen() {
+  // D6: search results are choice surfaces — cards are clickable with the
+  // same D2 semantics as the feed (shared hook), so "the user's choice of an
+  // episode IS the match signal" can actually happen here.
+  const { handleCardClick, handleQueue } = useEpisodePlay();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
   const [showResults, setShowResults] = useState(false);
@@ -89,7 +95,12 @@ export function SearchScreen() {
         {showResults && !isLoading && !error && episodes && episodes.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {episodes.map((episode) => (
-              <EpisodeCard key={episode.id} episode={episode as any} />
+              <EpisodeCard
+                key={episode.id}
+                episode={episode as Episode}
+                onClick={() => handleCardClick(episode as Episode)}
+                onQueue={(action) => handleQueue(action, episode as Episode)}
+              />
             ))}
           </div>
         )}

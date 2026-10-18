@@ -1,63 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { episodeCommands, channelCommands, settingsCommands } from '../../hooks/useTauriCommands';
-import { usePlayer } from '../PlayerProvider';
+import { episodeCommands, channelCommands } from '../../hooks/useTauriCommands';
+import { useEpisodePlay } from '../../hooks/useEpisodePlay';
 import { EpisodeCard } from '../feed/EpisodeCard';
 import { ChannelCard } from '../feed/ChannelCard';
 import { EmptyState } from '../ui/EmptyState';
 import { FeedFilterTabs as FeedFilterTabsComponent } from '../feed/FeedFilterTabs';
-import { useQueueStore } from '../../store/slices/queueSlice';
-import { useToasts } from '../ui/Toaster';
-import type { Episode } from '../../types';
 
 export function FeedScreen() {
   const navigate = useNavigate();
-  const { addItem, playNextItem } = useQueueStore();
-  const { play, load, isPlaying } = usePlayer();
-  const { addToast } = useToasts();
-  const { data: preferences } = useQuery({ queryKey: ['preferences'], queryFn: settingsCommands.get });
+  // D2 card-click + queue actions live in the shared hook (also used by
+  // SearchScreen so both surfaces behave identically).
+  const { handleCardClick, handleQueue } = useEpisodePlay();
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  const queueFromEpisode = (episode: Episode) => ({
-    queue_id: 'local',
-    episode_id: episode.id,
-    added_at: new Date().toISOString(),
-    source: 'feed' as const,
-    play_mode: 'unified' as const,
-    episode,
-  });
-
-  const handleQueue = (action: 'play_next' | 'add_end', episode: Episode) => {
-    if (action === 'play_next') playNextItem(queueFromEpisode(episode));
-    else addItem(queueFromEpisode(episode));
-    addToast({
-      title: action === 'play_next' ? 'Playing next' : 'Added to end of queue',
-      variant: 'success',
-    });
-  };
-
-  // D2 (design-decisions.md): clicking a card is configurable. 'auto' plays
-  // now when nothing is playing and queues otherwise — never interrupting
-  // current media. Queued items stream on demand (D1); nothing pre-downloads.
-  const handleCardClick = (episode: Episode) => {
-    const action = preferences?.card_click_action ?? 'auto';
-    if (action === 'queue' || (action === 'auto' && isPlaying)) {
-      handleQueue('add_end', episode);
-      return;
-    }
-    if (action === 'load_paused') {
-      // D2 'load_paused': the episode becomes the engine's current episode at
-      // its saved position; playback starts only when the user presses play.
-      load(episode, { paused: true });
-      navigate(`/player/${episode.id}`);
-      return;
-    }
-    addItem(queueFromEpisode(episode));
-    play(episode);
-    navigate(`/player/${episode.id}`);
-  };
 
   const { data: episodes, isLoading, error } = useQuery({
     queryKey: ['feed', filter],
