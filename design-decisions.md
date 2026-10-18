@@ -70,3 +70,42 @@ kills global playback during every element switch.
 **Implemented as:** PlayerProvider sync effect's `play().catch` filtering
 `DOMException.name === 'AbortError'`; unit tests cover both the swallowed
 AbortError and the still-fatal NotAllowedError paths (commit 0c39698e).
+
+## D6 — Smart links are resolved at search time, not in an idle batch (decided 2026-10-18)
+
+**Decision:** When the user searches, results are smart-link-matched IMMEDIATELY:
+any show with a known cross-stream presence (the same show published both as an
+RSS podcast feed and as a YouTube channel) gets its results paired up front, so
+every episode the user picks is already linked — regardless of which episode of
+the pair they chose. The user's choice of an episode IS the match signal; waiting
+for an idle background batch to catch up means the user first sees unlinked
+results and the pairing arrives too late to matter.
+
+The idle `trigger_smart_linking` background job (background_tasks) remains as a
+secondary top-up (catching shows whose cross-stream presence was learned after a
+search), but search-time matching is the primary path.
+
+**Canonical examples (user-provided):**
+- **The Vergecast** — podcast feed + YouTube channel, every episode on both.
+- **Some More News / Even More News** — ONE show with two title families:
+  YouTube-native episodes titled "Some More News…", podcast-native episodes
+  titled "Even More News…", yet ALL episodes are available on BOTH streams.
+  This is the pattern-matching stress test: matching must operate on the show,
+  not on exact title equality (see D7 for the play-mode consequence).
+- **Power User (Taylor Lorenz)** — podcast feed + YouTube channel.
+
+## D7 — Per-title-family default play mode (decided 2026-10-18, implementation pending)
+
+**Decision:** The card-click default (D2) can be overridden per title family
+within a show: episodes whose title matches a video-family pattern play VIDEO by
+default; audio-family patterns play AUDIO by default. First matching rule wins;
+no match falls back to the channel default, then to D2's `card_click_action`.
+
+**Driving example:** within Some More News (D6), episodes titled "Some More
+News…" play video by default, while "Even More News…" episodes play audio by
+default — the user watches the YouTube-native episodes and listens to the
+podcast-native ones, without touching the toggle each time.
+
+**Implemented as (planned):** ordered per-channel pattern rules (title regex →
+play_mode) consulted by `handleCardClick` before the D2 default; UI in Settings
+→ Channels. Not yet implemented — tracked in the P3 waypoint.
