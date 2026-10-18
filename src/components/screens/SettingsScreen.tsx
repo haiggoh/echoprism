@@ -428,7 +428,7 @@ function AboutTab() {
   return (
     <div className="max-w-2xl space-y-6">
       <div className="text-center py-12">
-        <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-audio to-stream-video rounded-2xl flex items-center justify-center">
+        <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
             <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
             <path d="M2 17l10 5 10-5"></path>

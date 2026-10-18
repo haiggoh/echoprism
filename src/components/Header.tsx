@@ -1,6 +1,7 @@
 import { useUIStore } from '../store/slices/uiSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
+import { PrismLogo } from './ui/PrismLogo';
 import { useConvergence } from '../hooks/useConvergence';
 
 export function Header() {
@@ -40,12 +41,8 @@ export function Header() {
 
       {/* Center: App title (collapsed sidebar) */}
       <div className="hidden lg:flex items-center">
-        <div className="w-16 h-8 bg-gradient-to-br from-stream-audio to-stream-video rounded-xl flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-            <path d="M2 17l10 5 10-5"></path>
-            <path d="M2 12l10 5 10-5"></path>
-          </svg>
+        <div className="w-16 h-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-xl flex items-center justify-center">
+          <PrismLogo size={28} audioOnly={audioOnlyMode} />
         </div>
       </div>
 
@@ -63,8 +60,9 @@ export function Header() {
           <span className="text-sm text-text-muted hidden md:inline">Audio only</span>
         </label>
 
-        {/* PrismConvergeToggle */}
-        <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="md" />
+        {/* PrismConvergeToggle — audioOnly reflects the actual playback
+            preference: the video stream pales whenever audio-only is on */}
+        <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="md" audioOnly={audioOnlyMode} />
 
         {/* Notifications — accessible name must contain the visible badge text */}
         <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors relative" aria-label="Notifications, 3 unread">
@@ -76,7 +74,7 @@ export function Header() {
         </button>
 
         {/* User avatar */}
-        <div className="w-8 h-8 bg-gradient-to-br from-stream-audio to-stream-video rounded-full flex items-center justify-center">
+        <div className="w-8 h-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-full flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>

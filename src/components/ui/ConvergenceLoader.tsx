@@ -65,17 +65,17 @@ export const ConvergenceLoader = ({
       <svg className="w-full h-full" viewBox="0 0 200 100" aria-hidden="true">
         <defs>
           <linearGradient id="audioGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#FF8C42" />
-            <stop offset="100%" stopColor="#FF8C42" />
+            <stop offset="0%" stopColor="var(--color-stream-audio)" />
+            <stop offset="100%" stopColor="var(--color-stream-audio)" />
           </linearGradient>
           <linearGradient id="videoGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#00D4C8" />
-            <stop offset="100%" stopColor="#00D4C8" />
+            <stop offset="0%" stopColor="var(--color-stream-video)" />
+            <stop offset="100%" stopColor="var(--color-stream-video)" />
           </linearGradient>
           <linearGradient id="unifiedGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#FF8C42" />
-            <stop offset="50%" stopColor="#10F0A8" />
-            <stop offset="100%" stopColor="#00D4C8" />
+            <stop offset="0%" stopColor="var(--color-stream-video)" />
+            <stop offset="50%" stopColor="var(--color-stream-unified)" />
+            <stop offset="100%" stopColor="var(--color-stream-audio)" />
           </linearGradient>
         </defs>
 

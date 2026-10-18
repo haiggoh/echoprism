@@ -38,7 +38,7 @@ export function OnboardingScreen() {
 
   const renderStep1 = () => (
     <div className="text-center animate-in">
-      <div className="w-32 h-32 mx-auto mb-8 bg-gradient-to-br from-stream-audio to-stream-video rounded-2xl flex items-center justify-center">
+      <div className="w-32 h-32 mx-auto mb-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
           <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
           <path d="M2 17l10 5 10-5"></path>
@@ -95,7 +95,7 @@ export function OnboardingScreen() {
 
   const renderStep2 = () => (
     <div className="text-center animate-in">
-      <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-audio to-stream-video rounded-2xl flex items-center justify-center">
+      <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
           <path d="M21 15V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path>
           <path d="M14 10l-4 4 4 4"></path>
@@ -144,7 +144,7 @@ export function OnboardingScreen() {
 
   const renderStep3 = () => (
     <div className="text-center">
-      <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-audio to-stream-video rounded-2xl flex items-center justify-center">
+      <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
           <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14"></path>
           <polyline points="17 17 22 22 17 22"></polyline>
@@ -171,7 +171,7 @@ export function OnboardingScreen() {
 
   const renderStep4 = () => (
     <div className="text-center animate-in">
-      <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-audio to-stream-video rounded-2xl flex items-center justify-center">
+      <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
           <polyline points="22 4 12 14.01 9 11"></polyline>

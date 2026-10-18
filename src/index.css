@@ -27,18 +27,19 @@
   --color-accent-hover: #00D890;
   --color-accent-soft: rgba(16, 240, 168, 0.12);
 
-  /* Streams */
-  --color-audio: #FF8C42;
-  --color-audio-hover: #FF7020;
-  --color-audio-soft: rgba(255, 140, 66, 0.12);
-  --color-video: #00D4C8;
-  --color-video-hover: #00B8AC;
-  --color-video-soft: rgba(0, 212, 200, 0.12);
-  --color-stream-audio: #FF8C42;
-  --color-stream-video: #00D4C8;
+  /* Streams — orange = VIDEO, teal = AUDIO (D-spec 2026-10-18: the prism's
+     orange beam is the video stream, teal is audio) */
+  --color-audio: #00D4C8;
+  --color-audio-hover: #00B8AC;
+  --color-audio-soft: rgba(0, 212, 200, 0.12);
+  --color-video: #FF8C42;
+  --color-video-hover: #FF7020;
+  --color-video-soft: rgba(255, 140, 66, 0.12);
+  --color-stream-audio: #00D4C8;
+  --color-stream-video: #FF8C42;
   --color-stream-unified: #10F0A8;
-  --color-stream-audio-soft: rgba(255, 140, 66, 0.12);
-  --color-stream-video-soft: rgba(0, 212, 200, 0.12);
+  --color-stream-audio-soft: rgba(0, 212, 200, 0.12);
+  --color-stream-video-soft: rgba(255, 140, 66, 0.12);
 
   /* Semantic */
   --color-danger: #EF4444;
