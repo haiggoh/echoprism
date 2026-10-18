@@ -22,7 +22,10 @@ fn single_instance_handler(app: &tauri::AppHandle, _args: Vec<String>, _cwd: Str
     let _ = app.get_webview_window("main").map(|w| w.set_focus());
 }
 
-fn main() {
+/// Application entry point. Invoked by the thin binary shim in `src/main.rs`
+/// — a library crate cannot host `fn main()`, and without a bin target
+/// `cargo run` / `tauri dev` fail with "a bin target must be available".
+pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
