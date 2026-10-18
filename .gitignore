@@ -61,3 +61,7 @@ Thumbs.db
 dist/
 build/
 __pycache__/
+
+# Playwright artifacts
+test-results/
+playwright-report/

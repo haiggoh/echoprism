@@ -4,7 +4,7 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { Episode, QueueItem, StreamInfo, UserPreferences } from '../types';
+import type { Episode, Instance, QueueItem, StreamInfo, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
@@ -47,12 +47,33 @@ const handlers: Record<string, Handler> = {
       return { url, format };
     }
     if (!ep.video_id) throw new Error(`mock: episode '${ep.id}' has no video stream`);
-    return { url: `/mock-media/${ep.id}.mp4`, format: 'video' };
+    // .webm (VP8/opus): headless chromium cannot decode H.264, and the e2e
+    // specs play these files from public/mock-media/.
+    return { url: `/mock-media/${ep.id}.webm`, format: 'video' };
   },
 
   // Channels / instances / smart links / history
   list: () => db.channels,
   list_instances: () => db.instances,
+  add_instance: (args): Instance => {
+    const url = String(args?.url ?? '').trim();
+    const instanceType = args?.instanceType === 'piped' ? 'piped' : 'invidious';
+    if (!url) throw new Error('mock: instance URL is required');
+    const instance: Instance = {
+      id: `inst-${crypto.randomUUID().slice(0, 8)}`,
+      url,
+      type: instanceType,
+      health: 'unknown',
+      auto_failover: true,
+      supports_sabr: false,
+      supports_age_restricted: false,
+      pinned: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.instances = [...db.instances, instance];
+    return instance;
+  },
   list_smart_links: () => db.smartLinks,
   list_history: () => db.history,
 

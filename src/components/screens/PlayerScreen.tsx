@@ -274,6 +274,7 @@ export function PlayerScreen() {
                 step="0.1"
                 value={volume}
                 onChange={(e) => setVolume(parseFloat(e.target.value))}
+                aria-label="Volume"
                 className="w-full h-1.5 bg-surface rounded-full appearance-none accent-accent"
               />
             </div>

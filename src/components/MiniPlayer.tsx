@@ -149,6 +149,7 @@ export function MiniPlayer() {
                 step="0.1"
                 value={volume}
                 onChange={(e) => setVolume(parseFloat(e.target.value))}
+                aria-label="Volume"
                 className="w-full h-1.5 bg-surface rounded-full appearance-none accent-accent"
               />
             </div>
@@ -255,6 +256,7 @@ export function MiniPlayer() {
                   step="0.1"
                   value={volume}
                   onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  aria-label="Volume"
                   className="w-32 h-1.5 bg-surface rounded-full appearance-none accent-accent opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible"
                 />
               </div>

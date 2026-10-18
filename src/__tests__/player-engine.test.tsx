@@ -286,4 +286,68 @@ describe('PlayerProvider media engine', () => {
     expect(probeVideo.playbackRate).toBe(1.5);
     expect(audioEl.playbackRate).toBe(1.5);
   });
+
+  // F03 e2e finding: when the engine switches elements (audio -> video once
+  // PlayerScreen registers its <video>), pausing the old element rejects its
+  // in-flight play() promise with AbortError. That is our own pause, not a
+  // playback failure — it must not flip isPlaying off and kill the switch.
+  it('keeps playing when our own pause() aborts the pending play() (AbortError)', async () => {
+    const ep = makeEpisode();
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    const realPlay = window.HTMLMediaElement.prototype.play;
+    window.HTMLMediaElement.prototype.play = vi.fn(() =>
+      Promise.reject(
+        new DOMException(
+          'The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22',
+          'AbortError'
+        )
+      )
+    ) as unknown as HTMLMediaElement['play'];
+    try {
+      await act(async () => {
+        api.play(ep);
+      });
+      expect(api.isPlaying).toBe(true);
+    } finally {
+      window.HTMLMediaElement.prototype.play = realPlay;
+    }
+  });
+
+  it('still stops on a genuine play() rejection (NotAllowedError)', async () => {
+    const ep = makeEpisode();
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    const realPlay = window.HTMLMediaElement.prototype.play;
+    window.HTMLMediaElement.prototype.play = vi.fn(() =>
+      Promise.reject(new DOMException('play() can only be initiated by a user gesture.', 'NotAllowedError'))
+    ) as unknown as HTMLMediaElement['play'];
+    try {
+      await act(async () => {
+        api.play(ep);
+      });
+      expect(api.isPlaying).toBe(false);
+    } finally {
+      window.HTMLMediaElement.prototype.play = realPlay;
+    }
+  });
+
+  // F04 e2e finding: a podcast episode has no video capability, so asking the
+  // backend for format 'video' fails (mock: "has no video stream") and the
+  // catch path kills playback with a toast. The engine must pick the format
+  // from the episode's own capability, not from the global audio-mode toggle.
+  it('resolves AUDIO for podcast episodes even when audio mode is off', async () => {
+    const ep = makeEpisode({ video_id: undefined, audio_url: 'https://mock/ep.wav' });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.wav', format: 'audio' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(ep);
+    });
+
+    expect(streamMock).toHaveBeenCalledWith(ep.id, 'audio');
+    expect(api.isPlaying).toBe(true);
+  });
 });

@@ -1,3 +1,4 @@
+import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '../store/slices/uiSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 
@@ -14,12 +15,17 @@ const navItems = [
 export function Sidebar() {
   const { sidebarOpen, sidebarCollapsed, setSidebarCollapsed } = useUIStore();
   const { audioOnlyMode, setAudioOnlyMode } = useQueueStore();
+  // react-router Link + useLocation: a raw <a href> would do a full page
+  // load on every navigation, resetting all in-memory state (the local-first
+  // queue, the player). useLocation keeps the active-item highlight honest
+  // across SPA navigations.
+  const location = useLocation();
 
   if (!sidebarOpen && !sidebarCollapsed) return null;
 
   return (
-    <aside 
-      className={`fixed left-0 top-0 z-40 h-screen bg-bg-elevated border-r border-border transition-all duration-300 ease-in-out ${
+    <aside
+      className={`flex shrink-0 flex-col h-screen bg-bg-elevated border-r border-border transition-all duration-300 ease-in-out ${
         sidebarCollapsed ? 'w-16' : 'w-64'
       }`}
       aria-label="Main navigation"
@@ -54,18 +60,18 @@ export function Sidebar() {
         <ul className="space-y-1" role="list">
           {navItems.map((item) => (
             <li key={item.path}>
-              <a
-                href={item.path}
+              <Link
+                to={item.path}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                  window.location.pathname === item.path
+                  location.pathname === item.path
                     ? 'bg-accent-soft text-accent'
                     : 'text-text-muted hover:text-text hover:bg-surface-hover'
                 }`}
-                aria-current={window.location.pathname === item.path ? 'page' : undefined}
+                aria-current={location.pathname === item.path ? 'page' : undefined}
               >
                 <NavIcon name={item.icon} />
                 {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

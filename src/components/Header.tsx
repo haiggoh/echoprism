@@ -66,8 +66,8 @@ export function Header() {
         {/* PrismConvergeToggle */}
         <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="md" />
 
-        {/* Notifications */}
-        <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors relative" aria-label="Notifications">
+        {/* Notifications — accessible name must contain the visible badge text */}
+        <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors relative" aria-label="Notifications, 3 unread">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
             <path d="M13.73 21a2 2 0 0 1-3.4 0"></path>

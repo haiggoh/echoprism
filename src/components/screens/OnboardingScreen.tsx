@@ -109,8 +109,9 @@ export function OnboardingScreen() {
 
       <div className="max-w-md mx-auto space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1">Instance URL</label>
+          <label htmlFor="instance-url" className="block text-sm font-medium mb-1">Instance URL</label>
           <input
+            id="instance-url"
             type="url"
             value={instanceUrl}
             onChange={(e) => setInstanceUrl(e.target.value)}
@@ -119,8 +120,9 @@ export function OnboardingScreen() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Type</label>
+          <label htmlFor="instance-type" className="block text-sm font-medium mb-1">Type</label>
           <select
+            id="instance-type"
             value={instanceType}
             onChange={(e) => setInstanceType(e.target.value as 'invidious' | 'piped')}
             className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"

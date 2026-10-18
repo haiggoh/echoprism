@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mockInvoke, resetMockState } from '../mocks/router';
 import { mockDb } from '../mocks/data';
-import type { Episode, Queue, QueueItem, StreamInfo, UserPreferences } from '../types';
+import type { Episode, Instance, Queue, QueueItem, StreamInfo, UserPreferences } from '../types';
 
 type QueueWithItems = Queue & { items: QueueItem[] };
 
@@ -70,5 +70,20 @@ describe('mock IPC router', () => {
   it('fixture database is D1/D2-compliant at the default (no auto-download, auto click)', () => {
     expect(mockDb.preferences.auto_download_wifi).toBe(false);
     expect(mockDb.preferences.card_click_action).toBe('auto');
+  });
+
+  it('add_instance registers an instance the onboarding flow can then list (F01-H1 step 2)', async () => {
+    const before = await mockInvoke<Instance[]>('list_instances');
+    expect(before.some((i) => i.url === 'https://e2e.example.dev')).toBe(false);
+
+    const added = await mockInvoke<Instance>('add_instance', {
+      url: 'https://e2e.example.dev',
+      instanceType: 'invidious',
+    });
+    expect(added.url).toBe('https://e2e.example.dev');
+    expect(added.type).toBe('invidious');
+
+    const after = await mockInvoke<Instance[]>('list_instances');
+    expect(after.some((i) => i.url === 'https://e2e.example.dev')).toBe(true);
   });
 });

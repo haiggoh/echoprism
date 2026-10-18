@@ -121,8 +121,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const ep = currentEpisodeRef.current;
     if (!ep) return;
     resolvingRef.current = true;
+    // A podcast episode has no video capability: requesting format 'video'
+    // fails at the backend and the catch path kills playback. Pick the format
+    // from the episode itself; the audio-mode toggle only overrides episodes
+    // that could play either way.
+    const wantAudio = isAudioModeRef.current || (!ep.video_id && !ep.video_url);
     episodeCommands
-      .stream(ep.id, isAudioModeRef.current ? 'audio' : 'video')
+      .stream(ep.id, wantAudio ? 'audio' : 'video')
       .then((info) => {
         // Only commit if this episode is still the one the engine is playing.
         if (currentEpisodeRef.current?.id === ep.id) setStreamUrl(info.url);
@@ -169,12 +174,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (inactive && !inactive.paused) inactive.pause();
 
     if (!activeEl || !streamUrl) return;
-    if (activeEl.src !== streamUrl) {
+    // Compare the CONTENT ATTRIBUTE, not the .src IDL property: real browsers
+    // resolve the property to an absolute URL, so a relative streamUrl would
+    // never compare equal and every playbackState update (each timeupdate!)
+    // would re-assign src and restart the load (observed in e2e: readyState
+    // pinned at 0, networkState NETWORK_NO_SOURCE despite 206 responses;
+    // jsdom reflects the raw attribute, which is why unit tests missed it).
+    if (activeEl.getAttribute('src') !== streamUrl) {
       activeEl.src = streamUrl;
       activeEl.currentTime = playbackState?.position_seconds ?? 0;
     }
     if (isPlaying) {
-      void activeEl.play().catch(() => setPlaying(false));
+      void activeEl.play().catch((err: unknown) => {
+        // An AbortError here is our own pause() interrupting this element's
+        // pending play() — the element-switch branch above (or a user pause)
+        // racing the promise. That is not a playback failure and must not
+        // stop the engine. Observed in e2e: the audio->video element switch
+        // rejected the audio's play(), this catch killed global playback,
+        // and the video then stayed paused with a valid src.
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setPlaying(false);
+      });
     } else if (!activeEl.paused) {
       activeEl.pause();
     }
