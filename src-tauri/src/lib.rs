@@ -40,32 +40,45 @@ pub fn run() {
         .plugin(tauri_plugin_media_session::init())
         .plugin(tauri_plugin_clipboard::init())
         .plugin(tauri_plugin_single_instance::init(single_instance_handler))
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Updater deferred until a release channel exists: its config REQUIRES
+        // a real signing pubkey (no serde default) and update endpoints, and
+        // with none published there is nothing to update from — registering it
+        // panics at init ("invalid type: null, expected struct Config").
+        // .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // Initialize database
+            // Managed-state type contract (measured across the codebase):
+            // commands inject `State<'_, Database>` / `State<'_, InstancePool>`
+            // (43 + 9 sites, bare), while the manager constructors in
+            // extractor/matcher/background_tasks request `Arc<...>` views
+            // (7 sites). Bare T and Arc<T> are DIFFERENT managed types, so
+            // both views must be managed for the shared services. Clones
+            // share inner state (Database wraps one SqlitePool; InstancePool
+            // is #[derive(Clone)] over Arc fields).
             let db = tauri::async_runtime::block_on(db::Database::new(app.handle()))?;
-            let db_for_sponsorblock = db.clone();
-            app.manage(db);
+            app.manage(db.clone());
+            let db_shared: Arc<db::Database> = Arc::new(db);
+            app.manage(db_shared.clone());
 
             // Initialize instance pool
             let pool = instance_pool::InstancePool::new(app.handle().clone());
-            app.manage(pool);
+            app.manage(pool.clone());
+            app.manage(Arc::new(pool));
 
             // Initialize extractor
             let extractor = extractor::Extractor::new(app.handle().clone());
-            app.manage(extractor);
+            app.manage(Arc::new(extractor));
 
             // Initialize matcher
             let matcher = matcher::EpisodeMatcher::new(app.handle().clone(), None);
-            app.manage(matcher);
+            app.manage(Arc::new(matcher));
 
             // Initialize podcast manager
             let podcast = podcast::PodcastManager::new(app.handle().clone());
-            app.manage(podcast);
+            app.manage(Arc::new(podcast));
 
             // Initialize SponsorBlock manager
-            let sponsorblock = sponsorblock::SponsorBlockManager::new(Arc::new(db_for_sponsorblock));
-            app.manage(sponsorblock);
+            let sponsorblock = sponsorblock::SponsorBlockManager::new(db_shared);
+            app.manage(Arc::new(sponsorblock));
 
             // Start background tasks
             tauri::async_runtime::block_on(background_tasks::start_all(app.handle().clone()));

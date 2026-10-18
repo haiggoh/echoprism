@@ -9,6 +9,9 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use reqwest::Client;
 
+/// Clone (manual impl below) shares the inner Arcs (instances map, database,
+/// HTTP client), so the bare and `Arc<>` managed views in `lib.rs` behave as
+/// one service.
 pub struct InstancePool {
     pub instances: Arc<RwLock<HashMap<String, Instance>>>,
     client: Client,

@@ -31,6 +31,14 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
         "publisher": "EchoPrism",
     "shortDescription": "Two streams become one - Unified video & podcast player",
     "longDescription": "EchoPrism is a unified video & podcast player that converges YouTube watching and podcast listening into one seamless stream. Built with Tauri, Rust, and love for privacy.",
@@ -57,7 +65,6 @@
     }
   },
   "plugins": {
-    "store": { "autoSave": true },
     "windowState": { "autoSave": true }
   }
 }
