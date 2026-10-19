@@ -650,4 +650,69 @@ mod tests {
         assert!(parse_invidious_search("{\"title\":").is_err());
         assert!(parse_yt_dlp_search("[{\"id\":").is_err());
     }
+
+    // ---- LIVE smoke (network-dependent; #[ignore] keeps CI offline) --------
+    // Run explicitly: cargo test --lib -- --ignored
+
+    #[tokio::test]
+    #[ignore = "live network: public Piped instance"]
+    async fn live_piped_search_returns_parseable_videos() {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .expect("client");
+        let resp = client
+            .get("https://pipedapi.ducks.party/search")
+            .query(&[("q", "vergecast"), ("filter", "videos")])
+            .send()
+            .await
+            .expect("live request");
+        assert!(resp.status().is_success(), "status {}", resp.status());
+        let body = resp.text().await.expect("body");
+        let videos = parse_piped_search(&body).expect("parse live response");
+        assert!(!videos.is_empty(), "live search returned no videos");
+        assert!(
+            videos.iter().all(|v| !v.id.is_empty() && !v.title.is_empty()),
+            "every result needs an id and a title"
+        );
+        println!(
+            "LIVE piped: {} results; first: {} ({})",
+            videos.len(),
+            videos[0].title,
+            videos[0].id
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "live network: local yt-dlp binary"]
+    async fn live_yt_dlp_search_returns_parseable_videos() {
+        let mut bin = None;
+        for c in ["yt-dlp", "/opt/homebrew/bin/yt-dlp"] {
+            if let Ok(o) = tokio::process::Command::new(c).arg("--version").output().await {
+                if o.status.success() {
+                    bin = Some(c.to_string());
+                    break;
+                }
+            }
+        }
+        let bin = bin.expect("yt-dlp installed for live smoke");
+        let out = tokio::process::Command::new(&bin)
+            .args(["--dump-json", "--flat-playlist", "--no-warnings", "ytsearch5:vergecast"])
+            .output()
+            .await
+            .expect("run yt-dlp");
+        assert!(
+            out.status.success(),
+            "yt-dlp failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let videos = parse_yt_dlp_search(&String::from_utf8_lossy(&out.stdout)).expect("parse");
+        assert!(!videos.is_empty(), "live yt-dlp search returned no videos");
+        println!(
+            "LIVE yt-dlp: {} results; first: {} ({})",
+            videos.len(),
+            videos[0].title,
+            videos[0].id
+        );
+    }
 }

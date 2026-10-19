@@ -29,6 +29,17 @@
   (`logging::init_tracing` in `run()` — RUST_LOG-aware, default info), so log output is
   visible; it had been silently discarded app-wide.
 - Nothing pushed yet.
+- **Step 1b done (2026-10-20):** search queries real backends — Piped/Invidious
+  instances in health/latency order (8s timeout each), then the local yt-dlp binary as
+  the guaranteed fallback. Premise amended by evidence: the public Invidious API is
+  disabled ecosystem-wide (official registry marks every instance `api:false`, verified
+  2026-10-20), so instances remain a user-added/self-hosted tier while yt-dlp (installed
+  via brew) guarantees results; pipedapi.ducks.party was verified live and is seeded as
+  the single default instance. Results are stored keyed by external video id (never
+  clobbering user state; discovered channels stay unsubscribed) and surface through the
+  existing FTS + smart-link search; `stream_episode` resolves real URLs through the
+  same failover. Verified: 21 cargo tests + 2 live (network) smoke tests, 116 vitest,
+  8 Playwright, contract-test mutation check, live smoke 2/2.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -135,4 +146,6 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 1b — connect search to a real source (Invidious/Piped with server fallback).
+Step 1c — podcast search and subscriptions (RSS/OPML wiring + a directory such as
+iTunes Search or Podcast Index). After 1b, the playback-while-closed check from the
+close-to-Dock verification can also be re-run: search now yields something to play.

@@ -189,3 +189,25 @@ receipts ran; tests unrun (if any); dirty work preserved; no secrets in receipts
 contract compatibility kept; stopped before push/tag/release. Update the roadmap doc's
 "Where things stand" + "Next action" in the same commit, and report the milestone with
 the offer to test search live (proceeding to self-test if no feedback arrives).
+
+## Delivered (2026-10-20)
+
+- Shipped, phases 0-5 as planned: the parse layer (Piped + Invidious + yt-dlp
+  JSONL/array), startup instance loading with exactly one health-check loop, default
+  instance seeding, the `search_episodes` orchestration (failover order, 8s
+  per-instance timeout, yt-dlp fallback, graceful offline degrade), the
+  non-clobbering video-id-keyed upsert feeding FTS + smart links, and a real
+  `stream_episode`.
+- Premise amended on live evidence: "instances with fallback" became "instances first,
+  yt-dlp guaranteed fallback" — the official Invidious registry disables the public API
+  on every listed instance (`api:false`, verified 2026-10-20). The Invidious fixture is
+  doc-derived and labeled as such in its test.
+- Receipts run: cargo 21/21 (+2 live smoke 2/2 against the real network), vitest
+  116/116, tsc clean, Playwright 8/8, contract-test mutation check (red on a renamed
+  command, green after restore), live Piped + yt-dlp searches parsed by the shipping
+  code. `example.com` mock gone from stream paths.
+- Boundary respected: nothing pushed, tagged, or released; working tree committed
+  (implementation `60662edf`, this note in the phase-5 commit).
+- Deferred: the milestone-wide Gemini adversarial review runs in the background — its
+  findings fold forward as fix-forward commits. The playback-while-closed check from
+  the close-to-Dock verification is now unblocked (search yields something to play).
