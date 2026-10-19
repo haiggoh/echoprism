@@ -80,6 +80,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (ep: Episode, mode?: PlayMode) => {
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
+      // The per-call mode override (D7 chain output) wins over the global
+      // toggle; no override defers to the toggle's current value.
       const wantAudio = mode ? mode === 'audio' : isAudioModeRef.current;
       setAudioMode(wantAudio);
       setPlaying(true); // the resolve effect starts playback once the src is set

@@ -350,4 +350,36 @@ describe('PlayerProvider media engine', () => {
     expect(streamMock).toHaveBeenCalledWith(ep.id, 'audio');
     expect(api.isPlaying).toBe(true);
   });
+
+  // D7 contract pins (design-decisions.md): the per-call mode override wins
+  // over the global audio toggle, but can never conjure a capability the
+  // episode lacks. Mutation checks: deleting the `mode ? … : …` ternary in
+  // PlayerProvider.play fails the first; removing the capability fallback in
+  // the resolve effect fails the second.
+  it("play(ep, 'audio') overrides the video default for a video-capable episode (D7)", async () => {
+    const ep = makeEpisode();
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.wav', format: 'audio' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(ep, 'audio');
+    });
+
+    expect(streamMock).toHaveBeenCalledWith(ep.id, 'audio');
+    expect(api.isAudioMode).toBe(true);
+    expect(api.isPlaying).toBe(true);
+  });
+
+  it("play(ep, 'video') on a podcast-only episode falls back to audio (capability floor)", async () => {
+    const ep = makeEpisode({ video_id: undefined, audio_url: 'https://mock/ep.wav' });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.wav', format: 'audio' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(ep, 'video');
+    });
+
+    expect(streamMock).toHaveBeenCalledWith(ep.id, 'audio');
+    expect(api.isPlaying).toBe(true);
+  });
 });
