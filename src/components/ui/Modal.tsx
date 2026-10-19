@@ -62,21 +62,29 @@ export const Modal = ({
       if (e.key === 'Escape' && closeOnEscape) {
         onClose();
       }
-      // Trap focus
+      // Trap focus. Initial focus sits on the container (tabIndex -1, not in
+      // the list), and focus can also have left the dialog entirely; in both
+      // cases the browser default would Tab into the page behind the overlay,
+      // so anything that is not a listed control is steered to an end.
       if (e.key === 'Tab') {
-        const focusableElements = modalRef.current?.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        const focusableElements = modalRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
         );
         if (focusableElements && focusableElements.length > 0) {
-          const firstElement = focusableElements[0] as HTMLElement;
-          const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
-          if (e.shiftKey && document.activeElement === firstElement) {
+          const firstElement = focusableElements[0];
+          const lastElement = focusableElements[focusableElements.length - 1];
+          const active = document.activeElement as HTMLElement | null;
+          const onControl = !!active && Array.from(focusableElements).includes(active);
+          if (e.shiftKey && (!onControl || active === firstElement)) {
             e.preventDefault();
             lastElement.focus();
-          } else if (!e.shiftKey && document.activeElement === lastElement) {
+          } else if (!e.shiftKey && (!onControl || active === lastElement)) {
             e.preventDefault();
             firstElement.focus();
           }
+        } else {
+          e.preventDefault();
+          modalRef.current?.focus();
         }
       }
     };

@@ -257,7 +257,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPlaybackState({ duration_seconds: el.duration });
       }
     };
-    const onEnded = () => queueNext();
+    // Repeat 'one' loops on the NATURAL end only (a manual Next still skips),
+    // so it lives here rather than in the slice's nextTrack. Restarting the
+    // same element in place: the slice writes no state for 'one', so nothing
+    // downstream would re-trigger playback, and the stream is already loaded.
+    const onEnded = () => {
+      if (useQueueStore.getState().repeatMode === 'one') {
+        el.currentTime = 0;
+        el.play().catch(() => setPlaying(false));
+        return;
+      }
+      queueNext();
+    };
     const onError = () => {
       setPlaying(false);
       addToast({
@@ -276,7 +287,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
     };
-  }, [activeEl, setPlaybackState, queueNext, addToast]);
+  }, [activeEl, setPlaybackState, queueNext, addToast, setPlaying]);
 
   // Keep both elements' volume/rate in sync so a format switch is seamless.
   useEffect(() => {
@@ -288,27 +299,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (videoEl) videoEl.playbackRate = playbackRate;
   }, [playbackRate, videoEl]);
 
-  // Auto-advance: when the queue's current EPISODE changes while playing,
+  // Auto-advance: when the queue's current ITEM changes while playing,
   // continue with it (queue items queued from the feed carry their episode).
-  // Keyed on episode IDENTITY, not just the index number: removing the
-  // playing item (F05-N1) leaves currentIndex unchanged but shifts a new
-  // episode into it, and the engine must advance. An index-only comparison
-  // misses that; an object-identity comparison would over-fire on unrelated
-  // item edits (setPlayMode re-creates item objects, same episode inside).
-  const lastCurrentRef = useRef<{ index: number; episodeId?: string }>({
-    index: currentIndex,
-    episodeId: items[currentIndex]?.episode?.id,
-  });
+  // Keyed on queue-item IDENTITY (its id), not the index number nor the
+  // episode: removing the playing item (F05-N1) leaves currentIndex unchanged
+  // but shifts a new item into it; reordering moves the playing item to a new
+  // index without changing it (must NOT restart, review #6); and the same
+  // episode queued twice is two items, so advancing between them still plays.
+  // Item ids survive setPlayMode/position rewrites, so unrelated edits are
+  // ignored too.
+  const lastItemIdRef = useRef<string | undefined>(items[currentIndex]?.id);
   useEffect(() => {
-    const ep = items[currentIndex]?.episode;
-    const episodeId = ep?.id;
-    if (
-      currentIndex === lastCurrentRef.current.index &&
-      episodeId === lastCurrentRef.current.episodeId
-    ) {
-      return;
-    }
-    lastCurrentRef.current = { index: currentIndex, episodeId };
+    const item = items[currentIndex];
+    if (item?.id === lastItemIdRef.current) return;
+    lastItemIdRef.current = item?.id;
+    const ep = item?.episode;
     if (isPlaying && ep) {
       playRef.current(ep, isAudioModeRef.current ? 'audio' : 'video');
     } else if (isPlaying && !ep) {

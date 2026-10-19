@@ -186,6 +186,98 @@ describe('PlayerProvider media engine', () => {
     expect(streamMock).toHaveBeenLastCalledWith(epB.id, 'video');
   });
 
+  // F05 review #7: repeat 'one' was pinned only at the slice ("stays on
+  // current"), but staying writes no state, so nothing restarted the ended
+  // element and playback simply stopped. Discriminant: dropping the repeat-one
+  // branch from the ended handler leaves play() uncalled and fails this.
+  it("repeat 'one' restarts the same episode on ended, mid-queue too", async () => {
+    const epA = makeEpisode();
+    const epB = makeEpisode();
+    useQueueStore.setState({
+      items: [makeQueueItem(epA), makeQueueItem(epB)].map((item, position) => ({
+        ...item,
+        id: `q-${position}`,
+        position,
+      })) as QueueItem[],
+      currentIndex: 0,
+      repeatMode: 'one',
+    });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(epA);
+    });
+    const playSpy = vi.mocked(window.HTMLMediaElement.prototype.play);
+    playSpy.mockClear();
+    probeVideo.currentTime = 42;
+    await act(async () => {
+      probeVideo.dispatchEvent(new Event('ended'));
+    });
+
+    expect(useQueueStore.getState().currentIndex).toBe(0);
+    expect(probeVideo.currentTime).toBe(0);
+    expect(playSpy).toHaveBeenCalled();
+    expect(api.isPlaying).toBe(true);
+    // Same element restarted: no new stream resolution for B (or A).
+    expect(streamMock).toHaveBeenCalledTimes(1);
+  });
+
+  // F05 review #6 at the engine: dragging the PLAYING item (or an item across
+  // it) must not change what plays. The old toIndex-keyed reorder math moved
+  // the cursor onto a different episode and the auto-advance effect played it.
+  it('reordering around the playing item never switches or stops playback', async () => {
+    const [epA, epB, epC] = [makeEpisode(), makeEpisode(), makeEpisode()];
+    const queueItems = [makeQueueItem(epA), makeQueueItem(epB), makeQueueItem(epC)].map(
+      (item, position) => ({ ...item, id: `q-${position}`, position })
+    ) as QueueItem[];
+    useQueueStore.setState({ items: queueItems, currentIndex: 1 });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(epB);
+    });
+    await act(async () => {
+      useQueueStore.getState().reorderItems(1, 0); // drag playing B to the top
+    });
+    await act(async () => {
+      useQueueStore.getState().reorderItems(1, 2); // drag A across B's slot
+    });
+
+    const { items, currentIndex } = useQueueStore.getState();
+    expect(items[currentIndex]?.episode?.id).toBe(epB.id);
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(api.isPlaying).toBe(true);
+  });
+
+  // F05 review #4, pinned as a DECISION: emptying the queue while playing
+  // stops playback (the cleared episode is gone from the queue, so continuing
+  // to play it would leave the player showing nothing the queue knows about).
+  it('clearing the queue while playing stops playback', async () => {
+    const epA = makeEpisode();
+    useQueueStore.setState({
+      items: [makeQueueItem(epA)].map((item, position) => ({
+        ...item,
+        id: `q-${position}`,
+        position,
+      })) as QueueItem[],
+      currentIndex: 0,
+    });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(epA);
+    });
+    expect(api.isPlaying).toBe(true);
+    await act(async () => {
+      useQueueStore.getState().clearQueue();
+    });
+
+    expect(api.isPlaying).toBe(false);
+  });
+
   // F05-N1 (replica/test-plan.md): removing the PLAYING item must advance
   // playback to the (new) current episode — the clamp in removeItem leaves
   // currentIndex pointing at the next item, and the engine must notice even

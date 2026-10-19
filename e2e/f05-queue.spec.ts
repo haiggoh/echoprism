@@ -63,8 +63,11 @@ test('F05-H1: add from feed, reorder, remove, clear', async ({ page }) => {
 });
 
 // F05-E1 (replica/test-plan.md): dropping an item onto ITSELF must be a
-// no-op — QueueScreen's onDrop guards `dragIndex !== index`, so neither the
-// order nor any state moves. Two items make a spurious reorder observable.
+// no-op for the user. This pins the OUTCOME through the real drag-and-drop
+// path (catches a drop that shifts or duplicates the item), NOT QueueScreen's
+// `dragIndex !== index` guard: reorderItems(i, i) is already an identity, so
+// deleting that guard leaves this green by construction (review #2). The
+// guard is an early-out, not behaviour, and no test can discriminate it.
 test('F05-E1: dragging an item onto itself leaves the queue unchanged', async ({ page }) => {
   await page.goto('/feed');
 
