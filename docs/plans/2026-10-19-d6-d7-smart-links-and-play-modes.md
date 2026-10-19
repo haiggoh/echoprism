@@ -6,10 +6,18 @@ Rust, commands, TS surface, fixtures, seed); Phase 3: 4eb89dc1 (resolveDefaultPl
 useEpisodePlay, engine mode override, discriminating fixtures — a chain-bypass mutation is
 caught); Phase 4: aa264834 (rule editor, tab named "Play Modes" rather than the plan's
 "Channels" — SettingsScreen had no channels tab and the rules are the tab's subject); Phase 5:
-this commit (e2e/f06-smart-links.spec.ts + full regression 71 vitest / 7 playwright incl. axe /
+fca0f88a (e2e/f06-smart-links.spec.ts + full regression 71 vitest / 7 playwright incl. axe /
 5 cargo; pattern matching tightened to the spec's case-insensitive substring during Phase 5,
-test mutation-checked). Regressions: none — all suites green; D1/D2/D3/F06 behavior unchanged;
-idle smart-linking job untouched.
+test mutation-checked). Post-plan adversarial review (2026-10-19) — 7 findings, all addressed in
+954e6b61: D7 override no longer rewrites the audio toggle (per-play `playbackFormat` split from
+the `isAudioMode` preference; render follows the engine format); `load_paused` carries the chain
+mode (D2×D7, toggle-play resolves the rule's format); `Format::Both` decodes (real-shell rows
+with the schema default no longer fail list_channels); rowid tiebreaker for same-second rules;
+self-link guard (an episode is never its own twin; wrong-twin-among-shared-keys left as an open
+policy question); channel `type` wire-name serde rename (+ contract test); rule-mutation failure
+toasts (+ bridge-spy test). Regression after fixes: 75 vitest / 7 playwright incl. axe / 7 cargo,
+tsc clean, build ok. Regressions: none — D1/D2/D3/F06 behavior unchanged; idle smart-linking job
+untouched.
 **Owner decisions:** design-decisions.md D6 + D7 (2026-10-18). This plan is self-contained;
 revalidate live source before mutating.
 

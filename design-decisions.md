@@ -104,6 +104,13 @@ episode (keys omitted when unlinked, matching the mock router's
 response (commit 0394e641; e2e e2e/f06-smart-links.spec.ts drives both
 families + badges; Rust tests in queries.rs `d6_d7_tests`).
 
+Review hardening (commit 954e6b61): a both-keys episode whose link resolves
+back to itself is no longer stamped as its own twin (self-link guard in the
+Rust resolver and the mock router). Open policy question: when several
+episodes share one link key (e.g. two videos under one podcast_guid), the
+resolver picks an arbitrary twin — disambiguating needs a rule the owner
+hasn't chosen yet.
+
 ## D7 — Per-title-family default play mode (decided 2026-10-18, implemented 2026-10-19)
 
 **Decision:** The card-click default (D2) can be overridden per title family
@@ -120,12 +127,23 @@ podcast-native ones, without touching the toggle each time.
 play_mode, priority; UNIQUE(channel_id, title_pattern)) with list/set/remove
 commands (commit 0394e641); `resolveDefaultPlayMode` in
 src/hooks/useEpisodePlay.ts consults matching → channel format_preference →
-undefined in the card-click play-now path, and PlayerProvider's `play()` treats
+undefined in the card-click paths, and PlayerProvider's `play()` treats
 the passed mode as an override over the global audio toggle while never
 conjuring a capability the episode lacks (commit 4eb89dc1); rule editor UI in
 Settings → Play Modes, per subscribed channel (commit aa264834).
 
-Scope note: the chain feeds the card-click play-now path only — queue items
-still carry `play_mode: 'unified'` and queue-advancement doesn't consult rules
-yet; the rule editor has no priority control (equal-priority rules resolve by
-creation order, oldest first). Tracked in the P3 waypoint.
+Review hardening (commit 954e6b61): the override no longer REWRITES the
+user's audio toggle — the engine splits a per-play `playbackFormat` (what
+this playback resolves through; also drives PlayerScreen's render) from
+`isAudioMode` (the standing preference), so an override cannot leak into
+later plays. The `load_paused` path carries the chain mode too: a paused
+load remembers the rule's format, and pressing play resolves it instead of
+the toggle's default (D2×D7). Rule-list ordering gained a rowid tiebreaker
+(1-second timestamp resolution), and schema-default `'both'` channel rows
+decode via `Format::Both` instead of failing the whole list query.
+
+Scope note: the chain feeds the card-click play-now and load-paused paths
+only — queue items still carry `play_mode: 'unified'` and queue-advancement
+doesn't consult rules yet; the rule editor has no priority control
+(equal-priority rules resolve by creation order, oldest first). Tracked in
+the P3 waypoint.
