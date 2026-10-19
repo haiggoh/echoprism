@@ -19,7 +19,12 @@ use std::sync::Arc;
 use tauri::Manager;
 
 fn single_instance_handler(app: &tauri::AppHandle, _args: Vec<String>, _cwd: String) {
-    let _ = app.get_webview_window("main").map(|w| w.set_focus());
+    // A second launch while the window is hidden (macOS close-to-Dock) must
+    // show it, not just focus an invisible window.
+    let _ = app.get_webview_window("main").map(|w| {
+        let _ = w.show();
+        w.set_focus()
+    });
 }
 
 /// Application entry point. Invoked by the thin binary shim in `src/main.rs`
@@ -163,6 +168,33 @@ pub fn run() {
             commands::background::trigger_sponsorblock_sync,
             commands::background::trigger_cleanup,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        // macOS convention: closing the window HIDES it and the app keeps
+        // running in the Dock (playback included); clicking the Dock icon
+        // brings it back, and Cmd+Q / the app menu still quits. Other
+        // platforms keep close-to-quit, which is their convention.
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Dock-icon click with no visible window (macOS "reopen").
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = event {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }
