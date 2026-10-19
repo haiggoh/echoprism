@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '../store/slices/uiSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { PrismBadge } from './ui/PrismBadge';
+import { PrismAppIcon } from './ui/PrismAppIcon';
 
 const navItems = [
   { path: '/feed', label: 'Feed', icon: 'home' },
@@ -40,9 +40,10 @@ export function Sidebar() {
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          {/* Brand mark = the prism; doubles as the audio-only legend (the
-              video stream pales while audio-only is on). */}
-          <PrismBadge width={32} audioOnly={audioOnlyMode} />
+          {/* The app icon itself: the same component the dock icon is built
+              from, so the two can never drift. Doubles as the audio-only
+              legend (the video stream pales while audio-only is on). */}
+          <PrismAppIcon size={36} audioOnly={audioOnlyMode} />
           {!sidebarCollapsed && (
             <div className="min-w-0 leading-tight">
               <p className="font-semibold text-text truncate">EchoPrism</p>
