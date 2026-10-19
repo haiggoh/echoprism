@@ -7,6 +7,7 @@
 
 mod types;
 mod commands;
+mod logging;
 mod db;
 mod instance_pool;
 mod extractor;
@@ -31,6 +32,7 @@ fn single_instance_handler(app: &tauri::AppHandle, _args: Vec<String>, _cwd: Str
 /// — a library crate cannot host `fn main()`, and without a bin target
 /// `cargo run` / `tauri dev` fail with "a bin target must be available".
 pub fn run() {
+    logging::init_tracing();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())

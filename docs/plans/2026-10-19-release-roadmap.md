@@ -24,8 +24,9 @@
 - **Step 1a done (2026-10-19):** the five background tasks now start at launch — the
   starters had been `async fn`s called without `.await`, so their futures were dropped
   and no loop ever ran; they now spawn onto the tauri async runtime (smoke-run verified).
-  Open finding for 1e: the crate never initializes a tracing subscriber, so all
-  `tracing` output is currently discarded.
+  Follow-up shipped the same day: `tracing` now installs a real subscriber at startup
+  (`logging::init_tracing` in `run()` — RUST_LOG-aware, default info), so log output is
+  visible; it had been silently discarded app-wide.
 - Nothing pushed yet.
 
 ## Step 1 — Fix search (blocks everything else)
