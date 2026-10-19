@@ -21,6 +21,11 @@
 - macOS close-to-Dock behaviour: closing the window hides it, playback continues in the
   Dock, Cmd+Q quits (`b7c68bda`). Needs a quick manual check (`npm run tauri dev`,
   close window, click Dock icon).
+- **Step 1a done (2026-10-19):** the five background tasks now start at launch — the
+  starters had been `async fn`s called without `.await`, so their futures were dropped
+  and no loop ever ran; they now spawn onto the tauri async runtime (smoke-run verified).
+  Open finding for 1e: the crate never initializes a tracing subscriber, so all
+  `tracing` output is currently discarded.
 - Nothing pushed yet.
 
 ## Step 1 — Fix search (blocks everything else)
@@ -120,4 +125,4 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 1a — wire the five background tasks into app startup so they actually run.
+Step 1b — connect search to a real source (Invidious/Piped with server fallback).

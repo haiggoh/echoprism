@@ -1,17 +1,17 @@
 //! Background tasks
 
-use crate::db::Database;
 use crate::instance_pool::InstancePool;
 use crate::types::{InstanceHealth};
 use tauri::Manager;
 use std::sync::Arc;
 
-pub async fn start_all(app_handle: tauri::AppHandle) {
+/// Starts every background loop. Sync by design: each starter spawns its task
+/// onto the tauri async runtime immediately and returns a `JoinHandle`. (They
+/// used to be `async fn`s whose `tokio::spawn` sat inside the body; calling
+/// them without `.await` dropped the future and no task ever ran.)
+pub fn start_all(app_handle: tauri::AppHandle) {
     let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
-    let db = app_handle.state::<Arc<Database>>().inner().clone();
     let matcher = app_handle.state::<Arc<crate::matcher::EpisodeMatcher>>().inner().clone();
-    let sponsorblock = app_handle.state::<Arc<crate::sponsorblock::SponsorBlockManager>>().inner().clone();
-    let podcast = app_handle.state::<Arc<crate::podcast::PodcastManager>>().inner().clone();
 
     // Start instance health checks
     start_instance_health_checks(pool);
@@ -20,18 +20,19 @@ pub async fn start_all(app_handle: tauri::AppHandle) {
     start_smart_linking(matcher);
 
     // Start podcast feed fetching
-    start_feed_fetching(podcast);
+    start_feed_fetching();
 
     // Start SponsorBlock sync
-    start_sponsorblock_sync(sponsorblock);
+    start_sponsorblock_sync();
 
     // Start cleanup task
-    start_cleanup(db);
+    start_cleanup();
 }
 
-async fn start_instance_health_checks(pool: Arc<InstancePool>) {
-    let pool_clone = pool.clone();
-    let _ = tokio::spawn(run_instance_health_checks(pool_clone));
+fn start_instance_health_checks(
+    pool: Arc<InstancePool>,
+) -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(run_instance_health_checks(pool))
 }
 
 async fn run_instance_health_checks(pool: Arc<InstancePool>) {
@@ -61,8 +62,10 @@ async fn run_instance_health_checks(pool: Arc<InstancePool>) {
     }
 }
 
-async fn start_smart_linking(matcher: std::sync::Arc<crate::matcher::EpisodeMatcher>) {
-    tokio::spawn(async move {
+fn start_smart_linking(
+    matcher: std::sync::Arc<crate::matcher::EpisodeMatcher>,
+) -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // 1 hour
         loop {
             interval.tick().await;
@@ -73,11 +76,11 @@ async fn start_smart_linking(matcher: std::sync::Arc<crate::matcher::EpisodeMatc
                 tracing::error!("Smart linking failed: {}", e);
             }
         }
-    });
+    })
 }
 
-async fn start_feed_fetching(_podcast: std::sync::Arc<crate::podcast::PodcastManager>) {
-    tokio::spawn(async move {
+fn start_feed_fetching() -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1800)); // 30 minutes
         loop {
             interval.tick().await;
@@ -87,11 +90,11 @@ async fn start_feed_fetching(_podcast: std::sync::Arc<crate::podcast::PodcastMan
             // For now, just log
             tracing::info!("Background feed fetch triggered");
         }
-    });
+    })
 }
 
-async fn start_sponsorblock_sync(_sponsorblock: std::sync::Arc<crate::sponsorblock::SponsorBlockManager>) {
-    tokio::spawn(async move {
+fn start_sponsorblock_sync() -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400)); // 24 hours
         loop {
             interval.tick().await;
@@ -100,11 +103,11 @@ async fn start_sponsorblock_sync(_sponsorblock: std::sync::Arc<crate::sponsorblo
             // This would fetch latest segments for recently watched videos
             tracing::info!("SponsorBlock sync triggered");
         }
-    });
+    })
 }
 
-async fn start_cleanup(_db: std::sync::Arc<Database>) {
-    tokio::spawn(async move {
+fn start_cleanup() -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400)); // 24 hours
         loop {
             interval.tick().await;
@@ -119,5 +122,60 @@ async fn start_cleanup(_db: std::sync::Arc<Database>) {
             // For now, just log
             tracing::info!("Cleanup task triggered");
         }
-    });
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression net for the dropped-future bug fixed on 2026-10-19: the stub
+    /// starters were `async fn`s whose `tokio::spawn` sat inside the body, so
+    /// `start_all` calling them without `.await` dropped the future and none of
+    /// the background loops ever started (five `unused_must_use` warnings). A
+    /// starter must be a plain function that spawns and hands back a live
+    /// `JoinHandle` — a shape that makes the forgotten-`.await` mistake
+    /// unrepresentable.
+    #[tokio::test]
+    async fn stub_starters_spawn_live_looping_tasks() {
+        let feed = start_feed_fetching();
+        let sponsorblock = start_sponsorblock_sync();
+        let cleanup = start_cleanup();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        assert!(
+            !feed.inner().is_finished(),
+            "feed-fetching task exited instead of looping"
+        );
+        assert!(
+            !sponsorblock.inner().is_finished(),
+            "SponsorBlock sync task exited instead of looping"
+        );
+        assert!(
+            !cleanup.inner().is_finished(),
+            "cleanup task exited instead of looping"
+        );
+
+        feed.abort();
+        sponsorblock.abort();
+        cleanup.abort();
+    }
+
+    /// Regression for the 2026-10-19 startup panic: tauri's setup closure runs
+    /// on the main thread, outside any tokio runtime, and a starter using
+    /// `tokio::spawn` directly died with "there is no reactor running" on real
+    /// launch (caught by a 15-second smoke run, invisible to `#[tokio::test]`,
+    /// which supplies exactly the missing context). Starters must spawn through
+    /// `tauri::async_runtime`, whose global runtime works from anywhere.
+    /// Deliberately a plain `#[test]`: no runtime context is the point.
+    #[test]
+    fn starter_spawns_outside_any_tokio_runtime() {
+        let handle = start_cleanup();
+        assert!(
+            !handle.inner().is_finished(),
+            "cleanup task should be running on the tauri runtime"
+        );
+        handle.abort();
+    }
 }

@@ -86,7 +86,7 @@ pub fn run() {
             app.manage(Arc::new(sponsorblock));
 
             // Start background tasks
-            tauri::async_runtime::block_on(background_tasks::start_all(app.handle().clone()));
+            background_tasks::start_all(app.handle().clone());
 
             Ok(())
         });
