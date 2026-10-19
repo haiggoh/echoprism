@@ -11,7 +11,13 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
-import { PrismLogo } from '../components/ui/PrismLogo';
+import {
+  PrismLogo,
+  PRISM_AUDIO_BEAM,
+  PRISM_VIDEO_BEAM,
+  PRISM_EXIT_BEAM,
+  PRISM_MEET,
+} from '../components/ui/PrismLogo';
 
 afterEach(cleanup);
 
@@ -45,5 +51,23 @@ describe('PrismLogo', () => {
       const d = getByTestId(id).getAttribute('d') ?? '';
       expect(d).toMatch(/^[ML\s0-9.-]+$/); // only M/L commands + coordinates
     }
+  });
+
+  // Refraction redesign (2026-10-19): both streams converge on ONE point of
+  // the prism's right face, and the white combined beam leaves from exactly
+  // there. Fails if any beam is edited by hand without regenerating the set
+  // from design/brand/prism-geometry.py.
+  it('both streams end where the white exit beam starts', () => {
+    const pts = (d: string) => d.replace(/[ML]/g, ' ').trim().split(/\s+/).map(Number);
+    const at = (d: string, i: number) => pts(d).slice(i * 2, i * 2 + 2);
+    const last = (d: string) => pts(d).slice(-2);
+    expect(last(PRISM_AUDIO_BEAM)).toEqual([PRISM_MEET.x, PRISM_MEET.y]);
+    expect(last(PRISM_VIDEO_BEAM)).toEqual([PRISM_MEET.x, PRISM_MEET.y]);
+    expect(at(PRISM_EXIT_BEAM, 0)).toEqual([PRISM_MEET.x, PRISM_MEET.y]);
+  });
+
+  it('renders the white combined exit beam', () => {
+    const { getByTestId } = render(<PrismLogo />);
+    expect(getByTestId('prism-exit-beam').getAttribute('stroke')).toBe('#FFFFFF');
   });
 });

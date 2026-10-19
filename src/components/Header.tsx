@@ -1,7 +1,7 @@
 import { useUIStore } from '../store/slices/uiSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
-import { PrismLogo } from './ui/PrismLogo';
+import { PrismBadge } from './ui/PrismBadge';
 import { useConvergence } from '../hooks/useConvergence';
 
 export function Header() {
@@ -41,9 +41,7 @@ export function Header() {
 
       {/* Center: App title (collapsed sidebar) */}
       <div className="hidden lg:flex items-center">
-        <div className="w-16 h-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-xl flex items-center justify-center">
-          <PrismLogo size={28} audioOnly={audioOnlyMode} />
-        </div>
+        <PrismBadge width={64} aspect={2} audioOnly={audioOnlyMode} />
       </div>
 
       {/* Right: Audio mode toggle + PrismConvergeToggle */}

@@ -3,8 +3,17 @@ import {
   PRISM_TRIANGLE,
   PRISM_AUDIO_BEAM,
   PRISM_VIDEO_BEAM,
+  PRISM_EXIT_BEAM,
+  PRISM_MEET,
+  PRISM_AUDIO_START,
+  PRISM_VIDEO_START,
+  PRISM_EXIT_END,
+  PRISM_BEAM_WIDTH,
+  PRISM_EXIT_WIDTH,
+  PRISM_OUTLINE_WIDTH,
   PRISM_PALE_OPACITY,
   PRISM_PALE_FILTER,
+  PrismWhiteMerge,
 } from '../ui/PrismLogo';
 
 interface PrismConvergeToggleProps {
@@ -44,21 +53,21 @@ export function PrismConvergeToggle({
   return (
     <div className="relative inline-flex items-center justify-center" role="group" aria-label="Format toggle">
       <svg width={width} height={height} viewBox="0 0 120 64" className="block" aria-hidden="true">
-        {/* Prism triangle — brighter, thicker outline than the pre-redesign mark */}
+        {/* Prism triangle (shared geometry with PrismLogo) */}
         <polygon
           points={PRISM_TRIANGLE}
-          fill="none"
-          stroke="rgba(255,255,255,0.88)"
-          strokeWidth="2.5"
+          fill="rgba(255,255,255,0.04)"
+          stroke="rgba(255,255,255,0.9)"
+          strokeWidth={PRISM_OUTLINE_WIDTH}
           strokeLinejoin="round"
         />
 
-        {/* Audio stream (teal): straight in, crosses inside the prism, exits parallel */}
+        {/* Audio stream (teal): approaches, refracts on entry, meets video on the right face */}
         <path
           data-testid="toggle-audio-beam"
           d={PRISM_AUDIO_BEAM}
           stroke="var(--color-stream-audio)"
-          strokeWidth="2.5"
+          strokeWidth={PRISM_BEAM_WIDTH}
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
@@ -71,7 +80,7 @@ export function PrismConvergeToggle({
           data-testid="toggle-video-beam"
           d={PRISM_VIDEO_BEAM}
           stroke="var(--color-stream-video)"
-          strokeWidth="2.5"
+          strokeWidth={PRISM_BEAM_WIDTH}
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
@@ -79,25 +88,27 @@ export function PrismConvergeToggle({
           style={{ filter: videoPale ? PRISM_PALE_FILTER : undefined, transition: BEAM_TRANSITION }}
         />
 
-        {/* Combined stream: the thick white beam bridging the parallel exits —
-            fully lit only in unified mode, where both streams carry */}
-        <line
+        {/* Colours fade to white where the streams merge inside the glass;
+            full white only in unified mode, where both streams carry */}
+        <PrismWhiteMerge opacity={unified ? 1 : 0.25} />
+
+        {/* Combined stream: the white beam refracting out of the right face —
+            fully lit only in unified mode */}
+        <path
           data-testid="toggle-combined-beam"
-          x1="84"
-          y1="32"
-          x2="114"
-          y2="32"
+          d={PRISM_EXIT_BEAM}
           stroke="#FFFFFF"
-          strokeWidth="10.5"
+          strokeWidth={PRISM_EXIT_WIDTH}
           strokeLinecap="round"
+          fill="none"
           opacity={unified ? 1 : 0.25}
           style={{ transition: BEAM_TRANSITION }}
         />
 
-        {/* Convergence pulse at the crossing point */}
+        {/* Convergence pulse at the meeting point */}
         <AnimatePresence mode="wait">
           {unified && (
-            <circle cx="72" cy="32" r="8" fill="var(--color-stream-unified)" opacity={0.3} className="convergence-pulse">
+            <circle cx={PRISM_MEET.x} cy={PRISM_MEET.y} r="8" fill="var(--color-stream-unified)" opacity={0.3} className="convergence-pulse">
               <animate attributeName="r" from="6" to="14" dur="800ms" repeatCount="indefinite" begin="0s" />
               <animate attributeName="opacity" from="0.5" to="0" dur="800ms" repeatCount="indefinite" begin="0s" />
             </circle>
@@ -107,17 +118,17 @@ export function PrismConvergeToggle({
         {/* Mode indicator dots: stream entries + combined-stream end */}
         <g className="mode-indicators">
           <circle
-            cx="6" cy="26" r="3.5"
+            cx={PRISM_AUDIO_START.x + 2} cy={PRISM_AUDIO_START.y} r="3.5"
             fill={mode === 'audio' || unified ? 'var(--color-stream-audio)' : 'var(--color-border)'}
             className="mode-indicator"
           />
           <circle
-            cx="6" cy="38" r="3.5"
+            cx={PRISM_VIDEO_START.x + 2} cy={PRISM_VIDEO_START.y} r="3.5"
             fill={mode === 'video' || unified ? 'var(--color-stream-video)' : 'var(--color-border)'}
             className="mode-indicator"
           />
           <circle
-            cx="116" cy="32" r="3.5"
+            cx={PRISM_EXIT_END.x} cy={PRISM_EXIT_END.y} r="3.5"
             fill={unified ? 'var(--color-stream-unified)' : 'var(--color-border)'}
             className="mode-indicator"
           />

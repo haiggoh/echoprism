@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '../store/slices/uiSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { PrismLogo } from './ui/PrismLogo';
+import { PrismBadge } from './ui/PrismBadge';
 
 const navItems = [
   { path: '/feed', label: 'Feed', icon: 'home' },
@@ -38,9 +38,7 @@ export function Sidebar() {
             {/* Brand mark = the prism (owner redesign 2026-10-18): the layers
                 glyph is retired. It doubles as the audio-only legend — the
                 video stream pales while audio-only is on. */}
-            <div className="w-8 h-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-xl flex items-center justify-center">
-              <PrismLogo size={26} audioOnly={audioOnlyMode} />
-            </div>
+            <PrismBadge width={32} audioOnly={audioOnlyMode} />
             <span className="font-semibold text-text">EchoPrism</span>
           </div>
         )}
@@ -81,9 +79,7 @@ export function Sidebar() {
       <div className="p-2 border-t border-border">
         <div className="flex items-center justify-between p-2 rounded-lg bg-surface">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-xl flex items-center justify-center flex-shrink-0">
-              <PrismLogo size={22} audioOnly={audioOnlyMode} />
-            </div>
+            <PrismBadge width={32} audioOnly={audioOnlyMode} />
             <div className="min-w-0">
               <p className="text-xs font-medium text-text truncate">EchoPrism</p>
               <p className="text-[10px] text-text-muted truncate">Two streams become one</p>
