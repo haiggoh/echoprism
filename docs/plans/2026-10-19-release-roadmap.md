@@ -19,8 +19,9 @@
 - Brand v5 prism mark committed through `2df02751`; dock icon and sidebar unified behind
   one `PrismAppIcon` component with a sync guard test (`bc858a24`).
 - macOS close-to-Dock behaviour: closing the window hides it, playback continues in the
-  Dock, Cmd+Q quits (`b7c68bda`). Needs a quick manual check (`npm run tauri dev`,
-  close window, click Dock icon).
+  Dock, Cmd+Q quits (`b7c68bda`). Owner-verified 2026-10-19: window hides, Dock click
+  restores it, Cmd+Q quits. Playback-while-closed still untested — needs working search
+  (1b) first, since there is nothing to play yet.
 - **Step 1a done (2026-10-19):** the five background tasks now start at launch — the
   starters had been `async fn`s called without `.await`, so their futures were dropped
   and no loop ever ran; they now spawn onto the tauri async runtime (smoke-run verified).
@@ -47,8 +48,16 @@ Right now the app has nothing real to search or play.
 - **1d. Smart links on real data.** Check the video-to-podcast pairing, and the
   per-title play mode (video or audio by default), against the three test shows:
   Vergecast, Some More News / Even More News, and Power User.
-- **1e. Clean up and harden.** Clear the 35 build warnings, look into the one flaky
-  test, and add tests that use recorded real responses for search.
+- **1e. Clean up and harden.** Clear the remaining ~30 build warnings (1a's fix already
+  cleared five), look into the one flaky test, and add tests that use recorded real
+  responses for search. Dependency hygiene (owner request 2026-10-19): all four
+  future-incompatible crates in the build note (`buf_redux`, `multipart`, `quick-xml
+  0.17`, `typemap`) trace to two **unused** direct dependencies — `multipart = "0.18"`
+  (zero source references; drags in the abandoned iron/nickel/plugin stack via its
+  default server feature) and `atom_syndication = "0.8"` (only mention is a comment at
+  `podcast/mod.rs:104`; Atom is hand-parsed). Removing both Cargo.toml lines retires the
+  whole warning class; a first audit pass on 2026-10-19 also found `axum` (with
+  ws/json/multipart features) completely unused in source — same removal candidate.
 
 ## Step 2 — Frontend evaluation
 
