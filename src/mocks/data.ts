@@ -80,6 +80,20 @@ export const mockDb: MockDb = {
       created_at: now,
       updated_at: now,
     },
+    // Not subscribed: the D7 rule editor must offer only subscribed channels.
+    {
+      id: 'ch-5',
+      user_id: 'current-user',
+      external_id: 'UC-mock-archive',
+      title: 'Archive Bonus Content',
+      is_subscribed: false,
+      subscribed_at: '',
+      notifications_enabled: false,
+      format_preference: 'both',
+      type: 'video',
+      created_at: now,
+      updated_at: now,
+    },
   ],
   episodes: [
     {

@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { instanceCommands, settingsCommands } from '../../hooks/useTauriCommands';
+import { channelCommands, instanceCommands, playModeRuleCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
+import type { Channel, PlayModeRule } from '../../types';
 
 export function SettingsScreen() {
-  const [activeTab, setActiveTab] = useState<'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'shortcuts' | 'about'>('instances');
+  const [activeTab, setActiveTab] = useState<'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'play-modes' | 'shortcuts' | 'about'>('instances');
 
-  const tabs: { id: 'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'shortcuts' | 'about'; label: string; icon: string }[] = [
+  const tabs: { id: 'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'play-modes' | 'shortcuts' | 'about'; label: string; icon: string }[] = [
     { id: 'instances', label: 'Instances', icon: 'server' },
     { id: 'preferences', label: 'Preferences', icon: 'settings' },
     { id: 'podcasts', label: 'Podcasts', icon: 'mic' },
     { id: 'smart-links', label: 'Smart Links', icon: 'link' },
+    { id: 'play-modes', label: 'Play Modes', icon: 'play' },
     { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' },
     { id: 'about', label: 'About', icon: 'info' },
   ];
@@ -61,6 +63,10 @@ export function SettingsScreen() {
 
         {activeTab === 'smart-links' && (
           <SmartLinksTab />
+        )}
+
+        {activeTab === 'play-modes' && (
+          <PlayModesTab />
         )}
 
         {activeTab === 'shortcuts' && (
@@ -340,6 +346,164 @@ function SmartLinksTab() {
       </div>
       <EmptyState variant="feed" />
     </div>
+  );
+}
+
+/**
+ * D7 rule editor (design-decisions.md): per-channel, per-title-family default
+ * play modes. handleCardClick consults these rules (first match wins) before
+ * the channel's format_preference, so a pattern here overrides that channel
+ * default for matching episodes.
+ */
+function PlayModesTab() {
+  const { data: channels } = useQuery({
+    queryKey: ['channels', 'for-play-mode'],
+    queryFn: () => channelCommands.list(),
+  });
+  const { data: rules = [] } = useQuery({
+    queryKey: ['play-mode-rules'],
+    queryFn: () => playModeRuleCommands.list(),
+  });
+
+  const subscribed = (channels ?? []).filter((c) => c.is_subscribed);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-text">Play Modes</h2>
+        <p className="text-sm text-text-muted mt-1 max-w-2xl">
+          Give episodes a default play mode by title family — e.g. "Some More News" titled episodes
+          play video while "Even More News" titled episodes play audio, even though both belong to
+          the same show. The first matching rule wins; without a rule the channel default applies.
+        </p>
+      </div>
+
+      {subscribed.map((channel) => (
+        <ChannelRulesSection
+          key={channel.id}
+          channel={channel}
+          rules={rules.filter((r) => r.channel_id === channel.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ChannelRulesSection({
+  channel,
+  rules,
+}: {
+  channel: Channel;
+  rules: PlayModeRule[];
+}) {
+  const queryClient = useQueryClient();
+  const [pattern, setPattern] = useState('');
+  const [mode, setMode] = useState<'video' | 'audio'>('video');
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['play-mode-rules'] });
+  const setMutation = useMutation({
+    mutationFn: () => playModeRuleCommands.set(channel.id, pattern.trim(), mode),
+    onSuccess: () => {
+      invalidate();
+      setPattern('');
+    },
+  });
+  const removeMutation = useMutation({
+    mutationFn: (ruleId: string) => playModeRuleCommands.remove(ruleId),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <section
+      aria-label={`Play mode rules for ${channel.title}`}
+      className="rounded-lg border border-border p-4 space-y-3"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-text">{channel.title}</h3>
+        <span className="text-xs text-text-muted capitalize">{channel.type}</span>
+      </div>
+
+      {rules.length > 0 ? (
+        <ul className="divide-y divide-border">
+          {rules.map((rule) => (
+            <li key={rule.id} className="flex items-center justify-between py-2">
+              <span className="text-sm text-text">"{rule.title_pattern}"</span>
+              <span className="flex items-center gap-3">
+                <span className="px-2 py-0.5 rounded bg-surface text-xs font-medium capitalize text-text">
+                  {rule.play_mode}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove "${rule.title_pattern}" rule for ${channel.title}`}
+                  onClick={() => removeMutation.mutate(rule.id)}
+                  className="text-sm text-text-muted hover:text-text"
+                >
+                  Remove
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-text-muted">
+          No rules yet — episodes play with the channel default.
+        </p>
+      )}
+
+      <form
+        className="flex items-end gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (pattern.trim()) setMutation.mutate();
+        }}
+      >
+        <div className="flex-1">
+          <label htmlFor={`rule-pattern-${channel.id}`} className="block text-sm font-medium mb-1">
+            Title contains
+          </label>
+          <input
+            id={`rule-pattern-${channel.id}`}
+            type="text"
+            value={pattern}
+            onChange={(e) => setPattern(e.target.value)}
+            placeholder={`e.g. ${channel.title}`}
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+          />
+        </div>
+        <fieldset>
+          <legend className="block text-sm font-medium mb-1">Default mode</legend>
+          <div className="flex gap-3 pt-1">
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name={`play-mode-${channel.id}`}
+                checked={mode === 'video'}
+                onChange={() => setMode('video')}
+                className="w-4 h-4 accent-accent"
+              />
+              Video
+            </label>
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name={`play-mode-${channel.id}`}
+                checked={mode === 'audio'}
+                onChange={() => setMode('audio')}
+                className="w-4 h-4 accent-accent"
+              />
+              Audio
+            </label>
+          </div>
+        </fieldset>
+        <button
+          type="submit"
+          className="btn-unified"
+          disabled={!pattern.trim() || setMutation.isPending}
+        >
+          Add rule
+        </button>
+      </form>
+    </section>
   );
 }
 
