@@ -288,13 +288,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (videoEl) videoEl.playbackRate = playbackRate;
   }, [playbackRate, videoEl]);
 
-  // Auto-advance: when the queue index changes while playing, continue with
-  // the new current item (queue items queued from the feed carry their episode).
-  const lastIndexRef = useRef(currentIndex);
+  // Auto-advance: when the queue's current EPISODE changes while playing,
+  // continue with it (queue items queued from the feed carry their episode).
+  // Keyed on episode IDENTITY, not just the index number: removing the
+  // playing item (F05-N1) leaves currentIndex unchanged but shifts a new
+  // episode into it, and the engine must advance. An index-only comparison
+  // misses that; an object-identity comparison would over-fire on unrelated
+  // item edits (setPlayMode re-creates item objects, same episode inside).
+  const lastCurrentRef = useRef<{ index: number; episodeId?: string }>({
+    index: currentIndex,
+    episodeId: items[currentIndex]?.episode?.id,
+  });
   useEffect(() => {
-    if (currentIndex === lastIndexRef.current) return;
-    lastIndexRef.current = currentIndex;
     const ep = items[currentIndex]?.episode;
+    const episodeId = ep?.id;
+    if (
+      currentIndex === lastCurrentRef.current.index &&
+      episodeId === lastCurrentRef.current.episodeId
+    ) {
+      return;
+    }
+    lastCurrentRef.current = { index: currentIndex, episodeId };
     if (isPlaying && ep) {
       playRef.current(ep, isAudioModeRef.current ? 'audio' : 'video');
     } else if (isPlaying && !ep) {

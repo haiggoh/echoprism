@@ -46,7 +46,39 @@ test('F05-H1: add from feed, reorder, remove, clear', async ({ page }) => {
   await expect(items).toHaveCount(1);
   await expect(items.nth(0)).toContainText('Big Buck Bunny');
 
-  // Clear the rest → empty state.
+  // Clear the rest — with a confirmation dialog (F05-H1 step 5) that names
+  // the remaining count. Cancel first: the queue must survive it.
   await page.getByRole('button', { name: 'Clear queue' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Clear 1 episode' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(items).toHaveCount(1);
+
+  // Confirm path: the queue empties.
+  await page.getByRole('button', { name: 'Clear queue' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Clear 1 episode' }).click();
   await expect(items).toHaveCount(0);
+});
+
+// F05-E1 (replica/test-plan.md): dropping an item onto ITSELF must be a
+// no-op — QueueScreen's onDrop guards `dragIndex !== index`, so neither the
+// order nor any state moves. Two items make a spurious reorder observable.
+test('F05-E1: dragging an item onto itself leaves the queue unchanged', async ({ page }) => {
+  await page.goto('/feed');
+
+  const firstCard = page.locator('article', { hasText: 'How Invidious pools actually work' }).first();
+  const secondCard = page.locator('article', { hasText: 'Big Buck Bunny' }).first();
+  await firstCard.getByRole('button', { name: 'Add to end' }).click();
+  await secondCard.getByRole('button', { name: 'Add to end' }).click();
+
+  await page.getByRole('link', { name: 'Queue' }).click();
+  const items = page.locator('article');
+  await expect(items).toHaveCount(2);
+
+  await items.nth(0).getByLabel('Drag to reorder').dragTo(items.nth(0));
+  await expect(items.nth(0)).toContainText('How Invidious pools actually work');
+  await expect(items.nth(1)).toContainText('Big Buck Bunny');
+  await expect(items).toHaveCount(2);
 });

@@ -60,22 +60,50 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     return { items: items.map((it, i) => ({ ...it, position: i })) };
   }),
   
-  removeItem: (itemId) => set((state) => ({
-    items: state.items
+  // Removal is position-aware: the cursor must keep pointing at the PLAYING
+  // episode, so a removal BEFORE it shifts the index down, a removal at it
+  // keeps the slot (the next episode slides in — or the previous one when
+  // the last item is removed), and a removal after it changes nothing. The
+  // old clamp (min(currentIndex, length-2)) ignored the removed position and
+  // audibly skipped playback when a non-playing item before the cursor went
+  // away. max(0, …) keeps the index in contract when the only item goes.
+  removeItem: (itemId) => set((state) => {
+    const removedIndex = state.items.findIndex((item) => item.id === itemId);
+    const items = state.items
       .filter((item) => item.id !== itemId)
-      .map((item, index) => ({ ...item, position: index })),
-    currentIndex: Math.min(state.currentIndex, state.items.length - 2),
-  })),
-  
+      .map((item, index) => ({ ...item, position: index }));
+    if (removedIndex === -1) return { items };
+    let currentIndex = state.currentIndex;
+    if (removedIndex < currentIndex) currentIndex -= 1;
+    else if (removedIndex === currentIndex) {
+      currentIndex = Math.max(0, Math.min(currentIndex, items.length - 1));
+    }
+    return { items, currentIndex };
+  }),
+
+  // Reorder tracks the playing episode to its new slot. Moving the cursor
+  // episode itself carries the cursor along; moving other items shifts the
+  // cursor only when they cross it (removed-before + insert-at-or-after
+  // shifts down by one, and vice versa). The old toIndex-keyed math guessed
+  // from the drop target alone and landed the cursor on the wrong episode
+  // (or out of range, stopping playback) for every drag involving the
+  // playing item.
   reorderItems: (fromIndex, toIndex) => set((state) => {
     const items = [...state.items];
     const [removed] = items.splice(fromIndex, 1);
     items.splice(toIndex, 0, removed);
-    return { 
+    const { currentIndex } = state;
+    let nextIndex = currentIndex;
+    if (fromIndex === currentIndex) {
+      nextIndex = toIndex;
+    } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
+      nextIndex = currentIndex - 1;
+    } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
+      nextIndex = currentIndex + 1;
+    }
+    return {
       items: items.map((item, index) => ({ ...item, position: index })),
-      currentIndex: toIndex === state.currentIndex ? fromIndex : 
-                    toIndex < state.currentIndex ? state.currentIndex + 1 :
-                    toIndex > state.currentIndex ? state.currentIndex - 1 : state.currentIndex
+      currentIndex: nextIndex,
     };
   }),
   

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { QueueItemComponent } from '../queue/QueueItem';
 import { QueueEmptyState } from '../queue/QueueEmptyState';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 import { useQueueStore } from '../../store/slices/queueSlice';
 import { useNavigate } from 'react-router-dom';
 
@@ -19,6 +21,9 @@ export function QueueScreen() {
   } = useQueueStore();
   const navigate = useNavigate();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // F05-H1 step 5 (replica/test-plan.md): clearing is destructive and
+  // irreversible (local Zustand state) — it asks for confirmation first.
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   return (
     <div className="h-full flex flex-col">
@@ -39,7 +44,11 @@ export function QueueScreen() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="btn-ghost btn-sm" onClick={() => clearQueue()}>
+          <button
+            className="btn-ghost btn-sm"
+            onClick={() => setConfirmingClear(true)}
+            disabled={items.length === 0}
+          >
             Clear queue
           </button>
           <button className="btn-ghost btn-sm" onClick={() => {}}>
@@ -47,6 +56,35 @@ export function QueueScreen() {
           </button>
         </div>
       </div>
+
+      <Modal
+        isOpen={confirmingClear}
+        onClose={() => setConfirmingClear(false)}
+        variant="confirmation"
+        size="sm"
+        title="Clear queue?"
+        description={`This removes ${items.length} ${items.length === 1 ? 'item' : 'items'} from your queue. This cannot be undone.`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmingClear(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                clearQueue();
+                setConfirmingClear(false);
+              }}
+            >
+              Clear {items.length} {items.length === 1 ? 'episode' : 'episodes'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-text-muted">
+          Your queue is local to this app and is not recoverable after clearing.
+        </p>
+      </Modal>
 
       {error && (
         <div className="px-4 py-2 bg-danger-soft text-danger text-sm">{error}</div>

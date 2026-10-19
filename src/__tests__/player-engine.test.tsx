@@ -186,6 +186,89 @@ describe('PlayerProvider media engine', () => {
     expect(streamMock).toHaveBeenLastCalledWith(epB.id, 'video');
   });
 
+  // F05-N1 (replica/test-plan.md): removing the PLAYING item must advance
+  // playback to the (new) current episode — the clamp in removeItem leaves
+  // currentIndex pointing at the next item, and the engine must notice even
+  // though the index NUMBER did not change. Discriminant: reverting the
+  // auto-advance effect to index-only comparison fails this (the removed
+  // episode's already-resolved stream keeps playing) and only this.
+  it('removing the playing item starts the next one (F05-N1)', async () => {
+    const epA = makeEpisode();
+    const epB = makeEpisode();
+    const queueItems = [makeQueueItem(epA), makeQueueItem(epB)].map((item, position) => ({
+      ...item,
+      id: `q-${position}`,
+      position,
+    })) as QueueItem[];
+    useQueueStore.setState({ items: queueItems, currentIndex: 0 });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(epA);
+    });
+    expect(streamMock).toHaveBeenLastCalledWith(epA.id, 'video');
+
+    await act(async () => {
+      useQueueStore.getState().removeItem(queueItems[0].id);
+    });
+
+    // The queue clamped to the next item; the engine plays it.
+    expect(useQueueStore.getState().currentIndex).toBe(0);
+    expect(useQueueStore.getState().items[0]?.episode?.id).toBe(epB.id);
+    expect(streamMock).toHaveBeenLastCalledWith(epB.id, 'video');
+    expect(api.isPlaying).toBe(true);
+  });
+
+  it('removing the playing LAST item falls back to the previous remaining one', async () => {
+    const epA = makeEpisode();
+    const epB = makeEpisode();
+    const queueItems = [makeQueueItem(epA), makeQueueItem(epB)].map((item, position) => ({
+      ...item,
+      id: `q-${position}`,
+      position,
+    })) as QueueItem[];
+    useQueueStore.setState({ items: queueItems, currentIndex: 1 });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(epB);
+    });
+    await act(async () => {
+      useQueueStore.getState().removeItem(queueItems[1].id);
+    });
+
+    // No next item exists: the clamp lands on the previous remaining one.
+    expect(useQueueStore.getState().currentIndex).toBe(0);
+    expect(streamMock).toHaveBeenLastCalledWith(epA.id, 'video');
+    expect(api.isPlaying).toBe(true);
+  });
+
+  it('removing a non-playing item does not restart or interrupt playback', async () => {
+    const epA = makeEpisode();
+    const epB = makeEpisode();
+    const queueItems = [makeQueueItem(epA), makeQueueItem(epB)].map((item, position) => ({
+      ...item,
+      id: `q-${position}`,
+      position,
+    })) as QueueItem[];
+    useQueueStore.setState({ items: queueItems, currentIndex: 0 });
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    await act(async () => {
+      api.play(epA);
+    });
+    await act(async () => {
+      useQueueStore.getState().removeItem(queueItems[1].id);
+    });
+
+    // epA keeps playing: no second resolution, playback state untouched.
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(api.isPlaying).toBe(true);
+  });
+
   it('never resolves a stream or starts playback when an episode is only queued (D1)', async () => {
     const ep = makeEpisode();
     renderEngine();
