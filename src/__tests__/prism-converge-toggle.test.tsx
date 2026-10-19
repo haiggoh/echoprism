@@ -21,7 +21,7 @@ import { PrismConvergeToggle } from '../components/player/PrismConvergeToggle';
 
 afterEach(cleanup);
 
-const PALE = '0.35'; // "very pale … barely visible" (desaturated, not just dim)
+const PALE = '0.18'; // faint trace (owner 2026-10-19: "even more subdued")
 const DIM = '0.25'; // combined beam when not in unified mode
 
 function renderToggle(mode: 'unified' | 'audio' | 'video', audioOnly = false) {
@@ -40,41 +40,48 @@ describe('PrismConvergeToggle', () => {
 
   it('unified mode: both streams and the combined beam fully lit', () => {
     const { getByTestId } = renderToggle('unified');
-    expect(getByTestId('toggle-audio-beam').getAttribute('opacity')).toBe('1');
-    expect(getByTestId('toggle-video-beam').getAttribute('opacity')).toBe('1');
-    expect(getByTestId('toggle-combined-beam').getAttribute('opacity')).toBe('1');
+    expect(getByTestId('mark-audio-beam').getAttribute('opacity')).toBe('1');
+    expect(getByTestId('mark-video-beam').getAttribute('opacity')).toBe('1');
+    expect(getByTestId('mark-combined').getAttribute('opacity')).toBe('1');
   });
 
   it('audio mode: video stream pales, audio stays saturated', () => {
     const { getByTestId } = renderToggle('audio');
-    expect(getByTestId('toggle-video-beam').getAttribute('opacity')).toBe(PALE);
-    expect(getByTestId('toggle-audio-beam').getAttribute('opacity')).toBe('1');
+    expect(getByTestId('mark-video-beam').getAttribute('opacity')).toBe(PALE);
+    expect(getByTestId('mark-audio-beam').getAttribute('opacity')).toBe('1');
   });
 
   it('video mode: audio stream pales, video stays saturated', () => {
     const { getByTestId } = renderToggle('video');
-    expect(getByTestId('toggle-audio-beam').getAttribute('opacity')).toBe(PALE);
-    expect(getByTestId('toggle-video-beam').getAttribute('opacity')).toBe('1');
+    expect(getByTestId('mark-audio-beam').getAttribute('opacity')).toBe(PALE);
+    expect(getByTestId('mark-video-beam').getAttribute('opacity')).toBe('1');
   });
 
   it('audioOnly playback dims the video stream even in unified mode', () => {
     const { getByTestId } = renderToggle('unified', true);
-    const video = getByTestId('toggle-video-beam');
+    const video = getByTestId('mark-video-beam');
     expect(video.getAttribute('opacity')).toBe(PALE);
     expect(video.style.filter).toContain('saturate'); // desaturated, not just dimmed
-    expect(getByTestId('toggle-audio-beam').getAttribute('opacity')).toBe('1');
+    expect(getByTestId('mark-audio-beam').getAttribute('opacity')).toBe('1');
   });
 
   it('combined (white) beam lights only in unified mode', () => {
     const { getByTestId } = renderToggle('audio');
-    expect(getByTestId('toggle-combined-beam').getAttribute('opacity')).toBe(DIM);
+    expect(getByTestId('mark-combined').getAttribute('opacity')).toBe(DIM);
   });
 
   it('uses straight beam segments (no curve commands)', () => {
     const { getByTestId } = renderToggle('unified');
-    for (const id of ['toggle-audio-beam', 'toggle-video-beam']) {
+    for (const id of ['mark-audio-beam', 'mark-video-beam']) {
       const d = getByTestId(id).getAttribute('d') ?? '';
       expect(d).toMatch(/^[ML\s0-9.-]+$/); // only M/L commands + coordinates
     }
+  });
+
+  // Owner 2026-10-19: the beams continue to infinity, so the old end dots
+  // (mode indicators) are gone. Fails if any indicator circle comes back.
+  it('draws no end dots on the beams', () => {
+    const { container } = renderToggle('audio');
+    expect(container.querySelectorAll('.mode-indicator')).toHaveLength(0);
   });
 });
