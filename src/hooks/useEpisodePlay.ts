@@ -32,8 +32,10 @@ export function resolveDefaultPlayMode(
   rules: PlayModeRule[],
   channels: Channel[]
 ): PlayMode | undefined {
+  // Pattern semantics v1 (plan, binding): case-insensitive substring.
+  const title = episode.title.toLowerCase();
   const matched = rules.find(
-    (r) => r.channel_id === episode.channel_id && episode.title.includes(r.title_pattern)
+    (r) => r.channel_id === episode.channel_id && title.includes(r.title_pattern.toLowerCase())
   );
   if (matched) return matched.play_mode;
   const channel = channels.find((c) => c.id === episode.channel_id);

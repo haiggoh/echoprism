@@ -94,7 +94,17 @@ search), but search-time matching is the primary path.
   not on exact title equality (see D7 for the play-mode consequence).
 - **Power User (Taylor Lorenz)** — podcast feed + YouTube channel.
 
-## D7 — Per-title-family default play mode (decided 2026-10-18, implementation pending)
+**Implemented as:** read-time resolution in the backend — every `get_feed`,
+`search_episodes` and `get_episode` response passes through
+`resolve_smart_links` (src-tauri/src/db/queries.rs), which batch-queries
+`episode_links` for the response's podcast_guids/video_ids and the episodes
+table for the twins, then stamps `smart_link_id` + `linked_episode_id` on each
+episode (keys omitted when unlinked, matching the mock router's
+`withChannelAndLinks`). Search stays a title query — pairing rides the same
+response (commit 0394e641; e2e e2e/f06-smart-links.spec.ts drives both
+families + badges; Rust tests in queries.rs `d6_d7_tests`).
+
+## D7 — Per-title-family default play mode (decided 2026-10-18, implemented 2026-10-19)
 
 **Decision:** The card-click default (D2) can be overridden per title family
 within a show: episodes whose title matches a video-family pattern play VIDEO by
@@ -106,6 +116,16 @@ News…" play video by default, while "Even More News…" episodes play audio by
 default — the user watches the YouTube-native episodes and listens to the
 podcast-native ones, without touching the toggle each time.
 
-**Implemented as (planned):** ordered per-channel pattern rules (title regex →
-play_mode) consulted by `handleCardClick` before the D2 default; UI in Settings
-→ Channels. Not yet implemented — tracked in the P3 waypoint.
+**Implemented as:** a `play_mode_rules` table (channel_id, title_pattern,
+play_mode, priority; UNIQUE(channel_id, title_pattern)) with list/set/remove
+commands (commit 0394e641); `resolveDefaultPlayMode` in
+src/hooks/useEpisodePlay.ts consults matching → channel format_preference →
+undefined in the card-click play-now path, and PlayerProvider's `play()` treats
+the passed mode as an override over the global audio toggle while never
+conjuring a capability the episode lacks (commit 4eb89dc1); rule editor UI in
+Settings → Play Modes, per subscribed channel (commit aa264834).
+
+Scope note: the chain feeds the card-click play-now path only — queue items
+still carry `play_mode: 'unified'` and queue-advancement doesn't consult rules
+yet; the rule editor has no priority control (equal-priority rules resolve by
+creation order, oldest first). Tracked in the P3 waypoint.

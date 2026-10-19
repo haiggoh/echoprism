@@ -105,6 +105,17 @@ describe('resolveDefaultPlayMode (D7 chain, pure)', () => {
     ).toBeUndefined();
   });
 
+  it('pattern matching is case-insensitive (plan: substring semantics v1)', () => {
+    const rules = [rule({ channel_id: 'ch-4', title_pattern: 'even more news', play_mode: 'audio' })];
+    expect(
+      resolveDefaultPlayMode(
+        makeEpisode({ id: 'ep-emn-1', channel_id: 'ch-4', title: 'Even More News: X' }),
+        rules,
+        []
+      )
+    ).toBe('audio');
+  });
+
   it('first matching rule wins (evaluation order = list order)', () => {
     const rules = [
       rule({ title_pattern: 'Some More', play_mode: 'video' }),

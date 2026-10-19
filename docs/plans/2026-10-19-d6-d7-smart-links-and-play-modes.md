@@ -1,6 +1,15 @@
 # D6 + D7 — Smart links at search time & per-title-family play modes
 
-**Status: IN PROGRESS (started 2026-10-19)**
+**Status: DONE (2026-10-19).** Receipts — Phase 1: b578e7ee (mock search resolves links,
+search cards clickable); Phase 2: 0394e641 (play_mode_rules backend + read-time resolution in
+Rust, commands, TS surface, fixtures, seed); Phase 3: 4eb89dc1 (resolveDefaultPlayMode chain in
+useEpisodePlay, engine mode override, discriminating fixtures — a chain-bypass mutation is
+caught); Phase 4: aa264834 (rule editor, tab named "Play Modes" rather than the plan's
+"Channels" — SettingsScreen had no channels tab and the rules are the tab's subject); Phase 5:
+this commit (e2e/f06-smart-links.spec.ts + full regression 71 vitest / 7 playwright incl. axe /
+5 cargo; pattern matching tightened to the spec's case-insensitive substring during Phase 5,
+test mutation-checked). Regressions: none — all suites green; D1/D2/D3/F06 behavior unchanged;
+idle smart-linking job untouched.
 **Owner decisions:** design-decisions.md D6 + D7 (2026-10-18). This plan is self-contained;
 revalidate live source before mutating.
 
