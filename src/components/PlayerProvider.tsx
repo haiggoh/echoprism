@@ -8,6 +8,10 @@ import { Episode, PlayMode } from '../types';
 interface PlayerContextType {
   currentEpisode: Episode | null;
   isPlaying: boolean;
+  /** What the CURRENT playback resolves through ('video' | 'audio'): the D7
+   *  chain mode or the toggle at play time. Distinct from isAudioMode, the
+   *  user's standing preference — a per-play override must not rewrite it. */
+  playbackFormat: 'video' | 'audio';
   isAudioMode: boolean;
   isPip: boolean;
   volume: number;
@@ -18,8 +22,9 @@ interface PlayerContextType {
   play: (episode: Episode, mode?: PlayMode) => void;
   /** Load an episode into the engine WITHOUT playback (D2 'load_paused'):
    *  it becomes the current episode at its saved position; pressing play
-   *  resolves and starts the stream. */
-  load: (episode: Episode, opts?: { paused?: boolean }) => void;
+   *  resolves and starts the stream. opts.mode carries the D7 chain output so
+   *  the later toggle-play resolves the rule's format, not the toggle's. */
+  load: (episode: Episode, opts?: { paused?: boolean; mode?: PlayMode }) => void;
   pause: () => void;
   togglePlay: () => void;
   seek: (position: number) => void;
@@ -47,7 +52,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playbackState,
     setPlaying,
     setPlaybackState,
-    setAudioMode,
+    setAudioMode: setStoreAudioMode,
     setPip,
     setVolume,
     setPlaybackRate,
@@ -58,19 +63,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  // What the CURRENT playback resolves through — per-play (D7 chain mode or
+  // the toggle at play time). Kept separate from isAudioMode, the user's
+  // standing preference: an override writes this, never the toggle (plan:
+  // "override affects initial choice only; audio-only toggle still governs
+  // subsequent switches").
+  const [playbackFormat, setPlaybackFormat] = useState<'video' | 'audio'>('video');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentEpisodeRef = useRef<Episode | null>(null);
   const isAudioModeRef = useRef(isAudioMode);
   isAudioModeRef.current = isAudioMode;
+  // The SYNCHRONOUS authority for the current playback format: play()/load()
+  // write it at call time via applyPlaybackFormat, because the resolve effect
+  // is triggered by the zustand store (isPlaying) and would otherwise race a
+  // format that only exists as pending useState state. Deliberately NOT
+  // render-synced (`ref.current = playbackFormat` in the body): React can
+  // commit the zustand-driven render before the useState update lands, and
+  // that render would clobber the fresh ref with the stale state value.
+  // The ref is written ONLY by applyPlaybackFormat (paired with the state).
+  const playbackFormatRef = useRef<'video' | 'audio'>('video');
+
+  const applyPlaybackFormat = (format: 'video' | 'audio') => {
+    playbackFormatRef.current = format;
+    setPlaybackFormat(format);
+  };
   // play() re-created each render; auto-advance reads it through a ref to avoid effect loops.
   const playRef = useRef<(ep: Episode, mode?: PlayMode) => void>(() => {});
 
+  // The per-play format: an explicit D7 chain mode wins; otherwise the user's
+  // standing toggle decides. 'unified' — the queue's no-preference value —
+  // defers to the toggle exactly like an absent mode.
+  const formatFor = (mode?: PlayMode): 'video' | 'audio' =>
+    mode === 'audio' ? 'audio' : mode === 'video' ? 'video' : isAudioModeRef.current ? 'audio' : 'video';
+
   const hasVideo = !!currentEpisode && (!!currentEpisode.video_id || !!currentEpisode.video_url);
-  // The engine plays through exactly one element: video when the episode has it
-  // and audio mode is off, the hidden audio element otherwise.
+  // The engine plays through exactly one element: video when the current
+  // playback resolves through the video format and the episode has it, the
+  // hidden audio element otherwise.
   const activeEl: HTMLMediaElement | null =
-    !isAudioMode && hasVideo && videoEl ? videoEl : audioRef.current;
+    playbackFormat === 'video' && hasVideo && videoEl ? videoEl : audioRef.current;
 
   const registerVideoElement = useCallback((el: HTMLVideoElement | null) => {
     setVideoEl(el);
@@ -80,10 +112,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (ep: Episode, mode?: PlayMode) => {
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
-      // The per-call mode override (D7 chain output) wins over the global
-      // toggle; no override defers to the toggle's current value.
-      const wantAudio = mode ? mode === 'audio' : isAudioModeRef.current;
-      setAudioMode(wantAudio);
+      // Sets the playback format only — NEVER the user's audio toggle, which
+      // would leak the override into every later override-less play.
+      applyPlaybackFormat(formatFor(mode));
       setPlaying(true); // the resolve effect starts playback once the src is set
       setPlaybackState({
         episode_id: ep.id,
@@ -94,14 +125,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // by the resolve effect below (single code path, also serves load(paused)).
       setStreamUrl(null);
     },
-    [setAudioMode, setPlaying, setPlaybackState]
+    [setPlaying, setPlaybackState]
   );
   playRef.current = play;
 
   const load = useCallback(
-    (ep: Episode, _opts?: { paused?: boolean }) => {
+    (ep: Episode, opts?: { paused?: boolean; mode?: PlayMode }) => {
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
+      // The D7 chain mode travels with a load_paused click, so the later
+      // toggle-play resolves the rule's format rather than the toggle's.
+      applyPlaybackFormat(formatFor(opts?.mode));
       setPlaying(false);
       setPlaybackState({
         episode_id: ep.id,
@@ -111,6 +145,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setStreamUrl(null);
     },
     [setPlaying, setPlaybackState]
+  );
+
+  // The user's audio toggle: writes the standing preference AND switches the
+  // current playback over. Distinct from the D7 chain's per-play mode, which
+  // flows through play()/load() into playbackFormat without touching this.
+  const setAudioMode = useCallback(
+    (mode: boolean) => {
+      setStoreAudioMode(mode);
+      applyPlaybackFormat(mode ? 'audio' : 'video');
+    },
+    [setStoreAudioMode]
   );
 
   // Resolve the stream for the current episode once playback is requested.
@@ -124,10 +169,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!ep) return;
     resolvingRef.current = true;
     // A podcast episode has no video capability: requesting format 'video'
-    // fails at the backend and the catch path kills playback. Pick the format
-    // from the episode itself; the audio-mode toggle only overrides episodes
-    // that could play either way.
-    const wantAudio = isAudioModeRef.current || (!ep.video_id && !ep.video_url);
+    // fails at the backend and the catch path kills playback. Start from the
+    // playback format play()/load() chose (D7 chain mode or the toggle), then
+    // apply the episode's own capability as a floor.
+    const wantAudio = playbackFormatRef.current === 'audio' || (!ep.video_id && !ep.video_url);
     episodeCommands
       .stream(ep.id, wantAudio ? 'audio' : 'video')
       .then((info) => {
@@ -157,7 +202,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seek = useCallback(
     (position: number) => {
       setPlaybackState({ position_seconds: position });
-      const el = !isAudioModeRef.current && videoEl ? videoEl : audioRef.current;
+      const el = playbackFormatRef.current === 'video' && videoEl ? videoEl : audioRef.current;
       if (el) el.currentTime = position;
     },
     [setPlaybackState, videoEl]
@@ -263,6 +308,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value: PlayerContextType = {
     currentEpisode: currentEpisode ?? items[currentIndex]?.episode ?? null,
     isPlaying,
+    playbackFormat,
     isAudioMode,
     isPip,
     volume,

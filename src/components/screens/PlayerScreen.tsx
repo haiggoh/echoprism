@@ -14,6 +14,7 @@ export function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const {
     isPlaying,
+    playbackFormat,
     isAudioMode,
     isPip,
     volume,
@@ -114,7 +115,11 @@ export function PlayerScreen() {
           </div>
         ) : (
           <>
-            {!isAudioMode ? (
+            {/* Render follows the ENGINE's format (what is actually playing —
+                D7 chain mode included), not the user's audio-only preference:
+                a video rule under an audio-on toggle still shows picture. The
+                toggle reaches this through setAudioMode, which updates both. */}
+            {playbackFormat === 'video' ? (
               <video
                 ref={registerVideoElement}
                 className="absolute inset-0 h-full w-full bg-black"

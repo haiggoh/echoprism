@@ -13,11 +13,13 @@
  * cutting the rule-list rendering fails the seeded-rule assertions; breaking
  * the mutation invalidation fails the add/remove round-trips.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SettingsScreen } from '../components/screens/SettingsScreen';
-import { resetMockState } from '../mocks/router';
+import { Toaster } from '../components/ui/Toaster';
+import * as bridge from '../tauri-bridge';
+import { mockInvoke, resetMockState } from '../mocks/router';
 
 function openPlayModesTab() {
   fireEvent.click(screen.getByRole('tab', { name: 'Play Modes' }));
@@ -35,11 +37,12 @@ afterEach(() => {
   cleanup();
 });
 
-function renderSettings() {
+function renderSettings({ withToaster = false }: { withToaster?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <SettingsScreen />
+      {withToaster && <Toaster />}
     </QueryClientProvider>
   );
 }
@@ -122,5 +125,38 @@ describe('Settings → Play Modes rule editor (D7)', () => {
     });
     // The channel section itself stays (other rules may exist; the form remains).
     expect(channelSection('Even More News')).toBeTruthy();
+  });
+
+  // Finding 7 (adversarial review): a failed rule mutation was silent — the
+  // form kept its input and the list its old shape with no signal why. The
+  // bridge spy rejects ONLY set_play_mode_rule; every other command still
+  // routes to the real mock router, so the harness stays unmocked otherwise.
+  it('surfaces a danger toast when saving a rule fails', async () => {
+    const invokeSpy = vi
+      .spyOn(bridge, 'invoke')
+      .mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+        cmd === 'set_play_mode_rule'
+          ? Promise.reject(new Error('mock: rule store unavailable'))
+          : mockInvoke(cmd, args)
+      );
+    try {
+      renderSettings({ withToaster: true });
+      openPlayModesTab();
+
+      const section = await waitFor(() => channelSection('Tech Talks Weekly'));
+      fireEvent.change(within(section).getByLabelText('Title contains') as HTMLInputElement, {
+        target: { value: 'Cody' },
+      });
+      fireEvent.click(within(section).getByRole('button', { name: 'Add rule' }));
+
+      expect(await screen.findByText('Could not save play-mode rule')).toBeTruthy();
+      expect(await screen.findByText('mock: rule store unavailable')).toBeTruthy();
+      // The failed input is preserved so the user can retry.
+      expect(
+        (within(section).getByLabelText('Title contains') as HTMLInputElement).value
+      ).toBe('Cody');
+    } finally {
+      invokeSpy.mockRestore();
+    }
   });
 });

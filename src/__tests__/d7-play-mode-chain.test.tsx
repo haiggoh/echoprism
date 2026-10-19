@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { PlayerProvider } from '../components/PlayerProvider';
+import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
 import { Toaster } from '../components/ui/Toaster';
 import { useEpisodePlay, resolveDefaultPlayMode } from '../hooks/useEpisodePlay';
 import { usePlayerStore } from '../store/slices/playerSlice';
@@ -29,7 +29,22 @@ import {
   playModeRuleCommands,
   channelCommands,
 } from '../hooks/useTauriCommands';
-import type { Channel, Episode, PlayModeRule } from '../types';
+import type { Channel, Episode, PlayModeRule, UserPreferences } from '../types';
+
+const basePrefs: UserPreferences = {
+  user_id: 'current-user',
+  default_format: 'unified',
+  queue_behavior: 'play_next',
+  audio_only_default: false,
+  auto_download_wifi: false,
+  sponsorblock_enabled: true,
+  sponsorblock_categories: [],
+  keyboard_shortcuts_enabled: true,
+  theme: 'system',
+  cross_device_sync_enabled: false,
+  card_click_action: 'play_now', // isolate the play-now path from D2 auto
+  updated_at: '2026-10-18T00:00:00Z',
+};
 
 vi.mock('../hooks/useTauriCommands', () => ({
   episodeCommands: { stream: vi.fn() },
@@ -160,20 +175,7 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
     rulesMock.mockReset();
     channelsMock.mockReset();
     settingsMock.mockReset();
-    settingsMock.mockResolvedValue({
-      user_id: 'current-user',
-      default_format: 'unified',
-      queue_behavior: 'play_next',
-      audio_only_default: false,
-      auto_download_wifi: false,
-      sponsorblock_enabled: true,
-      sponsorblock_categories: [],
-      keyboard_shortcuts_enabled: true,
-      theme: 'system',
-      cross_device_sync_enabled: false,
-      card_click_action: 'play_now', // isolate the play-now path from D2 auto
-      updated_at: '2026-10-18T00:00:00Z',
-    });
+    settingsMock.mockResolvedValue({ ...basePrefs });
     usePlayerStore.setState({
       playbackState: null,
       isPlaying: false,
@@ -190,7 +192,13 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
 
   function ClickProbe({ episode }: { episode: Episode }) {
     const { handleCardClick } = useEpisodePlay();
-    return <button onClick={() => handleCardClick(episode)}>click-card</button>;
+    const { togglePlay } = usePlayer();
+    return (
+      <>
+        <button onClick={() => handleCardClick(episode)}>click-card</button>
+        <button onClick={() => togglePlay()}>toggle-play</button>
+      </>
+    );
   }
 
   async function renderAndClick(episode: Episode) {
@@ -286,5 +294,36 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
     await renderAndClick(makeEpisode());
     // No mode argument → the engine applies its own defaults (global toggle).
     expect(streamMock).toHaveBeenLastCalledWith('ep-smn-1', 'video');
+  });
+
+  // D2 × D7 interaction (plan: "override affects initial choice only"): a
+  // load_paused click loads without streaming (D1/D2), and the D7 mode
+  // travels with the load — pressing play later must resolve the RULE's
+  // format, not the global toggle's. Discriminant: a video-capable
+  // EMN-titled episode would resolve 'video' from the toggle; only a load()
+  // that carried the chain mode makes this 'audio'.
+  it('load_paused click stores the chain mode; toggle-play resolves it (D2×D7)', async () => {
+    settingsMock.mockResolvedValue({ ...basePrefs, card_click_action: 'load_paused' });
+    rulesMock.mockResolvedValue([
+      rule({ id: 'r2', channel_id: 'ch-4', title_pattern: 'Even More News', play_mode: 'audio' }),
+    ]);
+    channelsMock.mockResolvedValue([]);
+
+    await renderAndClick(
+      makeEpisode({
+        id: 'ep-emn-vid',
+        channel_id: 'ch-4',
+        title: 'Even More News: Video Edition',
+        video_id: 'emn-vid-001',
+      })
+    );
+
+    // Loading paused never resolves a stream (D2 load_paused contract).
+    expect(streamMock).not.toHaveBeenCalled();
+
+    // Pressing play on the loaded episode honors the chain, not the toggle.
+    fireEvent.click(screen.getByText('toggle-play'));
+    await act(async () => {});
+    expect(streamMock).toHaveBeenLastCalledWith('ep-emn-vid', 'audio');
   });
 });

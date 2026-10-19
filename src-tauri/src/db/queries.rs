@@ -1362,6 +1362,7 @@ pub async fn resolve_smart_links(pool: &SqlitePool, episodes: &mut [Episode]) ->
                 || ep.video_id.as_deref() == Some(l.youtube_video_id.as_str())
         });
         if let Some(link) = link {
+            let self_id = ep.id.clone();
             ep.smart_link_id = Some(link.id.clone());
             // A podcast-side episode's twin is the link's YouTube video; a
             // video-side episode's twin is the link's podcast guid (same
@@ -1371,7 +1372,13 @@ pub async fn resolve_smart_links(pool: &SqlitePool, episodes: &mut [Episode]) ->
             } else {
                 guid_to_ep.get(link.podcast_guid.as_str())
             };
-            ep.linked_episode_id = twin.map(|t| t.to_string());
+            // A twin is the OTHER stream's episode: a link that resolves back
+            // to the episode itself (possible only for rows carrying both
+            // keys — the schema permits them, today's ingestion never writes
+            // one) is not a twin.
+            ep.linked_episode_id = twin
+                .filter(|t| **t != self_id)
+                .map(|t| t.to_string());
         }
     }
     Ok(())
@@ -1417,12 +1424,16 @@ pub async fn list_play_mode_rules(
     channel_id: Option<String>,
 ) -> DbResult<Vec<PlayModeRule>> {
     // Evaluation order (design-decisions D7): priority DESC, then oldest
-    // first — deterministic, first match wins downstream.
+    // first — deterministic, first match wins downstream. rowid breaks
+    // created_at ties: datetime('now') has 1-second resolution, so rules
+    // created in the same second would otherwise order by SQLite's
+    // unspecified tie behavior. rowid = insertion order and survives
+    // upserts (DO UPDATE keeps the original row).
     let rows = if let Some(channel_id) = channel_id {
         query_as::<_, PlayModeRuleRow>(
             "SELECT id, channel_id, title_pattern, play_mode, priority, created_at, updated_at \
              FROM play_mode_rules WHERE channel_id = ? \
-             ORDER BY priority DESC, created_at ASC",
+             ORDER BY priority DESC, created_at ASC, rowid ASC",
         )
         .bind(channel_id)
         .fetch_all(pool)
@@ -1431,7 +1442,7 @@ pub async fn list_play_mode_rules(
         query_as::<_, PlayModeRuleRow>(
             "SELECT id, channel_id, title_pattern, play_mode, priority, created_at, updated_at \
              FROM play_mode_rules \
-             ORDER BY priority DESC, created_at ASC",
+             ORDER BY priority DESC, created_at ASC, rowid ASC",
         )
         .fetch_all(pool)
         .await
@@ -1716,5 +1727,65 @@ mod d6_d7_tests {
         .await
         .expect_err("'unified' must be rejected");
         assert!(err.contains("video") || err.contains("audio"), "readable error, got: {err}");
+    }
+
+    // The D7 chain's second step reads channel.format_preference, and real
+    // shell rows carry the SCHEMA DEFAULT 'both' (scripts/seed.sql inserts
+    // channels without the column; the CHECK constraint's domain is
+    // video/audio/both). Before Format::Both existed, decode of one 'both'
+    // row failed the whole list_channels query — silently disabling the
+    // channel-default step.
+    #[tokio::test]
+    async fn channel_with_schema_default_format_preference_lists() {
+        let pool = fresh_pool().await;
+        // The helper omits format_preference on purpose: the row gets 'both'.
+        insert_channel(&pool, "ch-both", "UC-both", "Both Pref Channel", "video", None).await;
+        let channels = list_channels(&pool, None).await.expect("list channels");
+        let ch = channels
+            .iter()
+            .find(|c| c.id == "ch-both")
+            .expect("seeded channel present");
+        assert!(
+            matches!(ch.format_preference, Format::Both),
+            "schema default 'both' must decode, got {:?}",
+            ch.format_preference
+        );
+    }
+
+    // Finding 7 (adversarial review): the TS `Channel` interface reads `type`,
+    // so the JSON wire name must be `type`, not the Rust field name
+    // `channel_type` — otherwise every real-shell channel renders a blank
+    // type badge while the fixture-backed jsdom tests all pass. sqlx reads
+    // the DB column by FIELD name, so the serde rename must not leak there;
+    // this test guards both directions of that contract.
+    #[test]
+    fn channel_serializes_type_field_for_the_ts_contract() {
+        let ch = Channel {
+            id: "ch-x".into(),
+            user_id: "current-user".into(),
+            external_id: "UC-x".into(),
+            title: "Wire Contract".into(),
+            handle: None,
+            thumbnail_url: None,
+            description: None,
+            subscriber_count: None,
+            is_subscribed: true,
+            subscribed_at: "2026-10-19T00:00:00Z".into(),
+            notifications_enabled: false,
+            format_preference: Format::Both,
+            instance_id: None,
+            channel_type: ChannelType::Video,
+            podcast_feed_url: None,
+            podcast_guid: None,
+            last_fetched_at: None,
+            created_at: "2026-10-19T00:00:00Z".into(),
+            updated_at: "2026-10-19T00:00:00Z".into(),
+        };
+        let json = serde_json::to_value(&ch).expect("serialize channel");
+        assert!(json.get("type").is_some(), "wire key must be 'type'");
+        assert!(
+            json.get("channel_type").is_none(),
+            "Rust field name must not leak to the wire"
+        );
     }
 }

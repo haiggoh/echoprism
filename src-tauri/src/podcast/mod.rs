@@ -264,7 +264,7 @@ impl PodcastManager {
                 is_subscribed: true,
                 subscribed_at: now.clone(),
                 notifications_enabled: true,
-                format_preference: crate::types::Format::Unified,
+                format_preference: crate::types::Format::Both,
                 instance_id: None,
                 channel_type: crate::types::ChannelType::Video,
                 podcast_feed_url: None,

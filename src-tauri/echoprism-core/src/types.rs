@@ -126,6 +126,11 @@ pub enum Format {
     Video,
     Audio,
     Unified,
+    /// Channel-level "plays both streams, no default" preference. The
+    /// channels table's domain is video/audio/both (schema CHECK) while
+    /// user preferences use unified/video/audio — one enum serves both,
+    /// so `Both` exists for the channel rows (schema default 'both').
+    Both,
 }
 
 impl sqlx::Decode<'_, sqlx::Sqlite> for Format {
@@ -296,6 +301,10 @@ pub struct Channel {
     pub notifications_enabled: bool,
     pub format_preference: Format,
     pub instance_id: Option<String>,
+    /// Wire name `type` matches the TS `Channel.type` interface (and the
+    /// inbound `ChannelListParams` rename); the DB column stays `channel_type`
+    /// — sqlx::FromRow keys on the field name, not the serde rename.
+    #[serde(rename = "type")]
     pub channel_type: ChannelType,
     pub podcast_feed_url: Option<String>,
     pub podcast_guid: Option<String>,

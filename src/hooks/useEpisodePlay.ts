@@ -89,7 +89,12 @@ export function useEpisodePlay() {
     if (action === 'load_paused') {
       // D2 'load_paused': the episode becomes the engine's current episode at
       // its saved position; playback starts only when the user presses play.
-      load(episode, { paused: true });
+      // The D7 chain mode travels with the load so the later play resolves
+      // the rule's format rather than the global toggle's (D2×D7).
+      load(episode, {
+        paused: true,
+        mode: resolveDefaultPlayMode(episode, playModeRules, channels),
+      });
       navigate(`/player/${episode.id}`);
       return;
     }

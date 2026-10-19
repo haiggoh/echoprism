@@ -4,6 +4,7 @@ import { channelCommands, instanceCommands, playModeRuleCommands, settingsComman
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
+import { useToasts } from '../ui/Toaster';
 import type { Channel, PlayModeRule } from '../../types';
 
 export function SettingsScreen() {
@@ -397,20 +398,31 @@ function ChannelRulesSection({
   rules: PlayModeRule[];
 }) {
   const queryClient = useQueryClient();
+  const { addToast } = useToasts();
   const [pattern, setPattern] = useState('');
   const [mode, setMode] = useState<'video' | 'audio'>('video');
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['play-mode-rules'] });
+  // Rule mutations are otherwise silent on failure — the form would just
+  // keep its input and the list would keep its old shape with no signal why.
+  const onError = (err: unknown) =>
+    addToast({
+      title: 'Could not save play-mode rule',
+      description: err instanceof Error ? err.message : 'Unknown error',
+      variant: 'danger',
+    });
   const setMutation = useMutation({
     mutationFn: () => playModeRuleCommands.set(channel.id, pattern.trim(), mode),
     onSuccess: () => {
       invalidate();
       setPattern('');
     },
+    onError,
   });
   const removeMutation = useMutation({
     mutationFn: (ruleId: string) => playModeRuleCommands.remove(ruleId),
     onSuccess: invalidate,
+    onError,
   });
 
   return (

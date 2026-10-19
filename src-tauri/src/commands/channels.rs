@@ -36,7 +36,7 @@ pub async fn subscribe(
         is_subscribed: true,
         subscribed_at: now.clone(),
         notifications_enabled: true,
-        format_preference: Format::Unified,
+        format_preference: Format::Both,
         instance_id,
         channel_type,
         podcast_feed_url: None,

@@ -353,10 +353,13 @@ describe('PlayerProvider media engine', () => {
 
   // D7 contract pins (design-decisions.md): the per-call mode override wins
   // over the global audio toggle, but can never conjure a capability the
-  // episode lacks. Mutation checks: deleting the `mode ? … : …` ternary in
-  // PlayerProvider.play fails the first; removing the capability fallback in
-  // the resolve effect fails the second.
-  it("play(ep, 'audio') overrides the video default for a video-capable episode (D7)", async () => {
+  // episode lacks — and it must NOT rewrite the user's audio toggle (plan:
+  // "override affects initial choice only; audio-only toggle still governs
+  // subsequent switches"). Mutation checks: deleting the mode ternary fails
+  // the first; restoring the old setAudioMode(wantAudio) in play() fails the
+  // first two; removing the capability fallback in the resolve effect fails
+  // the third.
+  it("play(ep, 'audio') overrides the video default WITHOUT rewriting the audio toggle (D7)", async () => {
     const ep = makeEpisode();
     streamMock.mockResolvedValue({ url: 'https://mock/ep.wav', format: 'audio' });
     renderEngine();
@@ -365,9 +368,31 @@ describe('PlayerProvider media engine', () => {
       api.play(ep, 'audio');
     });
 
+    // The stream honors the override…
     expect(streamMock).toHaveBeenCalledWith(ep.id, 'audio');
-    expect(api.isAudioMode).toBe(true);
+    // …but the user's toggle (off) is untouched — it still governs the next
+    // override-less play.
+    expect(api.isAudioMode).toBe(false);
     expect(api.isPlaying).toBe(true);
+  });
+
+  it('an override-less play after an overridden one uses the toggle again (no leak)', async () => {
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    renderEngine();
+
+    const epA = makeEpisode();
+    const epB = makeEpisode();
+    await act(async () => {
+      api.play(epA, 'audio'); // D7 chain mode: this episode plays audio
+    });
+    expect(streamMock).toHaveBeenLastCalledWith(epA.id, 'audio');
+
+    await act(async () => {
+      api.play(epB); // no chain mode: the user's toggle (off) decides
+    });
+
+    expect(streamMock).toHaveBeenLastCalledWith(epB.id, 'video');
+    expect(api.isAudioMode).toBe(false);
   });
 
   it("play(ep, 'video') on a podcast-only episode falls back to audio (capability floor)", async () => {

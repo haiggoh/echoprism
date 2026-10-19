@@ -48,7 +48,10 @@ function withChannelAndLinks(episodes: Episode[]): Episode[] {
     return {
       ...ep,
       smart_link_id: link.id,
-      linked_episode_id: twin?.id,
+      // A twin is the OTHER stream's episode (mirrors the Rust self-link
+      // guard): a both-keys row whose link resolves back to itself is not
+      // linked.
+      linked_episode_id: twin && twin.id !== ep.id ? twin.id : undefined,
       channel: db.channels.find((ch) => ch.id === ep.channel_id),
     };
   });
