@@ -31,20 +31,30 @@ export function Sidebar() {
       }`}
       aria-label="Main navigation"
     >
-      {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-border">
-        {!sidebarCollapsed && (
-          <div className="flex items-center gap-3">
-            {/* Brand mark = the prism (owner redesign 2026-10-18): the layers
-                glyph is retired. It doubles as the audio-only legend — the
-                video stream pales while audio-only is on. */}
-            <PrismBadge width={32} audioOnly={audioOnlyMode} />
-            <span className="font-semibold text-text">EchoPrism</span>
-          </div>
-        )}
+      {/* Brand. The badge stays visible when the rail is collapsed (it is
+          the app's identity); the tagline sits under the name instead of in
+          a duplicate brand card at the bottom. */}
+      <div
+        className={`flex items-center h-16 border-b border-border ${
+          sidebarCollapsed ? 'flex-col justify-center gap-1 px-2 h-auto py-3' : 'justify-between pl-4 pr-1.5'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Brand mark = the prism; doubles as the audio-only legend (the
+              video stream pales while audio-only is on). */}
+          <PrismBadge width={32} audioOnly={audioOnlyMode} />
+          {!sidebarCollapsed && (
+            <div className="min-w-0 leading-tight">
+              <p className="font-semibold text-text truncate">EchoPrism</p>
+              {/* Full tagline, never truncated: the collapse chevron sits
+                  tight against it (-mr) to leave the text its width. */}
+              <p className="text-xs text-text-muted whitespace-nowrap">Two streams become one</p>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+          className="p-1.5 shrink-0 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -77,27 +87,6 @@ export function Sidebar() {
 
       {/* Bottom section */}
       <div className="p-2 border-t border-border">
-        <div className="flex items-center justify-between p-2 rounded-lg bg-surface">
-          <div className="flex items-center gap-3">
-            <PrismBadge width={32} audioOnly={audioOnlyMode} />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-text truncate">EchoPrism</p>
-              <p className="text-[10px] text-text-muted truncate">Two streams become one</p>
-            </div>
-          </div>
-          <button className="p-1.5 rounded text-text-muted hover:text-text hover:bg-surface-hover transition-colors" aria-label="Settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 7.47"></path>
-              <path d="M4.6 15a1.65 1.65 0 0 1-.33 7.47"></path>
-              <path d="M21 12h-6"></path>
-              <path d="M3 12h6"></path>
-              <path d="M12 3v6"></path>
-              <path d="M12 21v6"></path>
-            </svg>
-          </button>
-        </div>
-
         {/* Audio mode toggle */}
         <label className="flex items-center justify-between p-2 rounded-lg bg-surface hover:bg-surface-hover cursor-pointer">
           <span className="text-sm text-text-muted">Audio only mode</span>
