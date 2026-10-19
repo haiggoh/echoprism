@@ -32,6 +32,8 @@ const MIGRATION_FILES = ['schema.sql', 'indexes.sql', 'fts.sql'];
 const MUST_EXIST = [
   'user_preferences',          // schema.sql
   'episodes',                  // schema.sql
+  'play_mode_rules',           // schema.sql (D7: per-title-family play modes)
+  'idx_play_mode_rules_channel', // indexes.sql (D7 lookups by channel)
   'idx_history_episode',       // indexes.sql (the once-broken statement)
   'idx_podcast_feeds_user',    // indexes.sql (the once-duplicated section)
   'idx_sponsorblock_expires',  // indexes.sql

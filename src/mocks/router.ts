@@ -4,7 +4,7 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { Episode, Instance, QueueItem, StreamInfo, UserPreferences } from '../types';
+import type { Episode, Instance, PlayModeRule, QueueItem, StreamInfo, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
@@ -102,6 +102,52 @@ const handlers: Record<string, Handler> = {
   },
   list_smart_links: () => db.smartLinks,
   list_history: () => db.history,
+
+  // Play-mode rules (D7): (channel, title-pattern) → default play mode.
+  // Mirrors the Rust commands: upsert on (channel_id, title_pattern), modes
+  // limited to video|audio, removal by id is idempotent.
+  list_play_mode_rules: (args): PlayModeRule[] => {
+    const channelId = args?.channelId as string | undefined;
+    return db.playModeRules
+      .filter((r) => !channelId || r.channel_id === channelId)
+      .sort((a, b) => b.priority - a.priority || a.created_at.localeCompare(b.created_at));
+  },
+  set_play_mode_rule: (args): PlayModeRule => {
+    const channelId = args?.channelId as string | undefined;
+    const titlePattern = args?.titlePattern as string | undefined;
+    const playMode = args?.playMode as PlayModeRule['play_mode'] | undefined;
+    if (!channelId) throw new Error('mock: channelId is required');
+    if (!titlePattern) throw new Error('mock: titlePattern is required');
+    if (playMode !== 'video' && playMode !== 'audio') {
+      throw new Error("mock: playMode must be 'video' or 'audio'");
+    }
+    const priority = typeof args?.priority === 'number' ? args.priority : 0;
+    const now = new Date().toISOString();
+    const existing = db.playModeRules.find(
+      (r) => r.channel_id === channelId && r.title_pattern === titlePattern
+    );
+    if (existing) {
+      existing.play_mode = playMode;
+      existing.priority = priority;
+      existing.updated_at = now;
+      return { ...existing };
+    }
+    const rule: PlayModeRule = {
+      id: `rule-${crypto.randomUUID().slice(0, 8)}`,
+      channel_id: channelId,
+      title_pattern: titlePattern,
+      play_mode: playMode,
+      priority,
+      created_at: now,
+      updated_at: now,
+    };
+    db.playModeRules = [...db.playModeRules, rule];
+    return { ...rule };
+  },
+  remove_play_mode_rule: (args) => {
+    const ruleId = args?.ruleId as string | undefined;
+    db.playModeRules = db.playModeRules.filter((r) => r.id !== ruleId);
+  },
 
   // Settings
   get_settings: (): UserPreferences => ({ ...db.preferences }),

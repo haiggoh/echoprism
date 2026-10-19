@@ -432,6 +432,15 @@ pub struct Episode {
     pub progress_seconds: f64,
     pub created_at: String,
     pub updated_at: String,
+    /// D6 (design-decisions.md): resolved at READ time by the feed/search/
+    /// episode queries — id of the smart link pairing this episode with its
+    /// cross-stream twin, when one exists. Skipped when absent so the JSON
+    /// shape matches the mock layer (key absent, not null).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub smart_link_id: Option<String>,
+    /// D6: the cross-stream twin's episode id, derived from the link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_episode_id: Option<String>,
 }
 
 impl Episode {
@@ -684,6 +693,22 @@ impl sqlx::Type<sqlx::Sqlite> for PlayMode {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
         <String as sqlx::Type<sqlx::Sqlite>>::type_info()
     }
+}
+
+/// D7 (design-decisions.md): a per-channel rule mapping a title substring
+/// pattern to the default play mode for matching episodes. Consulted in
+/// priority order (highest first, then oldest created); first match wins.
+/// The mode is deliberately narrowed to video|audio — a 'unified' rule would
+/// be a no-op override, and the schema CHECK rejects it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlayModeRule {
+    pub id: String,
+    pub channel_id: String,
+    pub title_pattern: String,
+    pub play_mode: PlayMode,
+    pub priority: i64,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

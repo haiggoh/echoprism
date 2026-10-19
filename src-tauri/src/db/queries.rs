@@ -400,6 +400,8 @@ pub async fn get_feed(
             progress_seconds: r.progress_seconds,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            smart_link_id: None,
+            linked_episode_id: None,
         }).collect())
     } else {
         let limit_i64 = limit as i64;
@@ -466,6 +468,8 @@ pub async fn get_feed(
             progress_seconds: r.progress_seconds,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            smart_link_id: None,
+            linked_episode_id: None,
         }).collect())
     }
 }
@@ -559,6 +563,8 @@ pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episod
         progress_seconds: row.progress_seconds,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        smart_link_id: None,
+        linked_episode_id: None,
     })
 }
 
@@ -662,6 +668,8 @@ pub async fn search_episodes(
         progress_seconds: r.progress_seconds,
         created_at: r.created_at,
         updated_at: r.updated_at,
+        smart_link_id: None,
+        linked_episode_id: None,
     }).collect())
 }
 
@@ -1237,4 +1245,476 @@ pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbRes
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// D6 (design-decisions.md): resolve smart links for a batch of episodes at
+/// READ time, setting `smart_link_id` (the pairing link) and
+/// `linked_episode_id` (the cross-stream twin) so any episode the user picks
+/// is already linked — the backend half of "detection happens while
+/// searching". Batched over the whole result set: two runtime queries, no
+/// per-episode lookups. Uses runtime-checked queries (QueryBuilder /
+/// query_as::<_, T>), deliberately NOT `query_as!` macros — new or changed
+/// macro SQL would demand regenerating the .sqlx offline cache (plan
+/// adversarial note), which runtime queries avoid entirely.
+pub async fn resolve_smart_links(pool: &SqlitePool, episodes: &mut [Episode]) -> DbResult<()> {
+    let guids: Vec<&str> = episodes
+        .iter()
+        .filter_map(|e| e.podcast_guid.as_deref())
+        .collect();
+    let vids: Vec<&str> = episodes
+        .iter()
+        .filter_map(|e| e.video_id.as_deref())
+        .collect();
+    if guids.is_empty() && vids.is_empty() {
+        return Ok(());
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct LinkRow {
+        id: String,
+        podcast_guid: String,
+        youtube_video_id: String,
+    }
+
+    // Links touching any stream key of the batch. Mirror of the mock layer's
+    // withChannelAndLinks (src/mocks/router.ts) so both worlds behave alike.
+    let mut qb = sqlx::QueryBuilder::new(
+        "SELECT id, podcast_guid, youtube_video_id FROM episode_links WHERE ",
+    );
+    let mut first = true;
+    for (column, keys) in [("podcast_guid", &guids), ("youtube_video_id", &vids)] {
+        if keys.is_empty() {
+            continue;
+        }
+        if !first {
+            qb.push(" OR ");
+        }
+        qb.push(column);
+        qb.push(" IN (");
+        for (i, key) in keys.iter().enumerate() {
+            if i > 0 {
+                qb.push(", ");
+            }
+            qb.push_bind(key);
+        }
+        qb.push(")");
+        first = false;
+    }
+    let links = qb
+        .build_query_as::<LinkRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if links.is_empty() {
+        return Ok(());
+    }
+
+    // The twins: episodes on the opposite stream of every matched link. A
+    // twin may lie outside the current result set (searching one family of a
+    // two-stream show must still surface the other family's episode id).
+    let link_vids: Vec<&str> = links.iter().map(|l| l.youtube_video_id.as_str()).collect();
+    let link_guids: Vec<&str> = links.iter().map(|l| l.podcast_guid.as_str()).collect();
+
+    #[derive(sqlx::FromRow)]
+    struct TwinRow {
+        id: String,
+        video_id: Option<String>,
+        podcast_guid: Option<String>,
+    }
+    let mut tq = sqlx::QueryBuilder::new("SELECT id, video_id, podcast_guid FROM episodes WHERE ");
+    let mut t_first = true;
+    for (column, keys) in [("video_id", &link_vids), ("podcast_guid", &link_guids)] {
+        if keys.is_empty() {
+            continue;
+        }
+        if !t_first {
+            tq.push(" OR ");
+        }
+        tq.push(column);
+        tq.push(" IN (");
+        for (i, key) in keys.iter().enumerate() {
+            if i > 0 {
+                tq.push(", ");
+            }
+            tq.push_bind(key);
+        }
+        tq.push(")");
+        t_first = false;
+    }
+    let twins = tq
+        .build_query_as::<TwinRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let video_to_ep: std::collections::HashMap<&str, &str> = twins
+        .iter()
+        .filter_map(|t| t.video_id.as_deref().map(|v| (v, t.id.as_str())))
+        .collect();
+    let guid_to_ep: std::collections::HashMap<&str, &str> = twins
+        .iter()
+        .filter_map(|t| t.podcast_guid.as_deref().map(|g| (g, t.id.as_str())))
+        .collect();
+
+    for ep in episodes.iter_mut() {
+        let link = links.iter().find(|l| {
+            ep.podcast_guid.as_deref() == Some(l.podcast_guid.as_str())
+                || ep.video_id.as_deref() == Some(l.youtube_video_id.as_str())
+        });
+        if let Some(link) = link {
+            ep.smart_link_id = Some(link.id.clone());
+            // A podcast-side episode's twin is the link's YouTube video; a
+            // video-side episode's twin is the link's podcast guid (same
+            // precedence as the mock).
+            let twin = if ep.podcast_guid.is_some() {
+                video_to_ep.get(link.youtube_video_id.as_str())
+            } else {
+                guid_to_ep.get(link.podcast_guid.as_str())
+            };
+            ep.linked_episode_id = twin.map(|t| t.to_string());
+        }
+    }
+    Ok(())
+}
+
+// ============================
+// PLAY MODE RULES (D7)
+// ============================
+// Runtime-checked queries on purpose (see resolve_smart_links): new macro
+// queries would require regenerating the .sqlx offline cache.
+
+#[derive(sqlx::FromRow)]
+struct PlayModeRuleRow {
+    id: String,
+    channel_id: String,
+    title_pattern: String,
+    play_mode: String,
+    priority: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+impl PlayModeRuleRow {
+    fn into_rule(self) -> DbResult<PlayModeRule> {
+        let play_mode: PlayMode = self
+            .play_mode
+            .parse()
+            .map_err(|_| format!("invalid play_mode '{}' in play_mode_rules", self.play_mode))?;
+        Ok(PlayModeRule {
+            id: self.id,
+            channel_id: self.channel_id,
+            title_pattern: self.title_pattern,
+            play_mode,
+            priority: self.priority,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
+}
+
+pub async fn list_play_mode_rules(
+    pool: &SqlitePool,
+    channel_id: Option<String>,
+) -> DbResult<Vec<PlayModeRule>> {
+    // Evaluation order (design-decisions D7): priority DESC, then oldest
+    // first — deterministic, first match wins downstream.
+    let rows = if let Some(channel_id) = channel_id {
+        query_as::<_, PlayModeRuleRow>(
+            "SELECT id, channel_id, title_pattern, play_mode, priority, created_at, updated_at \
+             FROM play_mode_rules WHERE channel_id = ? \
+             ORDER BY priority DESC, created_at ASC",
+        )
+        .bind(channel_id)
+        .fetch_all(pool)
+        .await
+    } else {
+        query_as::<_, PlayModeRuleRow>(
+            "SELECT id, channel_id, title_pattern, play_mode, priority, created_at, updated_at \
+             FROM play_mode_rules \
+             ORDER BY priority DESC, created_at ASC",
+        )
+        .fetch_all(pool)
+        .await
+    }
+    .map_err(|e| e.to_string())?;
+
+    rows.into_iter().map(|r| r.into_rule()).collect()
+}
+
+pub async fn set_play_mode_rule(
+    pool: &SqlitePool,
+    channel_id: String,
+    title_pattern: String,
+    play_mode: PlayMode,
+    priority: Option<i64>,
+) -> DbResult<PlayModeRule> {
+    // 'unified' is not a valid rule mode (a no-op override); the schema CHECK
+    // enforces this too, but failing here gives a readable error.
+    if !matches!(play_mode, PlayMode::Video | PlayMode::Audio) {
+        return Err(format!(
+            "play_mode must be 'video' or 'audio', got '{}'",
+            play_mode
+        ));
+    }
+    // Upsert on (channel_id, title_pattern): same channel+pattern REPLACES
+    // (mode + priority), never duplicates.
+    let priority = priority.unwrap_or(0);
+    let row = query_as::<_, PlayModeRuleRow>(
+        "INSERT INTO play_mode_rules (channel_id, title_pattern, play_mode, priority) \
+         VALUES (?, ?, ?, ?) \
+         ON CONFLICT(channel_id, title_pattern) DO UPDATE SET \
+           play_mode = excluded.play_mode, priority = excluded.priority, \
+           updated_at = datetime('now') \
+         RETURNING id, channel_id, title_pattern, play_mode, priority, created_at, updated_at",
+    )
+    .bind(&channel_id)
+    .bind(&title_pattern)
+    .bind(play_mode.to_string())
+    .bind(priority)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    row.into_rule()
+}
+
+pub async fn remove_play_mode_rule(pool: &SqlitePool, rule_id: &str) -> DbResult<()> {
+    // Idempotent: deleting an unknown id is not an error (matches the mock).
+    query("DELETE FROM play_mode_rules WHERE id = ?")
+        .bind(rule_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod d6_d7_tests {
+    //! Real-backend tests for D6 link resolution and D7 play-mode rules.
+    //! Runs migrations (the same include_str! SQL the app executes at
+    //! startup) against a fresh in-memory SQLite pool, seeds fixtures, and
+    //! exercises the query layer directly — no Tauri harness needed.
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    /// One connection only: each `:memory:` connection gets its OWN private
+    /// database, so a pool >1 would split schema and data across connections.
+    async fn fresh_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        // The backend assumes a single local user; every channel row FKs to it
+        // (same as scripts/seed.sql's first statement).
+        query("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+            .execute(&pool)
+            .await
+            .expect("insert user");
+        pool
+    }
+
+    async fn insert_channel(
+        pool: &SqlitePool,
+        id: &str,
+        external_id: &str,
+        title: &str,
+        ctype: &str,
+        feed_url: Option<&str>,
+    ) {
+        query(
+            "INSERT OR IGNORE INTO channels \
+             (id, user_id, external_id, title, is_subscribed, notifications_enabled, type, podcast_feed_url) \
+             VALUES (?, 'current-user', ?, ?, 1, 0, ?, ?)",
+        )
+        .bind(id)
+        .bind(external_id)
+        .bind(title)
+        .bind(ctype)
+        .bind(feed_url)
+        .execute(pool)
+        .await
+        .expect("insert channel");
+    }
+
+    async fn insert_episode(
+        pool: &SqlitePool,
+        id: &str,
+        channel_id: &str,
+        external_id: &str,
+        title: &str,
+        video_id: Option<&str>,
+        podcast_guid: Option<&str>,
+    ) {
+        query(
+            "INSERT OR IGNORE INTO episodes \
+             (id, channel_id, external_id, title, video_id, podcast_guid, is_downloaded, progress_seconds) \
+             VALUES (?, ?, ?, ?, ?, ?, 0, 0)",
+        )
+        .bind(id)
+        .bind(channel_id)
+        .bind(external_id)
+        .bind(title)
+        .bind(video_id)
+        .bind(podcast_guid)
+        .execute(pool)
+        .await
+        .expect("insert episode");
+    }
+
+    async fn insert_link(pool: &SqlitePool, id: &str, guid: &str, vid: &str) {
+        query("INSERT OR IGNORE INTO episode_links (id, podcast_guid, youtube_video_id, confidence, matched_by) VALUES (?, ?, ?, 0.95, 'auto')")
+            .bind(id)
+            .bind(guid)
+            .bind(vid)
+            .execute(pool)
+            .await
+            .expect("insert link");
+    }
+
+    /// The D6/D7 canonical two-stream show (owner example): YouTube-native
+    /// 'Some More News…' titles on ch-3, podcast-native 'Even More News…'
+    /// titles on ch-4, every story present on both streams and linked.
+    async fn seed_two_stream_show(pool: &SqlitePool) {
+        insert_channel(pool, "ch-3", "UC-mock-smn", "Some More News", "video", None).await;
+        insert_channel(
+            pool,
+            "ch-4",
+            "https://feeds.example.org/emn.xml",
+            "Even More News",
+            "podcast",
+            Some("https://feeds.example.org/emn.xml"),
+        )
+        .await;
+        insert_episode(pool, "ep-smn-1", "ch-3", "smn-vid-001", "Some More News: Why Billionaires Should Not Exist", Some("smn-vid-001"), None).await;
+        insert_episode(pool, "ep-smn-2", "ch-3", "smn-vid-002", "Some More News: The Housing Crisis Is Not an Accident", Some("smn-vid-002"), None).await;
+        insert_episode(pool, "ep-emn-1", "ch-4", "emn-guid-001", "Even More News: Why Billionaires Should Not Exist", None, Some("emn-guid-001")).await;
+        insert_episode(pool, "ep-emn-2", "ch-4", "emn-guid-002", "Even More News: The Housing Crisis Is Not an Accident", None, Some("emn-guid-002")).await;
+        insert_link(pool, "link-2", "emn-guid-001", "smn-vid-001").await;
+        insert_link(pool, "link-3", "emn-guid-002", "smn-vid-002").await;
+    }
+
+    #[tokio::test]
+    async fn search_resolves_smart_links_and_twins() {
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+
+        let mut results = search_episodes(
+            &pool,
+            "more news".to_string(),
+            None,
+        )
+        .await
+        .expect("search");
+        assert_eq!(results.len(), 4, "both families must match 'more news'");
+        resolve_smart_links(&pool, &mut results)
+            .await
+            .expect("resolve");
+
+        let smn = results.iter().find(|e| e.id == "ep-smn-1").expect("smn-1");
+        assert_eq!(smn.smart_link_id.as_deref(), Some("link-2"));
+        assert_eq!(smn.linked_episode_id.as_deref(), Some("ep-emn-1"));
+
+        let emn = results.iter().find(|e| e.id == "ep-emn-2").expect("emn-2");
+        assert_eq!(emn.smart_link_id.as_deref(), Some("link-3"));
+        assert_eq!(emn.linked_episode_id.as_deref(), Some("ep-smn-2"));
+    }
+
+    #[tokio::test]
+    async fn unlinked_episodes_carry_no_link_fields() {
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+        insert_episode(&pool, "ep-solo", "ch-3", "solo-vid", "Some More News: A Solo Story", Some("solo-vid"), None).await;
+
+        let mut results = search_episodes(&pool, "solo".to_string(), None)
+            .await
+            .expect("search");
+        resolve_smart_links(&pool, &mut results).await.expect("resolve");
+        assert_eq!(results.len(), 1);
+        assert!(results[0].smart_link_id.is_none());
+        assert!(results[0].linked_episode_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn twin_resolves_outside_the_result_set() {
+        // Searching only the podcast family must still surface the video
+        // twin's id — D6's "match any episode the user chooses".
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+
+        let mut results = search_episodes(&pool, "housing".to_string(), None)
+            .await
+            .expect("search");
+        assert_eq!(results.len(), 2);
+        resolve_smart_links(&pool, &mut results).await.expect("resolve");
+        let emn = results.iter().find(|e| e.id == "ep-emn-2").expect("emn-2");
+        assert_eq!(emn.linked_episode_id.as_deref(), Some("ep-smn-2"));
+    }
+
+    #[tokio::test]
+    async fn play_mode_rules_crud_roundtrip_and_upsert() {
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+
+        // Create
+        let rule = set_play_mode_rule(
+            &pool,
+            "ch-3".into(),
+            "Some More News".into(),
+            PlayMode::Video,
+            None,
+        )
+        .await
+        .expect("set rule");
+        assert_eq!(rule.play_mode, PlayMode::Video);
+        assert_eq!(rule.priority, 0);
+
+        // Upsert: same (channel, pattern) replaces, never duplicates
+        let updated = set_play_mode_rule(
+            &pool,
+            "ch-3".into(),
+            "Some More News".into(),
+            PlayMode::Audio,
+            Some(5),
+        )
+        .await
+        .expect("upsert rule");
+        assert_eq!(updated.id, rule.id, "upsert must return the same row");
+        assert_eq!(updated.play_mode, PlayMode::Audio);
+
+        let all = list_play_mode_rules(&pool, None).await.expect("list");
+        assert_eq!(all.len(), 1, "upsert must not duplicate");
+        assert_eq!(all[0].priority, 5);
+
+        // Channel filter
+        let filtered = list_play_mode_rules(&pool, Some("ch-4".into()))
+            .await
+            .expect("list filtered");
+        assert!(filtered.is_empty());
+
+        // Remove is idempotent
+        remove_play_mode_rule(&pool, &updated.id).await.expect("remove");
+        remove_play_mode_rule(&pool, &updated.id)
+            .await
+            .expect("remove again (idempotent)");
+        let empty = list_play_mode_rules(&pool, None).await.expect("list");
+        assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn unified_is_not_a_valid_rule_mode() {
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+        let err = set_play_mode_rule(
+            &pool,
+            "ch-3".into(),
+            "Some More News".into(),
+            PlayMode::Unified,
+            None,
+        )
+        .await
+        .expect_err("'unified' must be rejected");
+        assert!(err.contains("video") || err.contains("audio"), "readable error, got: {err}");
+    }
 }

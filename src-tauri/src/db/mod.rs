@@ -67,12 +67,19 @@ impl Database {
     }
 
     // Episode methods
+    // D6: the three choice surfaces resolve smart links at READ time (same
+    // behavior as the mock layer) — any episode the user picks arrives
+    // already link-matched to its cross-stream twin.
     pub async fn get_feed(&self, params: Option<crate::commands::episodes::FeedParams>) -> DbResult<Vec<Episode>> {
-        queries::get_feed(&self.pool, params).await
+        let mut episodes = queries::get_feed(&self.pool, params).await?;
+        queries::resolve_smart_links(&self.pool, &mut episodes).await?;
+        Ok(episodes)
     }
 
     pub async fn get_episode(&self, episode_id: &str) -> DbResult<Episode> {
-        queries::get_episode(&self.pool, episode_id).await
+        let mut episode = queries::get_episode(&self.pool, episode_id).await?;
+        queries::resolve_smart_links(&self.pool, std::slice::from_mut(&mut episode)).await?;
+        Ok(episode)
     }
 
     pub async fn search_episodes(
@@ -80,7 +87,9 @@ impl Database {
         query: String,
         params: Option<crate::commands::episodes::SearchParams>,
     ) -> DbResult<Vec<Episode>> {
-        queries::search_episodes(&self.pool, query, params).await
+        let mut episodes = queries::search_episodes(&self.pool, query, params).await?;
+        queries::resolve_smart_links(&self.pool, &mut episodes).await?;
+        Ok(episodes)
     }
 
     // Queue methods
@@ -116,6 +125,25 @@ impl Database {
     // Episode links
     pub async fn list_episode_links(&self, confidence_min: Option<f64>) -> DbResult<Vec<EpisodeLink>> {
         queries::list_episode_links(&self.pool, confidence_min).await
+    }
+
+    // Play-mode rules (D7)
+    pub async fn list_play_mode_rules(&self, channel_id: Option<String>) -> DbResult<Vec<PlayModeRule>> {
+        queries::list_play_mode_rules(&self.pool, channel_id).await
+    }
+
+    pub async fn set_play_mode_rule(
+        &self,
+        channel_id: String,
+        title_pattern: String,
+        play_mode: PlayMode,
+        priority: Option<i64>,
+    ) -> DbResult<PlayModeRule> {
+        queries::set_play_mode_rule(&self.pool, channel_id, title_pattern, play_mode, priority).await
+    }
+
+    pub async fn remove_play_mode_rule(&self, rule_id: &str) -> DbResult<()> {
+        queries::remove_play_mode_rule(&self.pool, rule_id).await
     }
 
     // Matcher methods

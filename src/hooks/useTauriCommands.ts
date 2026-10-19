@@ -1,6 +1,6 @@
 import { invoke } from '../tauri-bridge';
 import {
-  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink,
+  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
   KeyboardShortcut
@@ -73,6 +73,15 @@ export const smartLinkCommands = {
   match: () => invoke<{ matched_count: number }>('match_episodes'),
   confirm: (linkId: string, confirmed: boolean) => invoke<void>('confirm_smart_link', { linkId, confirmed }),
   unlink: (linkId: string) => invoke<void>('unlink_smart_link', { linkId }),
+};
+
+// Play-mode rule commands (play_mode_rules.rs) — D7 per-title-family
+// defaults: (channel, title-pattern) → 'video' | 'audio'.
+export const playModeRuleCommands = {
+  list: (channelId?: string) => invoke<PlayModeRule[]>('list_play_mode_rules', { channelId }),
+  set: (channelId: string, titlePattern: string, playMode: 'video' | 'audio', priority?: number) =>
+    invoke<PlayModeRule>('set_play_mode_rule', { channelId, titlePattern, playMode, priority }),
+  remove: (ruleId: string) => invoke<void>('remove_play_mode_rule', { ruleId }),
 };
 
 // Download commands (downloads.rs)

@@ -30,6 +30,9 @@ CREATE INDEX IF NOT EXISTS idx_episode_links_podcast ON episode_links(podcast_gu
 CREATE INDEX IF NOT EXISTS idx_episode_links_youtube ON episode_links(youtube_video_id);
 CREATE INDEX IF NOT EXISTS idx_episode_links_confidence ON episode_links(confidence);
 
+-- Play-mode rule indexes (D7: rules are listed and evaluated per channel)
+CREATE INDEX IF NOT EXISTS idx_play_mode_rules_channel ON play_mode_rules(channel_id, priority DESC);
+
 -- Download indexes
 CREATE INDEX IF NOT EXISTS idx_downloads_episode ON downloads(episode_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);

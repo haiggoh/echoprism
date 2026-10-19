@@ -133,6 +133,11 @@ pub fn run() {
             commands::smart_links::confirm_smart_link,
             commands::smart_links::unlink_smart_link,
 
+            // Play-mode rule commands (D7)
+            commands::play_mode_rules::list_play_mode_rules,
+            commands::play_mode_rules::set_play_mode_rule,
+            commands::play_mode_rules::remove_play_mode_rule,
+
             // Download commands
             commands::downloads::start_download,
             commands::downloads::list_downloads,

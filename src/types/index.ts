@@ -168,6 +168,28 @@ export interface EpisodeLink {
 }
 
 // ============================
+// PLAY MODE RULES (D7)
+// ============================
+
+/**
+ * D7 (design-decisions.md): a per-channel rule mapping a title substring
+ * pattern to the default play mode for matching episodes. Consulted in
+ * priority order (highest first, then oldest created); first match wins.
+ * Owner case: channel ch-3 pattern 'Some More News' → video, ch-4 pattern
+ * 'Even More News' → audio. Note the mode is deliberately narrowed to
+ * 'video' | 'audio' — a 'unified' rule would be a no-op override.
+ */
+export interface PlayModeRule {
+  id: string;
+  channel_id: string;
+  title_pattern: string;
+  play_mode: 'video' | 'audio';
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================
 // QUEUE
 // ============================
 

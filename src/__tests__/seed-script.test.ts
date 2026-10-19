@@ -49,10 +49,14 @@ describe('db:seed script', () => {
   it('seeds schema + data into a fresh database and reports counts', () => {
     withTempDb((db) => {
       const out = runSeed(db);
-      expect(out).toMatch(/episodes: 4/);
-      expect(out).toMatch(/channels: 2/);
-      expect(sqlite(db, 'SELECT COUNT(*) FROM episodes;').trim()).toBe('4');
-      expect(sqlite(db, 'SELECT COUNT(*) FROM channels;').trim()).toBe('2');
+      expect(out).toMatch(/episodes: 8/);
+      expect(out).toMatch(/channels: 4/);
+      expect(sqlite(db, 'SELECT COUNT(*) FROM episodes;').trim()).toBe('8');
+      expect(sqlite(db, 'SELECT COUNT(*) FROM channels;').trim()).toBe('4');
+      // D7 fixtures: the two-stream show with its per-family play-mode rules
+      expect(sqlite(db, 'SELECT COUNT(*) FROM play_mode_rules;').trim()).toBe('2');
+      expect(sqlite(db, "SELECT play_mode FROM play_mode_rules WHERE title_pattern='Some More News';").trim()).toBe('video');
+      expect(sqlite(db, "SELECT play_mode FROM play_mode_rules WHERE title_pattern='Even More News';").trim()).toBe('audio');
       expect(
         sqlite(db, "SELECT card_click_action FROM user_preferences WHERE user_id='current-user';").trim()
       ).toBe('auto'); // D2 default
@@ -66,8 +70,9 @@ describe('db:seed script', () => {
     withTempDb((db) => {
       runSeed(db);
       runSeed(db);
-      expect(sqlite(db, 'SELECT COUNT(*) FROM episodes;').trim()).toBe('4');
-      expect(sqlite(db, 'SELECT COUNT(*) FROM channels;').trim()).toBe('2');
+      expect(sqlite(db, 'SELECT COUNT(*) FROM episodes;').trim()).toBe('8');
+      expect(sqlite(db, 'SELECT COUNT(*) FROM channels;').trim()).toBe('4');
+      expect(sqlite(db, 'SELECT COUNT(*) FROM play_mode_rules;').trim()).toBe('2');
     });
   });
 

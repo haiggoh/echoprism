@@ -41,4 +41,22 @@ describe('mock search resolves smart links at search time (D6)', () => {
     expect(video?.smart_link_id).toBe('link-1');
     expect(video?.linked_episode_id).toBe('ep-pod-1');
   });
+
+  // D6 canonical case (owner): 'Some More News' (YouTube-native titles) and
+  // 'Even More News' (podcast-native titles) are ONE show on two streams —
+  // every episode must arrive search-time-linked to its cross-stream twin.
+  it('links both title families of a two-stream show in one search (D6)', async () => {
+    const results = await mockInvoke<Episode[]>('search_episodes', { q: 'more news' });
+    expect(results).toHaveLength(4); // 2 SMN (video) + 2 EMN (podcast)
+
+    const smn = results.find((e) => e.id === 'ep-smn-1');
+    expect(smn?.channel?.title).toBe('Some More News');
+    expect(smn?.smart_link_id).toBe('link-2');
+    expect(smn?.linked_episode_id).toBe('ep-emn-1');
+
+    const emn = results.find((e) => e.id === 'ep-emn-2');
+    expect(emn?.channel?.title).toBe('Even More News');
+    expect(emn?.smart_link_id).toBe('link-3');
+    expect(emn?.linked_episode_id).toBe('ep-smn-2');
+  });
 });

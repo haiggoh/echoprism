@@ -6,7 +6,7 @@
  * and D2 (card_click_action = 'auto' default).
  */
 import type {
-  Channel, Episode, EpisodeLink, HistoryEntry, Instance, UserPreferences,
+  Channel, Episode, EpisodeLink, HistoryEntry, Instance, PlayModeRule, UserPreferences,
 } from '../types';
 
 export interface MockDb {
@@ -14,6 +14,7 @@ export interface MockDb {
   episodes: Episode[];
   instances: Instance[];
   smartLinks: EpisodeLink[];
+  playModeRules: PlayModeRule[];
   history: HistoryEntry[];
   preferences: UserPreferences;
 }
@@ -46,6 +47,36 @@ export const mockDb: MockDb = {
       format_preference: 'both',
       type: 'podcast',
       podcast_feed_url: 'https://feeds.example.org/deep-dive.xml',
+      created_at: now,
+      updated_at: now,
+    },
+    // D6/D7 canonical case (owner): one show, two streams, two title families.
+    // ch-3 carries the YouTube-native episodes ('Some More News…'), ch-4 the
+    // podcast-native ones ('Even More News…') — every episode exists on both.
+    {
+      id: 'ch-3',
+      user_id: 'current-user',
+      external_id: 'UC-mock-some-more-news',
+      title: 'Some More News',
+      is_subscribed: true,
+      subscribed_at: now,
+      notifications_enabled: false,
+      format_preference: 'both',
+      type: 'video',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'ch-4',
+      user_id: 'current-user',
+      external_id: 'https://feeds.example.org/even-more-news.xml',
+      title: 'Even More News',
+      is_subscribed: true,
+      subscribed_at: now,
+      notifications_enabled: false,
+      format_preference: 'both',
+      type: 'podcast',
+      podcast_feed_url: 'https://feeds.example.org/even-more-news.xml',
       created_at: now,
       updated_at: now,
     },
@@ -106,6 +137,62 @@ export const mockDb: MockDb = {
       created_at: now,
       updated_at: now,
     },
+    // D6/D7 two-stream show: same stories, two title families. All four are
+    // cross-linked (link-2/link-3) so search-time resolution pairs them.
+    {
+      id: 'ep-smn-1',
+      channel_id: 'ch-3',
+      external_id: 'smn-vid-001',
+      title: 'Some More News: Why Billionaires Should Not Exist',
+      video_id: 'smn-vid-001',
+      duration_seconds: 2040,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-15T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'ep-smn-2',
+      channel_id: 'ch-3',
+      external_id: 'smn-vid-002',
+      title: 'Some More News: The Housing Crisis Is Not an Accident',
+      video_id: 'smn-vid-002',
+      duration_seconds: 2160,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-08T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'ep-emn-1',
+      channel_id: 'ch-4',
+      external_id: 'emn-guid-001',
+      title: 'Even More News: Why Billionaires Should Not Exist',
+      podcast_guid: 'emn-guid-001',
+      audio_url: '/mock-media/ep-emn-1.wav',
+      duration_seconds: 2220,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-15T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'ep-emn-2',
+      channel_id: 'ch-4',
+      external_id: 'emn-guid-002',
+      title: 'Even More News: The Housing Crisis Is Not an Accident',
+      podcast_guid: 'emn-guid-002',
+      audio_url: '/mock-media/ep-emn-2.wav',
+      duration_seconds: 2340,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-08T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
   ],
   instances: [
     {
@@ -131,6 +218,50 @@ export const mockDb: MockDb = {
       matched_at: '2026-10-16T03:00:00Z',
       matched_by: 'auto',
       user_confirmed: false,
+      created_at: now,
+      updated_at: now,
+    },
+    // D6: the two-stream show — both episodes of each story paired.
+    {
+      id: 'link-2',
+      podcast_guid: 'emn-guid-001',
+      youtube_video_id: 'smn-vid-001',
+      confidence: 0.97,
+      matched_at: '2026-10-17T03:00:00Z',
+      matched_by: 'auto',
+      user_confirmed: false,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'link-3',
+      podcast_guid: 'emn-guid-002',
+      youtube_video_id: 'smn-vid-002',
+      confidence: 0.96,
+      matched_at: '2026-10-17T03:00:00Z',
+      matched_by: 'auto',
+      user_confirmed: false,
+      created_at: now,
+      updated_at: now,
+    },
+  ],
+  // D7: per-title-family play-mode rules (owner's example verbatim).
+  playModeRules: [
+    {
+      id: 'rule-1',
+      channel_id: 'ch-3',
+      title_pattern: 'Some More News',
+      play_mode: 'video',
+      priority: 0,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'rule-2',
+      channel_id: 'ch-4',
+      title_pattern: 'Even More News',
+      play_mode: 'audio',
+      priority: 0,
       created_at: now,
       updated_at: now,
     },

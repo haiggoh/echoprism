@@ -177,6 +177,27 @@ CREATE INDEX IF NOT EXISTS idx_episode_links_youtube ON episode_links(youtube_vi
 CREATE INDEX IF NOT EXISTS idx_episode_links_confidence ON episode_links(confidence);
 
 -- ============================
+-- PLAY MODE RULES (D7: per-title-family defaults)
+-- ============================
+-- One channel with two title families (owner case: a YouTube channel whose
+-- video-native episodes are titled 'Some More News…' while its own podcast
+-- feed carries 'Even More News…') defaults differently per family. Rules are
+-- consulted in priority order (highest first, then oldest first); the FIRST
+-- title_pattern matching an episode title wins. A rule's play_mode is only
+-- 'video' | 'audio' — 'unified' would be a no-op override and is rejected at
+-- the CHECK and by the command layer.
+CREATE TABLE IF NOT EXISTS play_mode_rules (
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+    channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    title_pattern TEXT NOT NULL,
+    play_mode TEXT NOT NULL CHECK (play_mode IN ('video','audio')),
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(channel_id, title_pattern)
+);
+
+-- ============================
 -- QUEUE (Unified Video + Audio)
 -- ============================
 CREATE TABLE IF NOT EXISTS queues (
