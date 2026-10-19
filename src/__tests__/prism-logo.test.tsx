@@ -44,7 +44,7 @@ describe('PrismLogo', () => {
     const { getByTestId } = render(<PrismLogo />);
     for (const id of ['mark-audio-beam', 'mark-video-beam']) {
       const d = getByTestId(id).getAttribute('d') ?? '';
-      expect(d).toMatch(/^[ML\s0-9.-]+$/); // only M/L commands + coordinates
+      expect(d).toMatch(/^[MLZ\s0-9.-]+$/); // only straight M/L/Z commands
     }
   });
 
@@ -75,15 +75,39 @@ describe('PrismLogo', () => {
 
   it('the band (and its fringes) starts AT the focus, not at the exit face', () => {
     const { getByTestId } = render(<PrismLogo size={120} />);
-    expect(first(getByTestId('mark-exit-wedge').getAttribute('d') ?? '')).toEqual([G.meet.x, G.meet.y]);
+    expect(first(getByTestId('mark-fringe-top').getAttribute('d') ?? '')).toEqual([G.meet.x, G.meet.y]);
+    expect(first(getByTestId('mark-fringe-bottom').getAttribute('d') ?? '')).toEqual([G.meet.x, G.meet.y]);
   });
 
   it('fringes are inverted vs entry: teal on top, orange at the bottom', () => {
-    const { container } = render(<PrismLogo size={120} />);
-    const grad = [...container.querySelectorAll('linearGradient')].find((g) => g.id.endsWith('-band'))!;
-    const colors = [...grad.querySelectorAll('stop')].map((s) => s.getAttribute('stop-color'));
-    expect(colors[0]).toBe('var(--color-stream-audio)');
-    expect(colors[colors.length - 1]).toBe('var(--color-stream-video)');
+    const { getByTestId } = render(<PrismLogo size={120} />);
+    const top = getByTestId('mark-fringe-top');
+    const bottom = getByTestId('mark-fringe-bottom');
+    expect(top.getAttribute('fill')).toBe('var(--color-stream-audio)');
+    expect(bottom.getAttribute('fill')).toBe('var(--color-stream-video)');
+    const meanY = (d: string) => { const v = nums(d).filter((_, i) => i % 2); return v.reduce((a, b) => a + b) / v.length; };
+    expect(meanY(top.getAttribute('d') ?? '')).toBeLessThan(meanY(bottom.getAttribute('d') ?? ''));
+  });
+
+  // Owner 2026-10-19 18:05: both entering beams taper to the SAME sharp tip
+  // as the exit wedge and both fringes; one shared point, no blunt ends.
+  it('beams, wedge and both fringes converge on one sharp point', () => {
+    const { getByTestId } = render(<PrismLogo size={120} />);
+    const has = (id: string) => {
+      const v = nums(getByTestId(id).getAttribute('d') ?? '');
+      return Array.from({ length: v.length / 2 }, (_, i) => [v[2 * i], v[2 * i + 1]])
+        .some(([x, y]) => Math.abs(x - G.meet.x) < 1e-3 && Math.abs(y - G.meet.y) < 1e-3);
+    };
+    for (const id of ['mark-video-beam', 'mark-audio-beam', 'mark-exit-band', 'mark-fringe-top', 'mark-fringe-bottom']) {
+      expect(has(id), id).toBe(true);
+    }
+  });
+
+  it('every visible part is a filled shape (no strokes that alias)', () => {
+    const { getByTestId } = render(<PrismLogo size={120} />);
+    for (const id of ['mark-video-beam', 'mark-audio-beam', 'mark-exit-band', 'mark-fringe-top', 'mark-fringe-bottom']) {
+      expect(getByTestId(id).getAttribute('stroke')).toBeNull();
+    }
   });
 
   it('beams run past the viewBox edges (continue to infinity, clipped)', () => {

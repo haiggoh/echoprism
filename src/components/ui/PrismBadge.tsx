@@ -55,6 +55,7 @@ export function PrismBadge({ width = 32, aspect = 1, audioOnly = false, classNam
         >
           <PrismMark
             k={markW < 40 ? 1.3 : 1}
+            pxWidth={markW}
             reach={reach}
             videoOpacity={audioOnly ? PRISM_PALE_OPACITY : 1}
             videoFilter={audioOnly ? PRISM_PALE_FILTER : undefined}

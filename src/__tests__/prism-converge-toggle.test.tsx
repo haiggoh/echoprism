@@ -74,7 +74,7 @@ describe('PrismConvergeToggle', () => {
     const { getByTestId } = renderToggle('unified');
     for (const id of ['mark-audio-beam', 'mark-video-beam']) {
       const d = getByTestId(id).getAttribute('d') ?? '';
-      expect(d).toMatch(/^[ML\s0-9.-]+$/); // only M/L commands + coordinates
+      expect(d).toMatch(/^[MLZ\s0-9.-]+$/); // only straight M/L/Z commands
     }
   });
 

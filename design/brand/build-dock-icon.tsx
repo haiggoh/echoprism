@@ -65,16 +65,22 @@ const R = 286 * (BODY / 824);
 const outer = squircle(OFF, BODY, R, 3.3);
 const inner = squircle(OFF + ring, BODY - 2 * ring, R - ring, 3.3);
 
-// Mark: the 120x64 drawing at 78% of the body width, centred on it; beams
-// run on past the box (reach) and are clipped by the panel, so the streams
-// cross the whole icon edge to edge.
-const markW = BODY * 0.78;
+// Mark: the 120x64 drawing at 120% of the body width, centred on it. The
+// prism then fills ~43% of the body (owner: "take up more of the frame");
+// the beams run on past the box (reach) and are clipped by the panel, so
+// the streams cross the whole icon edge to edge. The prism apex sits at the
+// box's x centre (geometry --cx 60), so centring the box centres the prism.
+const markW = BODY * 1.2;
 const markH = (markW * 64) / 120;
+// The icon is DISPLAYED far smaller than 1024px (Dock ~64pt, Finder up to
+// ~128pt), so the fringes are sized for the mark at ~128pt, not at 1024:
+// sized for 1024 they would vanish in the Dock.
+const ICON_MARK_PX = 128;
 const unitsPerPx = 120 / markW;
-const reach = Math.ceil(((markW - (BODY - 2 * ring)) / -2) * unitsPerPx) + 2;
+const reach = Math.max(0, Math.ceil(((BODY - 2 * ring - markW) / 2) * unitsPerPx)) + 4;
 // Rendered inside an <svg> so React treats the elements as SVG (no casing
 // warnings); the wrapper is stripped again below.
-const mark = renderToStaticMarkup(<svg><PrismMark reach={reach} /></svg>)
+const mark = renderToStaticMarkup(<svg><PrismMark reach={reach} pxWidth={ICON_MARK_PX} /></svg>)
   .replace(/^<svg>/, '')
   .replace(/<\/svg>$/, '')
   .replaceAll('var(--color-stream-audio)', TEAL)

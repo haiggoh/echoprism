@@ -46,6 +46,7 @@ export function PrismConvergeToggle({
         {/* The mark itself, one geometry shared with PrismLogo. The beams
             run to the edge (no end dots): streams continue to infinity. */}
         <PrismMark
+          pxWidth={width}
           audioOpacity={audioPale ? PRISM_PALE_OPACITY : 1}
           audioFilter={audioPale ? PRISM_PALE_FILTER : undefined}
           videoOpacity={videoPale ? PRISM_PALE_OPACITY : 1}
