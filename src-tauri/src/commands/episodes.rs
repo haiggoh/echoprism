@@ -1,7 +1,9 @@
 //! Episode/Video commands
 
 use crate::db::Database;
+use crate::instance_pool::InstancePool;
 use crate::types::*;
+use std::sync::Arc;
 use tauri::{command, State};
 
 #[command]
@@ -32,10 +34,71 @@ pub async fn get_episode(
 #[command]
 pub async fn search_episodes(
     db: State<'_, Database>,
+    pool: State<'_, InstancePool>,
+    extractor: State<'_, Arc<crate::extractor::Extractor>>,
     q: String,
     params: Option<SearchParams>,
 ) -> std::result::Result<Vec<Episode>, String> {
-    db.search_episodes(q, params).await
+    let query = q.trim().to_string();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Real sources first: instances in failover order, then the local
+    // yt-dlp binary as the guaranteed fallback. Total failure degrades to
+    // local-only results (the app stays usable offline).
+    let candidates = crate::instance_pool::order_for_search(&pool.get_all().await);
+    let mut videos: Vec<crate::extractor::VideoInfo> = Vec::new();
+    let mut source = String::from("none");
+    for instance in &candidates {
+        let attempt = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            extractor.search_with_instance(&query, instance),
+        )
+        .await;
+        match attempt {
+            Ok(Ok(found)) if !found.is_empty() => {
+                videos = found;
+                source = instance.url.clone();
+                break;
+            }
+            Ok(Ok(_)) => continue, // answered with no hits — try the next source
+            Ok(Err(e)) => tracing::warn!("Search via {} failed: {}", instance.url, e),
+            Err(_) => tracing::warn!("Search via {} timed out after 8s", instance.url),
+        }
+    }
+    if videos.is_empty() {
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(45),
+            extractor.search_with_yt_dlp(&query),
+        )
+        .await
+        {
+            Ok(Ok(found)) if !found.is_empty() => {
+                videos = found;
+                source = "yt-dlp".to_string();
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => tracing::warn!("yt-dlp search failed: {}", e),
+            Err(_) => tracing::warn!("yt-dlp search timed out"),
+        }
+    }
+
+    if !videos.is_empty() {
+        match db.upsert_video_results(&videos).await {
+            Ok(n) => tracing::info!(
+                "Search '{}' via {}: {} result(s), {} new",
+                query,
+                source,
+                videos.len(),
+                n
+            ),
+            Err(e) => tracing::warn!("Storing search results failed: {}", e),
+        }
+    }
+
+    // Local results (including anything just stored), smart links resolved.
+    db.search_episodes(query, params).await
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -47,23 +110,42 @@ pub struct SearchParams {
     pub offset: Option<u32>,
 }
 
+/// The stream resolver keys on the YouTube video id; search-upserted rows
+/// carry it in video_id, everything else falls back to external_id.
+fn video_id_for(episode: &Episode) -> String {
+    episode
+        .video_id
+        .clone()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| episode.external_id.clone())
+}
+
+/// Assembly from a resolved stream: url and format come from the source —
+/// no placeholder hosts.
+fn stream_info_from(stream: crate::extractor::StreamUrl) -> StreamInfo {
+    StreamInfo {
+        url: stream.url,
+        headers: stream.headers,
+        format: stream.format,
+    }
+}
+
 #[command]
 pub async fn stream_episode(
     db: State<'_, Database>,
+    pool: State<'_, InstancePool>,
+    extractor: State<'_, Arc<crate::extractor::Extractor>>,
     episode_id: String,
     format: Option<String>,
-    _quality: Option<String>,
+    quality: Option<String>,
 ) -> std::result::Result<StreamInfo, String> {
-    // Get episode from DB
-    let _episode = db.get_episode(&episode_id).await?;
-
-    // Get stream URL from extractor
-    // For now, return mock data
-    Ok(StreamInfo {
-        url: format!("https://example.com/stream/{}", episode_id),
-        headers: None,
-        format: format.unwrap_or_else(|| "hls".to_string()),
-    })
+    let episode = db.get_episode(&episode_id).await?;
+    let video_id = video_id_for(&episode);
+    let candidates = crate::instance_pool::order_for_search(&pool.get_all().await);
+    let stream = extractor
+        .resolve_stream(&video_id, format.as_deref(), quality.as_deref(), &candidates)
+        .await?;
+    Ok(stream_info_from(stream))
 }
 
 #[command]
@@ -80,4 +162,69 @@ pub struct StreamInfo {
     pub url: String,
     pub headers: Option<std::collections::HashMap<String, String>>,
     pub format: String,
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    fn episode_stub() -> Episode {
+        Episode {
+            id: "ep-1".into(),
+            channel_id: "ch-1".into(),
+            external_id: "ext-1".into(),
+            title: "t".into(),
+            description: None,
+            thumbnail_url: None,
+            duration_seconds: None,
+            published_at: None,
+            url: None,
+            video_id: None,
+            podcast_guid: None,
+            episode_number: None,
+            season_number: None,
+            audio_url: None,
+            video_url: None,
+            formats: None,
+            chapters: None,
+            sponsors: None,
+            transcript_url: None,
+            is_downloaded: false,
+            download_quality: None,
+            progress_seconds: 0.0,
+            created_at: "2026-10-20T00:00:00Z".into(),
+            updated_at: "2026-10-20T00:00:00Z".into(),
+            smart_link_id: None,
+            linked_episode_id: None,
+        }
+    }
+
+    /// The stream resolver keys on the YouTube video id; episodes upserted
+    /// from search carry it in video_id, other rows fall back to external_id.
+    #[test]
+    fn video_id_prefers_video_id_field_then_external_id() {
+        let mut e = episode_stub();
+        e.video_id = Some("z00Lhm3CqAM".into());
+        e.external_id = "other-key".into();
+        assert_eq!(video_id_for(&e), "z00Lhm3CqAM");
+
+        e.video_id = None;
+        assert_eq!(video_id_for(&e), "other-key");
+    }
+
+    /// StreamInfo assembly carries the resolved url/format — it must never
+    /// invent a placeholder host (the old mock returned example.com).
+    #[test]
+    fn stream_info_assembly_maps_resolved_stream() {
+        let resolved = crate::extractor::StreamUrl {
+            url: "https://media.example/video.m3u8".into(),
+            format: "hls".into(),
+            quality: "720p".into(),
+            headers: None,
+        };
+        let info = stream_info_from(resolved);
+        assert_eq!(info.url, "https://media.example/video.m3u8");
+        assert_eq!(info.format, "hls");
+        assert!(info.headers.is_none());
+    }
 }

@@ -67,6 +67,148 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
     }).collect())
 }
 
+/// Instances a fresh install can search through. Only endpoints whose search
+/// API was verified live make the default cut; the public Invidious fleet has
+/// disabled its API ecosystem-wide (official registry api:false, verified
+/// 2026-10-20), so no Invidious instances are seeded.
+pub const DEFAULT_INSTANCES: [&str; 1] = ["https://pipedapi.ducks.party"];
+
+/// Insert the default search instances, but only into an empty table — a user
+/// who already configured instances keeps exactly what they configured.
+/// Returns how many rows were inserted.
+pub async fn seed_default_instances_if_empty(pool: &SqlitePool) -> DbResult<usize> {
+    let existing = list_instances(pool).await?;
+    if !existing.is_empty() {
+        return Ok(0);
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut seeded = 0usize;
+    for url in DEFAULT_INSTANCES {
+        let host = url.split("//").nth(1).unwrap_or(url);
+        let slug = host.replace(['.', '-'], "-");
+        let instance = Instance {
+            id: format!("default-{}", slug),
+            url: url.to_string(),
+            instance_type: InstanceType::Piped,
+            health: InstanceHealth::Unknown,
+            latency_ms: None,
+            last_checked: None,
+            auto_failover: true,
+            supports_sabr: false,
+            supports_age_restricted: false,
+            region: None,
+            country: None,
+            pinned: false,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        insert_instance(pool, &instance).await?;
+        seeded += 1;
+    }
+    Ok(seeded)
+}
+
+/// Store network search results locally so the established search path —
+/// FTS + smart links — finds them. `external_id` carries the YouTube video id
+/// and is the stable key: existing rows are never touched (user state on them
+/// survives). Channels are found or created by their YouTube channel id when
+/// known, else a deterministic key derived from the channel name. Returns how
+/// many episodes were newly inserted.
+pub async fn upsert_video_results(
+    pool: &SqlitePool,
+    videos: &[crate::extractor::VideoInfo],
+) -> DbResult<usize> {
+    let mut inserted = 0usize;
+    for video in videos {
+        if video.id.is_empty() || video.title.is_empty() {
+            continue;
+        }
+        let channel_external = video
+            .channel_id
+            .clone()
+            .filter(|c| !c.trim().is_empty())
+            .unwrap_or_else(|| {
+                format!(
+                    "yt-name:{}",
+                    video
+                        .channel
+                        .as_deref()
+                        .unwrap_or("unknown")
+                        .trim()
+                        .to_lowercase()
+                )
+            });
+        let channel_title = video
+            .channel
+            .clone()
+            .filter(|c| !c.trim().is_empty())
+            .unwrap_or_else(|| "Unknown channel".to_string());
+
+        let channel_row: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM channels WHERE external_id = ? LIMIT 1",
+        )
+        .bind(&channel_external)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let channel_row = match channel_row {
+            Some(id) => id,
+            None => {
+                // Search-discovered channels are not subscriptions; the user
+                // can subscribe from the UI later.
+                sqlx::query(
+                    "INSERT INTO channels (user_id, external_id, title, is_subscribed, notifications_enabled, type) \
+                     VALUES ('current-user', ?, ?, 0, 0, 'video')",
+                )
+                .bind(&channel_external)
+                .bind(&channel_title)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+                sqlx::query_scalar("SELECT id FROM channels WHERE external_id = ? LIMIT 1")
+                    .bind(&channel_external)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "channel row vanished after insert".to_string())?
+            }
+        };
+
+        let exists: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM episodes WHERE external_id = ? LIMIT 1",
+        )
+        .bind(&video.id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        if exists.is_some() {
+            continue;
+        }
+
+        // published_at stays NULL for relative dates ("1 hour ago") — mixing
+        // them with the ISO timestamps the feed sorts by would corrupt the
+        // ordering.
+        sqlx::query(
+            "INSERT INTO episodes (channel_id, external_id, title, description, thumbnail_url, duration_seconds, url, video_id) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&channel_row)
+        .bind(&video.id)
+        .bind(&video.title)
+        .bind(&video.description)
+        .bind(&video.thumbnail)
+        .bind(video.duration.map(|d| d as i64))
+        .bind(format!("https://www.youtube.com/watch?v={}", video.id))
+        .bind(&video.id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
 pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult<()> {
     let instance_type_str = instance.instance_type.to_string();
     let health_str = instance.health.to_string();
@@ -1787,5 +1929,152 @@ mod d6_d7_tests {
             json.get("channel_type").is_none(),
             "Rust field name must not leak to the wire"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_source_tests {
+    //! Instance seeding for search sources: defaults land only when the
+    //! table is empty, never duplicating user rows. Same in-memory backend as
+    //! d6_d7_tests (real migrations, no Tauri harness).
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn fresh_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        query("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+            .execute(&pool)
+            .await
+            .expect("insert user");
+        pool
+    }
+
+    fn user_instance(id: &str, url: &str, ctype: InstanceType) -> Instance {
+        Instance {
+            id: id.to_string(),
+            url: url.to_string(),
+            instance_type: ctype,
+            health: InstanceHealth::Unknown,
+            latency_ms: None,
+            last_checked: None,
+            auto_failover: true,
+            supports_sabr: false,
+            supports_age_restricted: false,
+            region: None,
+            country: None,
+            pinned: false,
+            created_at: "2026-10-20T00:00:00Z".to_string(),
+            updated_at: "2026-10-20T00:00:00Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn seeds_default_instances_only_when_table_is_empty() {
+        let pool = fresh_pool().await;
+
+        let seeded = seed_default_instances_if_empty(&pool).await.expect("seed");
+        assert_eq!(seeded, 1, "exactly the one API-verified default instance");
+
+        let again = seed_default_instances_if_empty(&pool).await.expect("re-seed");
+        assert_eq!(again, 0, "second run must not duplicate");
+
+        let all = list_instances(&pool).await.expect("list");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].instance_type, InstanceType::Piped);
+        assert_eq!(all[0].url, "https://pipedapi.ducks.party");
+        assert!(all[0].auto_failover);
+    }
+
+    #[tokio::test]
+    async fn never_touches_a_table_that_already_has_instances() {
+        let pool = fresh_pool().await;
+        insert_instance(&pool, &user_instance("user-1", "https://my.local.instance", InstanceType::Invidious))
+            .await
+            .expect("insert user instance");
+
+        let seeded = seed_default_instances_if_empty(&pool).await.expect("seed no-op");
+        assert_eq!(seeded, 0, "user instances present - no defaults injected");
+
+        let all = list_instances(&pool).await.expect("list");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, "user-1");
+    }
+
+    fn video(id: &str, title: &str, channel: &str, channel_id: Option<&str>, duration: u64) -> crate::extractor::VideoInfo {
+        crate::extractor::VideoInfo {
+            id: id.to_string(),
+            title: title.to_string(),
+            description: Some(format!("Description of {}", title)),
+            duration: Some(duration),
+            thumbnail: Some(format!("https://img.example/{}.jpg", id)),
+            channel: Some(channel.to_string()),
+            channel_id: channel_id.map(|c| c.to_string()),
+            upload_date: None,
+            view_count: Some(1000),
+            formats: Vec::new(),
+        }
+    }
+
+    /// Network search results must land in the local FTS index (so the
+    /// existing search — with smart links — finds them), be idempotent on the
+    /// video id, and never clobber user state on rows that already exist.
+    #[tokio::test]
+    async fn upserted_search_results_are_fts_searchable_and_idempotent() {
+        let pool = fresh_pool().await;
+
+        let videos = vec![
+            video("z00Lhm3CqAM", "Apple's HomeView has an app problem | The Vergecast", "The Verge", Some("UCddiUEpeqJcYeBxX1IVBKvQ"), 5912),
+            video("CBVODIUnPwc", "Why your favorite creator is building an app | The Vergecast", "The Verge", Some("UCddiUEpeqJcYeBxX1IVBKvQ"), 2487),
+        ];
+        let inserted = upsert_video_results(&pool, &videos).await.expect("first upsert");
+        assert_eq!(inserted, 2);
+
+        // Both episodes surface through the same FTS search the UI calls.
+        let found = search_episodes(&pool, "vergecast".to_string(), None).await.expect("search");
+        assert_eq!(found.len(), 2, "both upserted episodes are searchable");
+        assert!(found.iter().all(|e| e.video_id.as_deref().is_some()));
+        assert!(found.iter().all(|e| e.external_id == e.video_id.clone().unwrap_or_default()));
+
+        // One channel row serves both videos (same YouTube channel id).
+        let channels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels")
+            .fetch_one(&pool).await.expect("count channels");
+        assert_eq!(channels, 1, "both videos share one channel row");
+        let subscribed: i64 = sqlx::query_scalar("SELECT is_subscribed FROM channels LIMIT 1")
+            .fetch_one(&pool).await.expect("read flag");
+        assert_eq!(subscribed, 0, "search-discovered channels must not auto-subscribe");
+
+        // Idempotent: a re-upsert adds nothing.
+        let again = upsert_video_results(&pool, &videos).await.expect("second upsert");
+        assert_eq!(again, 0, "re-upserting the same videos inserts nothing");
+
+        // Non-clobbering: a user-mutated row survives a re-upsert.
+        query("UPDATE episodes SET title = 'user-renamed' WHERE external_id = 'z00Lhm3CqAM'")
+            .execute(&pool).await.expect("mutate title");
+        upsert_video_results(&pool, &videos).await.expect("third upsert");
+        let title: String = sqlx::query_scalar("SELECT title FROM episodes WHERE external_id = 'z00Lhm3CqAM'")
+            .fetch_one(&pool).await.expect("read title");
+        assert_eq!(title, "user-renamed", "upsert must never clobber existing rows");
+    }
+
+    #[tokio::test]
+    async fn upsert_creates_channel_from_name_when_channel_id_missing() {
+        let pool = fresh_pool().await;
+        let videos = vec![
+            video("aqz-KE-bpKQ", "Fixture video two: another weekly news episode", "Power User", None, 2487),
+        ];
+        let inserted = upsert_video_results(&pool, &videos).await.expect("upsert");
+        assert_eq!(inserted, 1);
+
+        let found = search_episodes(&pool, "fixture".to_string(), None).await.expect("search");
+        assert_eq!(found.len(), 1, "episode linked to the name-derived channel");
+        let channel_external: String = sqlx::query_scalar(
+            "SELECT c.external_id FROM episodes e JOIN channels c ON c.id = e.channel_id LIMIT 1")
+            .fetch_one(&pool).await.expect("read channel");
+        assert!(channel_external.starts_with("yt-name:"), "fallback key is deterministic");
     }
 }

@@ -49,6 +49,17 @@ impl Database {
         queries::insert_instance(&self.pool, instance).await
     }
 
+    pub async fn seed_default_instances_if_empty(&self) -> DbResult<usize> {
+        queries::seed_default_instances_if_empty(&self.pool).await
+    }
+
+    pub async fn upsert_video_results(
+        &self,
+        videos: &[crate::extractor::VideoInfo],
+    ) -> DbResult<usize> {
+        queries::upsert_video_results(&self.pool, videos).await
+    }
+
     pub async fn delete_instance(&self, id: &str) -> DbResult<()> {
         queries::delete_instance(&self.pool, id).await
     }

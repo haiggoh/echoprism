@@ -69,7 +69,8 @@ pub fn run() {
             // Initialize instance pool
             let pool = instance_pool::InstancePool::new(app.handle().clone());
             app.manage(pool.clone());
-            app.manage(Arc::new(pool));
+            let pool_shared = Arc::new(pool);
+            app.manage(pool_shared.clone());
 
             // Initialize extractor
             let extractor = extractor::Extractor::new(app.handle().clone());
@@ -84,8 +85,22 @@ pub fn run() {
             app.manage(Arc::new(podcast));
 
             // Initialize SponsorBlock manager
-            let sponsorblock = sponsorblock::SponsorBlockManager::new(db_shared);
+            let sponsorblock = sponsorblock::SponsorBlockManager::new(db_shared.clone());
             app.manage(Arc::new(sponsorblock));
+
+            // Seed default search instances on a fresh install, then load the
+            // instance pool for search/failover. background_tasks (below)
+            // owns the single health-check loop.
+            tauri::async_runtime::block_on(async {
+                match db_shared.seed_default_instances_if_empty().await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("Seeded {} default search instance(s)", n),
+                    Err(e) => tracing::warn!("Default instance seeding failed: {}", e),
+                }
+                if let Err(e) = pool_shared.initialize().await {
+                    tracing::warn!("Instance pool failed to load: {}", e);
+                }
+            });
 
             // Start background tasks
             background_tasks::start_all(app.handle().clone());

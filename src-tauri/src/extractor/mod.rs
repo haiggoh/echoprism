@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 pub struct Extractor {
     client: reqwest::Client,
     pool: Arc<InstancePool>,
-    yt_dlp_path: Option<String>,
+    /// Resolved once on first use; the extractor lives in `Arc` managed state,
+    /// so memoization uses `OnceLock` rather than `&mut`.
+    yt_dlp_path: std::sync::OnceLock<String>,
 }
 
 impl Extractor {
@@ -23,7 +25,7 @@ impl Extractor {
                 .build()
                 .expect("Failed to create HTTP client"),
             pool,
-            yt_dlp_path: None, // Will be detected at runtime
+            yt_dlp_path: std::sync::OnceLock::new(),
         }
     }
     
@@ -74,14 +76,80 @@ impl Extractor {
         Ok(self.convert_invidious_response(invidious_response))
     }
     
-    /// Get stream URL for playback
-    pub async fn get_stream_url(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, instance: &Instance) -> Result<StreamUrl, String> {
-        // Try Invidious/Piped first
-        if let Ok(stream) = self.get_stream_from_instance(video_id, instance, format, quality).await {
-            return Ok(stream);
+    /// Search YouTube through one instance's API. The instance type decides
+    /// the endpoint and parser (Piped: /search?filter=videos; Invidious:
+    /// /api/v1/search?type=video).
+    pub async fn search_with_instance(&self, query: &str, instance: &Instance) -> Result<Vec<VideoInfo>, String> {
+        let response = match instance.instance_type {
+            InstanceType::Piped => self
+                .client
+                .get(format!("{}/search", instance.url.trim_end_matches('/')))
+                .query(&[("q", query), ("filter", "videos")])
+                .send()
+                .await,
+            InstanceType::Invidious => self
+                .client
+                .get(format!("{}/api/v1/search", instance.url.trim_end_matches('/')))
+                .query(&[("q", query), ("type", "video")])
+                .send()
+                .await,
         }
-        
-        // Fallback to yt-dlp
+        .map_err(|e| format!("Search request to {} failed: {}", instance.url, e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "Instance {} returned {}",
+                instance.url,
+                response.status()
+            ));
+        }
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read search response: {}", e))?;
+        match instance.instance_type {
+            InstanceType::Piped => parse_piped_search(&body),
+            InstanceType::Invidious => parse_invidious_search(&body),
+        }
+    }
+
+    /// Search YouTube via a local yt-dlp binary (ytsearch20). The guaranteed
+    /// fallback when no instance answers.
+    pub async fn search_with_yt_dlp(&self, query: &str) -> Result<Vec<VideoInfo>, String> {
+        let yt_dlp = self.find_yt_dlp().await?;
+        let target = format!("ytsearch20:{}", query);
+        let output = tokio::process::Command::new(&yt_dlp)
+            .args([
+                "--dump-json",
+                "--flat-playlist",
+                "--no-warnings",
+                &target,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("yt-dlp search failed: {}", stderr));
+        }
+        parse_yt_dlp_search(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    /// Get stream URL for playback via one instance (yt-dlp fallback inside).
+    pub async fn get_stream_url(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, instance: &Instance) -> Result<StreamUrl, String> {
+        self.resolve_stream(video_id, format, quality, std::slice::from_ref(instance)).await
+    }
+
+    /// Resolve a playable stream URL: try each candidate instance in order,
+    /// then fall back to the local yt-dlp binary — the same failover policy
+    /// as search.
+    pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<StreamUrl, String> {
+        for instance in candidates {
+            if let Ok(stream) = self.get_stream_from_instance(video_id, instance, format, quality).await {
+                return Ok(stream);
+            }
+        }
         self.get_stream_with_yt_dlp(video_id, format, quality).await
     }
     
@@ -148,30 +216,27 @@ impl Extractor {
     }
     
     async fn find_yt_dlp(&self) -> Result<String, String> {
-        if let Some(path) = &self.yt_dlp_path {
+        if let Some(path) = self.yt_dlp_path.get() {
             return Ok(path.clone());
         }
-        
-        // Try common locations
-        let candidates = vec![
-            "yt-dlp",
-            "python3 -m yt_dlp",
-            "/usr/local/bin/yt-dlp",
-            "/opt/homebrew/bin/yt-dlp",
-        ];
-        
+
+        // Try common locations. A candidate only counts when the binary
+        // actually runs (spawn success alone is not success — a missing
+        // binary surfaces as Err(NotFound), a broken one as a failing exit
+        // status; both are rejected here).
+        let candidates = ["yt-dlp", "/usr/local/bin/yt-dlp", "/opt/homebrew/bin/yt-dlp"];
+
         for cmd in candidates {
-            if tokio::process::Command::new("sh")
-                .args(["-c", &format!("{} --version", cmd)])
-                .output()
-                .await
-                .is_ok()
-            {
-                return Ok(cmd.to_string());
+            match tokio::process::Command::new(cmd).arg("--version").output().await {
+                Ok(output) if output.status.success() => {
+                    let _ = self.yt_dlp_path.set(cmd.to_string());
+                    return Ok(cmd.to_string());
+                }
+                _ => continue,
             }
         }
-        
-        Err("yt-dlp not found. Please install yt-dlp.".to_string())
+
+        Err("yt-dlp not found. Install it with: brew install yt-dlp".to_string())
     }
     
     fn convert_yt_dlp_output(&self, info: YtDlpOutput) -> VideoInfo {
@@ -324,4 +389,265 @@ pub struct StreamUrl {
     pub format: String,
     pub quality: String,
     pub headers: Option<std::collections::HashMap<String, String>>,
+}
+
+// ---- Search ----------------------------------------------------------------
+//
+// YouTube search, three backends, one normalized result type. Piped and
+// Invidious serve users who add instances (public ones have disabled their
+// APIs); yt-dlp is the guaranteed fallback when no instance answers.
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PipedSearchResponse {
+    #[serde(default)]
+    items: Vec<PipedSearchItem>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PipedSearchItem {
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    uploader_name: Option<String>,
+    #[serde(default)]
+    duration: Option<i64>,
+    #[serde(default)]
+    views: Option<i64>,
+    #[serde(default)]
+    thumbnail: Option<String>,
+    #[serde(default)]
+    uploaded_date: Option<String>,
+    #[serde(default)]
+    short_description: Option<String>,
+}
+
+/// DOC-DERIVED shape, deliberately: the public Invidious API is disabled
+/// ecosystem-wide (official registry marks every instance api:false; verified
+/// 2026-10-20), so only user-added private instances can serve this. Field
+/// names follow the documented /api/v1/search response.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InvidiousSearchItem {
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    video_id: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    author: Option<String>,
+    #[serde(default)]
+    author_id: Option<String>,
+    #[serde(default)]
+    length_seconds: Option<i64>,
+    #[serde(default)]
+    view_count: Option<i64>,
+    #[serde(default)]
+    published_text: Option<String>,
+    #[serde(default)]
+    video_thumbnails: Vec<InvidiousThumbnail>,
+}
+
+/// Extract the YouTube video id from a Piped "/watch?v=<id>[&...]" URL.
+fn video_id_from_watch_url(url: &str) -> Option<String> {
+    let rest = url.split("v=").nth(1)?;
+    let id = rest.split('&').next().unwrap_or("");
+    (!id.is_empty()).then(|| id.to_string())
+}
+
+/// Parse a Piped /search response. Malformed JSON is an Err; items without a
+/// parseable watch URL (channel/playlist cards) are skipped.
+fn parse_piped_search(body: &str) -> Result<Vec<VideoInfo>, String> {
+    let resp: PipedSearchResponse = serde_json::from_str(body)
+        .map_err(|e| format!("Failed to parse Piped search response: {}", e))?;
+    Ok(resp
+        .items
+        .into_iter()
+        .filter_map(|item| {
+            let id = video_id_from_watch_url(item.url.as_deref().unwrap_or(""))?;
+            Some(VideoInfo {
+                id,
+                title: item.title.unwrap_or_default(),
+                description: item.short_description,
+                duration: item.duration.map(|d| d.max(0) as u64),
+                thumbnail: item.thumbnail,
+                channel: item.uploader_name,
+                channel_id: None,
+                upload_date: item.uploaded_date,
+                view_count: item.views.map(|v| v.max(0) as u64),
+                formats: Vec::new(),
+            })
+        })
+        .collect())
+}
+
+/// Parse an Invidious /api/v1/search response. Items that are not videos
+/// (channels, playlists) are skipped.
+fn parse_invidious_search(body: &str) -> Result<Vec<VideoInfo>, String> {
+    let items: Vec<InvidiousSearchItem> = serde_json::from_str(body)
+        .map_err(|e| format!("Failed to parse Invidious search response: {}", e))?;
+    Ok(items
+        .into_iter()
+        .filter(|i| i.r#type.as_deref().unwrap_or("video") == "video")
+        .filter_map(|item| {
+            let id = item.video_id?;
+            Some(VideoInfo {
+                id,
+                title: item.title.unwrap_or_default(),
+                description: None,
+                duration: item.length_seconds.map(|d| d.max(0) as u64),
+                thumbnail: item.video_thumbnails.last().map(|t| t.url.clone()),
+                channel: item.author,
+                channel_id: item.author_id,
+                upload_date: item.published_text,
+                view_count: item.view_count.map(|v| v.max(0) as u64),
+                formats: Vec::new(),
+            })
+        })
+        .collect())
+}
+
+/// Parse yt-dlp search output: either a JSON array (fixtures/tests) or JSONL —
+/// one object per line, the live `--dump-json --flat-playlist` format.
+fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
+    #[derive(Debug, Deserialize)]
+    struct YtDlpSearchEntry {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        duration: Option<f64>,
+        #[serde(default)]
+        channel: Option<String>,
+        #[serde(default)]
+        channel_id: Option<String>,
+        #[serde(default)]
+        view_count: Option<u64>,
+    }
+
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Err("yt-dlp search produced no output".to_string());
+    }
+    let entries: Vec<YtDlpSearchEntry> = match serde_json::from_str(trimmed) {
+        Ok(v) => v,
+        Err(array_err) => {
+            let mut entries = Vec::new();
+            for line in trimmed.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                match serde_json::from_str::<YtDlpSearchEntry>(line) {
+                    Ok(e) => entries.push(e),
+                    Err(e) => {
+                        return Err(format!(
+                            "Failed to parse yt-dlp output: {} (array parse: {})",
+                            e, array_err
+                        ))
+                    }
+                }
+            }
+            entries
+        }
+    };
+    Ok(entries
+        .into_iter()
+        .filter_map(|e| {
+            let id = e.id?;
+            Some(VideoInfo {
+                id,
+                title: e.title.unwrap_or_default(),
+                description: None,
+                duration: e.duration.map(|d| d.max(0.0) as u64),
+                thumbnail: None,
+                channel: e.channel,
+                channel_id: e.channel_id,
+                upload_date: None,
+                view_count: e.view_count,
+                formats: Vec::new(),
+            })
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PIPED_FIXTURE: &str = include_str!("fixtures/piped_search.json");
+    const INVIDIOUS_FIXTURE: &str = include_str!("fixtures/invidious_search.json");
+    const YTDLP_FIXTURE: &str = include_str!("fixtures/yt_dlp_search.json");
+
+    /// Piped search items arrive wrapped in {"items": [...]} and carry the
+    /// video id inside a /watch?v= URL rather than a dedicated field.
+    /// Fixture: real capture from pipedapi.ducks.party, 2026-10-20.
+    #[test]
+    fn piped_search_fixture_normalizes_to_video_info() {
+        let videos = parse_piped_search(PIPED_FIXTURE).expect("parse piped fixture");
+        assert!(!videos.is_empty());
+        let v = &videos[0];
+        assert_eq!(v.id, "CBVODIUnPwc");
+        assert_eq!(
+            v.title,
+            "Why your favorite creator is building an app | The Vergecast"
+        );
+        assert_eq!(v.channel.as_deref(), Some("The Verge"));
+        assert_eq!(v.duration, Some(2487));
+        assert_eq!(v.view_count, Some(1282));
+        assert!(
+            v.thumbnail
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("https://piped-proxy.ducks.party/")
+        );
+    }
+
+    /// yt-dlp --flat-playlist entries carry id/duration/channel directly.
+    /// Fixture: real capture, ytsearch3:vergecast, yt-dlp 2026.08.19.
+    #[test]
+    fn yt_dlp_search_fixture_normalizes_to_video_info() {
+        let videos = parse_yt_dlp_search(YTDLP_FIXTURE).expect("parse yt-dlp fixture");
+        assert_eq!(videos.len(), 3);
+        let v = &videos[0];
+        assert_eq!(v.id, "z00Lhm3CqAM");
+        assert_eq!(
+            v.title,
+            "Apple's HomeView has an app problem | The Vergecast"
+        );
+        assert_eq!(v.channel.as_deref(), Some("The Verge"));
+        assert_eq!(v.duration, Some(5912));
+        assert_eq!(v.view_count, Some(54497));
+    }
+
+    /// DOC-DERIVED fixture, deliberately not a live capture: the public
+    /// Invidious API is disabled ecosystem-wide (official registry marks every
+    /// instance api:false; verified 2026-10-20), so only user-added private
+    /// instances can serve this shape. It follows the documented
+    /// /api/v1/search response.
+    #[test]
+    fn invidious_search_fixture_normalizes_to_video_info() {
+        let videos =
+            parse_invidious_search(INVIDIOUS_FIXTURE).expect("parse invidious fixture");
+        assert_eq!(videos.len(), 2);
+        assert_eq!(videos[0].id, "dQw4w9WgXcQ");
+        assert_eq!(videos[0].channel.as_deref(), Some("The Verge"));
+        assert_eq!(videos[0].duration, Some(5912));
+        assert_eq!(videos[1].id, "aqz-KE-bpKQ");
+    }
+
+    /// Discriminant: truncated/malformed payloads must fail parsing, never
+    /// silently yield partial or empty-but-Ok results.
+    #[test]
+    fn malformed_search_payload_fails_not_partial() {
+        let truncated = &PIPED_FIXTURE[..PIPED_FIXTURE.len() / 2];
+        assert!(parse_piped_search(truncated).is_err());
+        assert!(parse_invidious_search("{\"title\":").is_err());
+        assert!(parse_yt_dlp_search("[{\"id\":").is_err());
+    }
 }

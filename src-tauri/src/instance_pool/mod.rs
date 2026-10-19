@@ -18,7 +18,6 @@ pub struct InstancePool {
     db: Arc<Database>,
     app_handle: AppHandle,
     pub auto_failover: Arc<RwLock<bool>>,
-    health_check_interval: Duration,
 }
 
 impl InstancePool {
@@ -34,22 +33,20 @@ impl InstancePool {
             db: Arc::new(db),
             app_handle,
             auto_failover: Arc::new(RwLock::new(true)),
-            health_check_interval: Duration::from_secs(300), // 5 minutes
         }
     }
     
+    /// Load instances from the database into the in-memory pool. Health
+    /// checking is NOT started here — `background_tasks` owns the single
+    /// health-check loop (two loops would double-probe every instance).
     pub async fn initialize(&self) -> Result<(), String> {
-        // Load instances from database
         let instances = self.db.list_instances().await?;
         let mut instances_map = self.instances.write().await;
-        
+
         for instance in instances {
             instances_map.insert(instance.id.clone(), instance);
         }
-        
-        // Start health check task
-        self.start_health_checks().await;
-        
+
         Ok(())
     }
     
@@ -113,38 +110,6 @@ impl InstancePool {
         }
     }
     
-    async fn start_health_checks(&self) {
-        let pool = self.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(pool.health_check_interval);
-            loop {
-                interval.tick().await;
-                
-                let auto_failover = *pool.auto_failover.read().await;
-                if !auto_failover {
-                    continue;
-                }
-                
-                let instances = pool.get_all().await;
-                for instance in instances {
-                    if instance.auto_failover && (instance.health == InstanceHealth::Failed || instance.health == InstanceHealth::Degraded) {
-                        // Try to failover
-                        if let Err(e) = pool.failover_instance(&instance.id).await {
-                            tracing::error!("Failover failed for {}: {}", instance.id, e);
-                        }
-                    }
-                }
-                
-                // Check all instances
-                for instance in pool.get_all().await {
-                    if let Err(e) = pool.test_instance(&instance.id).await {
-                        tracing::warn!("Health check failed for {}: {}", instance.id, e);
-                    }
-                }
-            }
-        });
-    }
-    
     pub async fn failover_instance(&self, failed_id: &str) -> Result<(), String> {
         let _instances = self.get_all().await;
         let failed = self.get(failed_id).await.ok_or("Failed instance not found")?;
@@ -204,7 +169,71 @@ impl Clone for InstancePool {
             db: self.db.clone(),
             app_handle: self.app_handle.clone(),
             auto_failover: self.auto_failover.clone(),
-            health_check_interval: self.health_check_interval,
         }
+    }
+}
+
+/// Search attempts try instances in this order: healthy first (lowest latency
+/// wins), then degraded, then unknown; Failed instances are skipped entirely —
+/// the health loop just checked them. Pure function so the policy is testable
+/// without a Tauri harness.
+pub fn order_for_search(instances: &[Instance]) -> Vec<Instance> {
+    let mut candidates: Vec<Instance> = instances
+        .iter()
+        .filter(|i| i.health != InstanceHealth::Failed)
+        .cloned()
+        .collect();
+    candidates.sort_by_key(|i| {
+        (
+            match i.health {
+                InstanceHealth::Healthy => 0u8,
+                InstanceHealth::Degraded => 1,
+                _ => 2,
+            },
+            i.latency_ms.unwrap_or(i64::MAX),
+        )
+    });
+    candidates
+}
+
+#[cfg(test)]
+mod search_ordering_tests {
+    use super::*;
+
+    fn instance(id: &str, health: InstanceHealth, latency: Option<i64>) -> Instance {
+        Instance {
+            id: id.to_string(),
+            url: format!("https://{}.example", id),
+            instance_type: InstanceType::Invidious,
+            health,
+            latency_ms: latency,
+            last_checked: None,
+            auto_failover: true,
+            supports_sabr: false,
+            supports_age_restricted: false,
+            region: None,
+            country: None,
+            pinned: false,
+            created_at: "2026-10-20T00:00:00Z".to_string(),
+            updated_at: "2026-10-20T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn orders_healthy_before_degraded_and_skips_failed() {
+        let instances = vec![
+            instance("slow-healthy", InstanceHealth::Healthy, Some(900)),
+            instance("failed", InstanceHealth::Failed, Some(1)),
+            instance("degraded", InstanceHealth::Degraded, Some(5)),
+            instance("fast-healthy", InstanceHealth::Healthy, Some(120)),
+            instance("unknown", InstanceHealth::Unknown, None),
+        ];
+        let ordered = order_for_search(&instances);
+        let ids: Vec<&str> = ordered.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["fast-healthy", "slow-healthy", "degraded", "unknown"],
+            "healthy first by latency, then degraded, then unknown; failed skipped"
+        );
     }
 }
