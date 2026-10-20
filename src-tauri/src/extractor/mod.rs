@@ -108,14 +108,14 @@ impl Extractor {
     /// to yt-dlp (measured against the live instance 2026-10-20).
     async fn get_stream_from_instance(&self, video_id: &str, instance: &Instance, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
         match instance.instance_type {
-            InstanceType::Piped => self.get_stream_from_piped(video_id, instance, format).await,
+            InstanceType::Piped => self.get_stream_from_piped(video_id, instance, format, quality).await,
             InstanceType::Invidious => {
                 self.get_stream_from_invidious(video_id, instance, format, quality).await
             }
         }
     }
 
-    async fn get_stream_from_piped(&self, video_id: &str, instance: &Instance, format: Option<&str>) -> Result<StreamUrl, String> {
+    async fn get_stream_from_piped(&self, video_id: &str, instance: &Instance, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
         let url = format!("{}/streams/{}", instance.url.trim_end_matches('/'), video_id);
         let response = self
             .client
@@ -130,7 +130,9 @@ impl Extractor {
             .text()
             .await
             .map_err(|e| format!("Failed to read streams: {}", e))?;
-        select_piped_stream(parse_piped_streams(&body)?, format, None)
+        // Piped returns every tier in one response — no query params — so
+        // both filters apply at selection time (review finding, 1e).
+        select_piped_stream(parse_piped_streams(&body)?, format, quality)
     }
 
     async fn get_stream_from_invidious(&self, video_id: &str, instance: &Instance, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
@@ -757,6 +759,51 @@ mod tests {
         };
         let picked = select_piped_stream(streams, Some("video"), None).expect("best stream");
         assert_eq!(picked.quality, "1080p", "must rank by numeric quality, not list order");
+    }
+
+    /// LIVE smoke for the 1b deferral: resolve a real stream end to end
+    /// (Piped instance branch first, yt-dlp fallback behind it). The seeded
+    /// default instance is Piped — this is the path the 1e recon found
+    /// silently dead (Invidious URL on a Piped host).
+    #[tokio::test]
+    #[ignore = "live network: Piped instance + local yt-dlp"]
+    async fn live_stream_resolution_serves_a_playable_url() {
+        use crate::types::{Instance, InstanceHealth, InstanceType};
+        use chrono::Utc;
+
+        let extractor = Extractor {
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("http client"),
+            yt_dlp_path: std::sync::OnceLock::new(),
+        };
+        let now = Utc::now().to_rfc3339();
+        let piped = Instance {
+            id: "live-piped".into(),
+            url: "https://pipedapi.ducks.party".into(),
+            instance_type: InstanceType::Piped,
+            health: InstanceHealth::Healthy,
+            latency_ms: Some(50),
+            last_checked: None,
+            auto_failover: true,
+            supports_sabr: false,
+            supports_age_restricted: false,
+            region: None,
+            country: None,
+            pinned: false,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        let stream = extractor
+            .resolve_stream("dQw4w9WgXcQ", None, None, &[piped])
+            .await
+            .expect("live stream resolution");
+        println!("LIVE stream: {} ({}, {})", stream.url, stream.format, stream.quality);
+        assert!(
+            stream.url.starts_with("http"),
+            "resolved stream must be a playable http(s) URL"
+        );
     }
 
     // ---- 1d Phase 4 LIVE smoke (network-dependent; #[ignore] keeps CI offline) ----

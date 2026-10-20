@@ -65,6 +65,26 @@
   stays owner-observable. Plan doc with full receipts:
   `docs/plans/2026-10-20-1d-smart-links-real-data.md`. Warning count ~25 → 22
   (matcher dead fields gone); 1e still owns the rest.
+- **Step 1e done (2026-10-21, overnight free session):** cargo build is at ZERO
+  warnings — the future-incompat crate class retired by removing 16 provably
+  unused direct dependencies (`18c0a1a6`, three named by the roadmap + thirteen
+  more the same 0-reference audit found), and all 20 dead-code warnings resolved
+  by disposition: superseded code deleted with evidence (the pre-1b extract path,
+  `get_best_instance`, `Extractor.pool`), unwired-future features kept with their
+  reason at the site (`5afd285e`), and 8 registered no-op commands removed from
+  both surfaces (`9cc1851f`). Hardening delivered along the way: the search type
+  filter is wired into FTS (`bcda67c0` — it was silently dropped, making the UI
+  toggle decorative), feed refresh fetches concurrently with cap 4 and sequential
+  stores (`20fdcdae` — with a measured SQLITE_BUSY finding the recon spec missed),
+  the stream resolver speaks Piped to Piped instances (`24f8d5c5` — it 404'd on
+  the seeded default instance and silently fell through to yt-dlp on every play,
+  found by recorded-response captures and closed by a new live smoke), and the
+  strongest flake mechanism hardened (`e3758951` — the flake itself did not
+  reproduce in 5 runs; identity unconfirmed). Gates: cargo 53/53 + 5 live, tsc
+  clean, vitest 116/116, Playwright 8/8, contract 4/4. Plan doc with full
+  receipts: `docs/plans/2026-10-20-1e-hardening.md`. Open debt recorded for
+  step 2: 1c's plan step 4 (podcast search/subscribe wrappers + UI affordance)
+  never shipped — subscriptions are unreachable from the UI.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -171,7 +191,9 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 1e — clean up and harden: clear the remaining ~22 build warnings, look into the
-one flaky test, add tests using recorded real responses for search, and remove the
-unused direct dependencies (`multipart`, `atom_syndication`, `axum`) to retire the
-whole future-incompat warning class. Then step 2 (2a–2c, 2d as far as sensible).
+Step 2 — frontend evaluation (2a design audit, 2b accessibility, 2c real-content
+layout gaps), starting from a known gap: 1c's plan step 4 never shipped — the
+podcast search/subscribe/refresh wrappers and a subscribe affordance do not exist,
+so subscriptions are unreachable from the UI (waypoint
+`1c-step-4-debt-podcast-search` has the evidence). Then 2d as far as sensible
+(menu bar, media keys, window restore).
