@@ -13,7 +13,6 @@ pub async fn list(db: State<'_, Database>, params: Option<ChannelListParams>) ->
 pub struct ChannelListParams {
     #[serde(rename = "type")]
     pub channel_type: Option<ChannelType>,
-    pub filter: Option<String>,
 }
 
 #[command]

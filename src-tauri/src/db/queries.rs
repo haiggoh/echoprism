@@ -886,44 +886,36 @@ pub async fn search_episodes(
         updated_at: String,
     }
 
-    let rows = sqlx::query_as!(
-        EpisodeRow,
-        r#"SELECT
-            e.id,
-            e.channel_id,
-            e.external_id,
-            e.title,
-            e.description,
-            e.thumbnail_url,
-            e.duration_seconds,
-            e.published_at,
-            e.url,
-            e.video_id,
-            e.podcast_guid,
-            e.episode_number,
-            e.season_number,
-            e.audio_url,
-            e.video_url,
-            e.formats,
-            e.chapters,
-            e.sponsors,
-            e.transcript_url,
-            e.is_downloaded,
-            e.download_quality,
-            e.progress_seconds,
-            e.created_at,
-            e.updated_at
+    // Runtime QueryBuilder, not `query_as!` macros: the type filter is
+    // optional (dynamic WHERE) and new macro SQL would demand regenerating
+    // the .sqlx offline cache (same convention as resolve_smart_links).
+    let mut qb = sqlx::QueryBuilder::new(
+        "SELECT e.id, e.channel_id, e.external_id, e.title, e.description,
+                e.thumbnail_url, e.duration_seconds, e.published_at, e.url,
+                e.video_id, e.podcast_guid, e.episode_number, e.season_number,
+                e.audio_url, e.video_url, e.formats, e.chapters, e.sponsors,
+                e.transcript_url, e.is_downloaded, e.download_quality,
+                e.progress_seconds, e.created_at, e.updated_at
          FROM episodes e
+         JOIN channels c ON c.id = e.channel_id
          JOIN episodes_fts fts ON e.rowid = fts.rowid
-         WHERE episodes_fts MATCH ?
-         ORDER BY e.published_at DESC
-         LIMIT ?"#,
-        query_str,
-        limit_i64
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+         WHERE episodes_fts MATCH ",
+    );
+    qb.push_bind(query_str);
+    if let Some(episode_type) = params.as_ref().and_then(|p| p.episode_type.as_deref()) {
+        qb.push(" AND c.type = ").push_bind(episode_type.to_string());
+    }
+    if let Some(episode_type) = params.as_ref().and_then(|p| p.episode_type.as_deref()) {
+        
+    }
+    qb.push(" ORDER BY e.published_at DESC LIMIT ")
+        .push_bind(limit_i64);
+
+    let rows = qb
+        .build_query_as::<EpisodeRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(rows.into_iter().map(|r| Episode {
         id: r.id,
@@ -2433,6 +2425,40 @@ mod d6_d7_tests {
         let json = serde_json::to_value(MatchResult { matched_count: 7 }).expect("serialize");
         assert!(json.get("matched_count").is_some(), "wire key must be 'matched_count'");
         assert_eq!(json.get("matched_count").and_then(|v| v.as_u64()), Some(7));
+    }
+
+    // ---- 1e: the search type filter reaches the FTS query ----
+    // SearchScreen sends params.type (episodeCommands.search(query, { type }),
+    // SearchScreen.tsx:21) but search_episodes read only `limit`, so the
+    // UI's video/podcast toggle was decorative on the real backend. The mock
+    // router ignores params too — this wires the real-backend half.
+
+    #[tokio::test]
+    async fn search_episode_type_filter_filters_by_channel_type() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-vid", "UC-vid", "Video Channel", "video", None).await;
+        insert_channel(&pool, "ch-pod", "https://feeds.example.org/pod.xml", "Podcast Channel", "podcast", Some("https://feeds.example.org/pod.xml")).await;
+        insert_stream_episode(&pool, "ep-vid", "ch-vid", "vid-1", "Housing Crisis Explained", Some("vid-1"), None, None, None, Some(100)).await;
+        insert_stream_episode(&pool, "ep-pod", "ch-pod", "pod-1", "Housing Crisis Explained", None, Some("pod-1"), Some("https://media.example.org/pod-1.mp3"), None, Some(100)).await;
+
+        let params = crate::commands::episodes::SearchParams {
+            episode_type: Some("video".into()),
+            limit: None,
+        };
+        let hits = search_episodes(&pool, "housing".into(), Some(params)).await.expect("search");
+        assert_eq!(hits.len(), 1, "type=video must return only the video-channel hit");
+        assert_eq!(hits[0].channel_id, "ch-vid");
+
+        let params = crate::commands::episodes::SearchParams {
+            episode_type: Some("podcast".into()),
+            limit: None,
+        };
+        let hits = search_episodes(&pool, "housing".into(), Some(params)).await.expect("search");
+        assert_eq!(hits.len(), 1, "type=podcast must return only the podcast-channel hit");
+        assert_eq!(hits[0].channel_id, "ch-pod");
+
+        let hits = search_episodes(&pool, "housing".into(), None).await.expect("search");
+        assert_eq!(hits.len(), 2, "no filter returns both streams");
     }
 }
 

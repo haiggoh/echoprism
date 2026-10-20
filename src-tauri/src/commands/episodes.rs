@@ -18,7 +18,6 @@ pub async fn get_feed(
 pub struct FeedParams {
     #[serde(rename = "type")]
     pub episode_type: Option<String>,
-    pub filter: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
 }
@@ -104,10 +103,10 @@ pub async fn search_episodes(
 #[derive(serde::Deserialize, Default)]
 pub struct SearchParams {
     #[serde(rename = "type")]
+    /// Sent by SearchScreen's type filter (SearchScreen.tsx:21); wiring it
+    /// into the FTS query is 1e's episode_type fix.
     pub episode_type: Option<String>,
-    pub filters: Option<std::collections::HashMap<String, String>>,
     pub limit: Option<u32>,
-    pub offset: Option<u32>,
 }
 
 /// The stream resolver keys on the YouTube video id; search-upserted rows
