@@ -60,6 +60,24 @@ impl Database {
         queries::upsert_video_results(&self.pool, videos).await
     }
 
+    pub async fn upsert_podcast_subscription(
+        &self,
+        feed_url: &str,
+        fallback_title: &str,
+        feed_data: &crate::podcast::PodcastFeedData,
+    ) -> DbResult<(String, usize)> {
+        queries::upsert_podcast_subscription(&self.pool, feed_url, fallback_title, feed_data)
+            .await
+    }
+
+    pub async fn due_podcast_feeds(&self) -> DbResult<Vec<(String, String)>> {
+        queries::due_podcast_feeds(&self.pool).await
+    }
+
+    pub async fn touch_podcast_fetch(&self, feed_url: &str) -> DbResult<()> {
+        queries::touch_podcast_fetch(&self.pool, feed_url).await
+    }
+
     pub async fn delete_instance(&self, id: &str) -> DbResult<()> {
         queries::delete_instance(&self.pool, id).await
     }

@@ -50,21 +50,24 @@ impl PodcastManager {
         if content_str.trim().starts_with("<?xml") || content_str.trim().starts_with("<rss") || content_str.trim().starts_with("<feed") {
             // XML-based feed (RSS or Atom)
             if content_str.contains("<rss") || content_str.contains("<channel>") {
-                self.parse_rss(&content_str)
+                Self::parse_rss(&content_str)
             } else if content_str.contains("<feed") || content_str.contains("xmlns=\"http://www.w3.org/2005/Atom\"") {
-                self.parse_atom(&content_str)
+                // Atom feeds are not implemented yet — an explicit error
+                // beats a silent empty success that would look like "0
+                // episodes".
+                Err("Atom feeds are not supported yet".to_string())
             } else {
                 Err("Unknown XML feed format".to_string())
             }
         } else if content_str.trim().starts_with('{') {
             // JSON Feed
-            self.parse_json_feed(&content_str)
+            Self::parse_json_feed(&content_str)
         } else {
             Err("Unsupported feed format".to_string())
         }
     }
     
-    fn parse_rss(&self, content: &str) -> Result<PodcastFeedData, String> {
+    fn parse_rss(content: &str) -> Result<PodcastFeedData, String> {
         let channel: RssChannel = rss::Channel::read_from(content.as_bytes())
             .map_err(|e| format!("Failed to parse RSS: {}", e))?;
         
@@ -100,22 +103,7 @@ impl PodcastManager {
         })
     }
     
-    fn parse_atom(&self, content: &str) -> Result<PodcastFeedData, String> {
-        // Simplified atom parsing - atom_syndication crate has changed
-        let _ = content; // suppress unused warning for now
-        Ok(PodcastFeedData {
-            title: String::new(),
-            description: None,
-            link: None,
-            language: None,
-            author: None,
-            categories: Vec::new(),
-            thumbnail_url: None,
-            episodes: Vec::new(),
-        })
-    }
-    
-    fn parse_json_feed(&self, content: &str) -> Result<PodcastFeedData, String> {
+    fn parse_json_feed(content: &str) -> Result<PodcastFeedData, String> {
         let value: Value = serde_json::from_str(content)
             .map_err(|e| format!("Failed to parse JSON Feed: {}", e))?;
         
@@ -231,6 +219,70 @@ impl PodcastManager {
         Ok("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n  <head><title>EchoPrism Subscriptions</title></head>\n  <body></body>\n</opml>".to_string())
     }
     
+    /// Search the iTunes podcast directory (no key or account required;
+    /// Podcast Index is deferred). Each result's feedUrl is the subscribe
+    /// target.
+    pub async fn search_itunes(&self, term: &str) -> Result<Vec<PodcastSearchResult>, String> {
+        let term = term.trim();
+        if term.is_empty() {
+            return Ok(Vec::new());
+        }
+        let response = self
+            .client
+            .get("https://itunes.apple.com/search")
+            .query(&[("term", term), ("media", "podcast"), ("limit", "25")])
+            .send()
+            .await
+            .map_err(|e| format!("iTunes search failed: {}", e))?;
+        if !response.status().is_success() {
+            return Err(format!("iTunes search returned {}", response.status()));
+        }
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read iTunes response: {}", e))?;
+        parse_itunes_search(&body)
+    }
+
+    /// Refresh every due podcast feed: fetch, parse, store new episodes.
+    /// Returns how many feeds were refreshed; one failing feed never stops
+    /// the others.
+    pub async fn refresh_due_feeds(&self) -> Result<usize, String> {
+        let due = self.db.due_podcast_feeds().await?;
+        let mut refreshed = 0usize;
+        for (feed_url, stored_title) in due {
+            match self.fetch_feed(&feed_url).await {
+                Ok(data) => {
+                    let fallback = if stored_title.is_empty() {
+                        data.title.clone()
+                    } else {
+                        stored_title.clone()
+                    };
+                    match self
+                        .db
+                        .upsert_podcast_subscription(&feed_url, &fallback, &data)
+                        .await
+                    {
+                        Ok((_, new_episodes)) => {
+                            let _ = self.db.touch_podcast_fetch(&feed_url).await;
+                            if new_episodes > 0 {
+                                tracing::info!(
+                                    "Feed '{}': {} new episode(s)",
+                                    feed_url,
+                                    new_episodes
+                                );
+                            }
+                            refreshed += 1;
+                        }
+                        Err(e) => tracing::warn!("Storing feed {} failed: {}", feed_url, e),
+                    }
+                }
+                Err(e) => tracing::warn!("Fetching feed {} failed: {}", feed_url, e),
+            }
+        }
+        Ok(refreshed)
+    }
+
     /// Import subscriptions from YouTube (via Invidious instance)
     pub async fn import_from_youtube(&self, instance_url: &str) -> Result<ImportResult, String> {
         // Fetch subscriptions from Invidious instance
@@ -315,6 +367,55 @@ pub struct ImportResult {
     pub errors: Vec<String>,
 }
 
+/// One podcast-directory hit. `feed_url` is the subscribe target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodcastSearchResult {
+    pub title: String,
+    pub author: Option<String>,
+    pub feed_url: String,
+    pub artwork: Option<String>,
+    pub genres: Vec<String>,
+}
+
+/// Parse an iTunes Search API response (term=&media=podcast). Entries without
+/// a feed URL cannot be subscribed and are skipped.
+fn parse_itunes_search(body: &str) -> Result<Vec<PodcastSearchResult>, String> {
+    #[derive(Deserialize)]
+    struct ItunesResponse {
+        #[serde(default)]
+        results: Vec<ItunesResult>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ItunesResult {
+        #[serde(default)]
+        collection_name: Option<String>,
+        #[serde(default)]
+        artist_name: Option<String>,
+        #[serde(default)]
+        feed_url: Option<String>,
+        #[serde(default)]
+        artwork_url_600: Option<String>,
+        #[serde(default)]
+        genres: Vec<String>,
+    }
+
+    let resp: ItunesResponse = serde_json::from_str(body)
+        .map_err(|e| format!("Failed to parse iTunes search response: {}", e))?;
+    Ok(resp
+        .results
+        .into_iter()
+        .filter(|r| r.feed_url.as_deref().map(|u| !u.trim().is_empty()).unwrap_or(false))
+        .map(|r| PodcastSearchResult {
+            title: r.collection_name.unwrap_or_default(),
+            author: r.artist_name,
+            feed_url: r.feed_url.unwrap_or_default(),
+            artwork: r.artwork_url_600,
+            genres: r.genres,
+        })
+        .collect())
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct YoutubeSubscription {
     pub author: String,
@@ -348,5 +449,91 @@ fn parse_duration(duration: &str) -> Option<u64> {
         }
         1 => parts[0].parse::<u64>().ok(),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ITUNES_FIXTURE: &str = include_str!("fixtures/itunes_search.json");
+
+    /// iTunes Search results: feedUrl is the subscribe target, artworkUrl600
+    /// the best artwork tier. Fixture: real capture, 2026-10-20 (one result
+    /// for the term "vergecast").
+    #[test]
+    fn itunes_search_fixture_normalizes_to_podcast_results() {
+        let results = parse_itunes_search(ITUNES_FIXTURE).expect("parse itunes fixture");
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert_eq!(r.title, "The Vergecast");
+        assert_eq!(r.author.as_deref(), Some("The Verge"));
+        assert_eq!(r.feed_url, "https://feeds.megaphone.fm/vergecast");
+        assert!(
+            r.artwork.as_deref().unwrap_or("").starts_with("https://"),
+            "artwork carries the URL tier the UI consumes"
+        );
+    }
+
+    /// Discriminant: malformed payloads fail rather than yield empty-Ok.
+    #[test]
+    fn malformed_itunes_payload_fails() {
+        assert!(parse_itunes_search("{\"results\": [").is_err());
+    }
+
+    const VERGECAST_FEED: &str = include_str!("fixtures/vergecast_feed.xml");
+
+    /// Real captured Vergecast feed (megaphone.fm, 2026-10-20, trimmed to 2
+    /// items): the RSS path must produce a titled feed whose episodes keep
+    /// their guid and enclosure audio URL — those are the subscribe/refresh
+    /// and playback keys.
+    #[test]
+    fn vergecast_rss_fixture_parses_with_audio_enclosures() {
+        let data = PodcastManager::parse_rss(VERGECAST_FEED).expect("parse vergecast feed");
+        assert_eq!(data.title, "The Vergecast");
+        assert_eq!(data.episodes.len(), 2);
+        assert_eq!(
+            data.episodes[0].guid, "4a88488a-6e7b-11f1-94bf-5f9c141d6644"
+        );
+        assert!(
+            data.episodes[0]
+                .audio_url
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("https://www.podtrac.com/"),
+            "enclosure audio URL must survive parsing"
+        );
+    }
+
+    // ---- LIVE smoke (network-dependent; #[ignore] keeps CI offline) --------
+    // Run explicitly: cargo test --lib -- --ignored
+
+    #[tokio::test]
+    #[ignore = "live network: itunes.apple.com"]
+    async fn live_itunes_search_returns_parseable_results() {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .expect("client");
+        let resp = client
+            .get("https://itunes.apple.com/search")
+            .query(&[("term", "vergecast"), ("media", "podcast"), ("limit", "5")])
+            .send()
+            .await
+            .expect("live request");
+        assert!(resp.status().is_success(), "status {}", resp.status());
+        let results =
+            parse_itunes_search(&resp.text().await.expect("body")).expect("parse live");
+        assert!(!results.is_empty(), "live iTunes search returned no results");
+        assert!(
+            results.iter().all(|r| r.feed_url.starts_with("http")),
+            "every result carries a subscribable feed URL"
+        );
+        println!(
+            "LIVE itunes: {} results; first: {} ({})",
+            results.len(),
+            results[0].title,
+            results[0].feed_url
+        );
     }
 }

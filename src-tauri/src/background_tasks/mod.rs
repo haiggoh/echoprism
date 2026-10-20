@@ -12,6 +12,7 @@ use std::sync::Arc;
 pub fn start_all(app_handle: tauri::AppHandle) {
     let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
     let matcher = app_handle.state::<Arc<crate::matcher::EpisodeMatcher>>().inner().clone();
+    let podcast = app_handle.state::<Arc<crate::podcast::PodcastManager>>().inner().clone();
 
     // Start instance health checks
     start_instance_health_checks(pool);
@@ -20,7 +21,7 @@ pub fn start_all(app_handle: tauri::AppHandle) {
     start_smart_linking(matcher);
 
     // Start podcast feed fetching
-    start_feed_fetching();
+    start_feed_fetching(podcast);
 
     // Start SponsorBlock sync
     start_sponsorblock_sync();
@@ -79,16 +80,21 @@ fn start_smart_linking(
     })
 }
 
-fn start_feed_fetching() -> tauri::async_runtime::JoinHandle<()> {
+fn start_feed_fetching(
+    podcast: std::sync::Arc<crate::podcast::PodcastManager>,
+) -> tauri::async_runtime::JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1800)); // 30 minutes
         loop {
             interval.tick().await;
 
-            // Fetch all active podcast feeds
-            // This would query the database for active feeds and fetch each
-            // For now, just log
-            tracing::info!("Background feed fetch triggered");
+            // Refresh every feed whose interval has elapsed; failures are
+            // logged per feed and never stop the loop.
+            match podcast.refresh_due_feeds().await {
+                Ok(n) if n > 0 => tracing::info!("Refreshed {} podcast feed(s)", n),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("Podcast refresh failed: {}", e),
+            }
         }
     })
 }
@@ -138,16 +144,14 @@ mod tests {
     /// unrepresentable.
     #[tokio::test]
     async fn stub_starters_spawn_live_looping_tasks() {
-        let feed = start_feed_fetching();
+        // feed_fetching graduated to a real implementation in 1c (it needs the
+        // PodcastManager), so this covers the two remaining stubs; its spawn
+        // mechanics are pinned by starter_spawns_outside_any_tokio_runtime.
         let sponsorblock = start_sponsorblock_sync();
         let cleanup = start_cleanup();
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        assert!(
-            !feed.inner().is_finished(),
-            "feed-fetching task exited instead of looping"
-        );
         assert!(
             !sponsorblock.inner().is_finished(),
             "SponsorBlock sync task exited instead of looping"
@@ -157,7 +161,6 @@ mod tests {
             "cleanup task exited instead of looping"
         );
 
-        feed.abort();
         sponsorblock.abort();
         cleanup.abort();
     }

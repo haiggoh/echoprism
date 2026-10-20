@@ -213,6 +213,141 @@ pub async fn upsert_video_results(
     Ok(inserted)
 }
 
+/// Subscribe to (or refresh) a podcast feed in ONE transaction: the channel
+/// row (external_id = feed_url, type podcast, subscribed), the podcast_feeds
+/// row (UNIQUE(user_id, feed_url) makes it idempotent), and every episode not
+/// yet stored (keyed by feed guid; existing rows are never touched). Returns
+/// (channel id, newly stored episode count). The same function serves
+/// subscribe and refresh.
+pub async fn upsert_podcast_subscription(
+    pool: &SqlitePool,
+    feed_url: &str,
+    fallback_title: &str,
+    feed_data: &crate::podcast::PodcastFeedData,
+) -> DbResult<(String, usize)> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let title = if feed_data.title.trim().is_empty() {
+        fallback_title
+    } else {
+        &feed_data.title
+    };
+
+    let channel_id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM channels WHERE external_id = ? LIMIT 1")
+            .bind(feed_url)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    let channel_id = match channel_id {
+        Some(id) => id,
+        None => {
+            sqlx::query(
+                "INSERT INTO channels (user_id, external_id, title, thumbnail_url, description, is_subscribed, notifications_enabled, type, podcast_feed_url) \
+                 VALUES ('current-user', ?, ?, ?, ?, 1, 0, 'podcast', ?)",
+            )
+            .bind(feed_url)
+            .bind(title)
+            .bind(&feed_data.thumbnail_url)
+            .bind(&feed_data.description)
+            .bind(feed_url)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+            sqlx::query_scalar("SELECT id FROM channels WHERE external_id = ? LIMIT 1")
+                .bind(feed_url)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "channel row vanished after insert".to_string())?
+        }
+    };
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO podcast_feeds (user_id, feed_url, title, description, thumbnail_url, link, language, author, categories, last_fetched_at) \
+         VALUES ('current-user', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(feed_url)
+    .bind(title)
+    .bind(&feed_data.description)
+    .bind(&feed_data.thumbnail_url)
+    .bind(&feed_data.link)
+    .bind(&feed_data.language)
+    .bind(&feed_data.author)
+    .bind(serde_json::to_string(&feed_data.categories).ok())
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut inserted = 0usize;
+    for episode in &feed_data.episodes {
+        if episode.guid.is_empty() || episode.title.is_empty() {
+            continue;
+        }
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT id FROM episodes WHERE external_id = ? LIMIT 1")
+                .bind(&episode.guid)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+        if exists.is_some() {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO episodes (channel_id, external_id, title, description, duration_seconds, published_at, podcast_guid, audio_url) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&channel_id)
+        .bind(&episode.guid)
+        .bind(&episode.title)
+        .bind(&episode.description)
+        .bind(episode.duration_seconds.map(|d| d as i64))
+        .bind(episode.published_at.as_ref().map(|d| d.0.to_rfc3339()))
+        .bind(&episode.guid)
+        .bind(&episode.audio_url)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        inserted += 1;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok((channel_id, inserted))
+}
+
+/// Podcast feeds due for refresh: active, and last_fetched_at older than
+/// their fetch_interval_minutes (never-fetched counts as due). Returns
+/// (feed_url, stored title) pairs.
+pub async fn due_podcast_feeds(pool: &SqlitePool) -> DbResult<Vec<(String, String)>> {
+    let rows = sqlx::query_as::<_, (String, Option<String>)>(
+        r#"SELECT feed_url, title FROM podcast_feeds
+           WHERE is_active = 1
+             AND (last_fetched_at IS NULL
+                  OR last_fetched_at < datetime('now', '-' || fetch_interval_minutes || ' minutes'))"#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|(url, title)| (url, title.unwrap_or_default()))
+        .collect())
+}
+
+/// Record a successful fetch cycle so the feed leaves the due set until its
+/// interval elapses again.
+pub async fn touch_podcast_fetch(pool: &SqlitePool, feed_url: &str) -> DbResult<()> {
+    sqlx::query(
+        "UPDATE podcast_feeds SET last_fetched_at = ?, updated_at = ? WHERE feed_url = ?",
+    )
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(feed_url)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub async fn insert_instance(pool: &SqlitePool, instance: &Instance) -> DbResult<()> {
     let instance_type_str = instance.instance_type.to_string();
     let health_str = instance.health.to_string();
@@ -2080,5 +2215,199 @@ mod search_source_tests {
             "SELECT c.external_id FROM episodes e JOIN channels c ON c.id = e.channel_id LIMIT 1")
             .fetch_one(&pool).await.expect("read channel");
         assert!(channel_external.starts_with("yt-name:"), "fallback key is deterministic");
+    }
+}
+
+#[cfg(test)]
+mod podcast_subscription_tests {
+    //! Subscribing to a podcast persists channel + podcast_feeds row + episodes
+    //! in ONE transaction, FTS-searchable, idempotent on the feed URL, and
+    //! never clobbering stored episodes on refresh.
+    use super::*;
+    use crate::podcast::{PodcastEpisode, PodcastFeedData};
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn fresh_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        query("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+            .execute(&pool)
+            .await
+            .expect("insert user");
+        pool
+    }
+
+    fn feed() -> PodcastFeedData {
+        PodcastFeedData {
+            title: "The Vergecast".into(),
+            description: Some("A weekly tech news podcast".into()),
+            link: Some("https://www.theverge.com/vergecast".into()),
+            language: Some("en".into()),
+            author: Some("The Verge".into()),
+            categories: vec!["Tech News".into()],
+            thumbnail_url: Some("https://img.example/vergecast.jpg".into()),
+            episodes: vec![
+                PodcastEpisode {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    guid: "vergecast-ep-100".into(),
+                    title: "Episode 100: a launch week".into(),
+                    description: Some("We discuss the week".into()),
+                    channel_title: Some("The Vergecast".into()),
+                    channel_id: None,
+                    published_at: None,
+                    duration_seconds: Some(5912),
+                    audio_url: Some("https://audio.example/ep100.mp3".into()),
+                    transcript: None,
+                },
+                PodcastEpisode {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    guid: "vergecast-ep-99".into(),
+                    title: "Episode 99: the one before".into(),
+                    description: None,
+                    channel_title: Some("The Vergecast".into()),
+                    channel_id: None,
+                    published_at: None,
+                    duration_seconds: Some(5400),
+                    audio_url: Some("https://audio.example/ep99.mp3".into()),
+                    transcript: None,
+                },
+            ],
+        }
+    }
+
+    #[tokio::test]
+    async fn subscribing_persists_channel_feed_and_searchable_episodes() {
+        let pool = fresh_pool().await;
+        let (channel_id, inserted) = upsert_podcast_subscription(
+            &pool,
+            "https://feeds.megaphone.fm/vergecast",
+            "The Vergecast",
+            &feed(),
+        )
+        .await
+        .expect("subscribe");
+        assert_eq!(inserted, 2);
+        assert!(!channel_id.is_empty());
+
+        let (ctype, is_sub, feed_url_col, title): (String, i64, String, String) = sqlx::query_as(
+            "SELECT type, is_subscribed, podcast_feed_url, title FROM channels WHERE id = ?",
+        )
+        .bind(&channel_id)
+        .fetch_one(&pool)
+        .await
+        .expect("channel row");
+        assert_eq!(ctype, "podcast");
+        assert_eq!(is_sub, 1, "subscribing marks the channel subscribed");
+        assert_eq!(feed_url_col, "https://feeds.megaphone.fm/vergecast");
+        assert_eq!(title, "The Vergecast");
+
+        let found = search_episodes(&pool, "launch week".to_string(), None)
+            .await
+            .expect("search");
+        assert_eq!(found.len(), 1, "episode is FTS-searchable after subscribe");
+        assert_eq!(found[0].podcast_guid.as_deref(), Some("vergecast-ep-100"));
+        assert_eq!(
+            found[0].audio_url.as_deref(),
+            Some("https://audio.example/ep100.mp3")
+        );
+
+        let feed_rows: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM podcast_feeds WHERE feed_url = ?",
+        )
+        .bind("https://feeds.megaphone.fm/vergecast")
+        .fetch_one(&pool)
+        .await
+        .expect("feed rows");
+        assert_eq!(feed_rows, 1);
+    }
+
+    #[tokio::test]
+    async fn resubscribing_is_idempotent_and_never_clobbers() {
+        let pool = fresh_pool().await;
+        upsert_podcast_subscription(
+            &pool,
+            "https://feeds.megaphone.fm/vergecast",
+            "The Vergecast",
+            &feed(),
+        )
+        .await
+        .expect("first subscribe");
+
+        query("UPDATE episodes SET title = 'user-renamed' WHERE external_id = 'vergecast-ep-100'")
+            .execute(&pool)
+            .await
+            .expect("mutate stored episode");
+
+        let (_, inserted) = upsert_podcast_subscription(
+            &pool,
+            "https://feeds.megaphone.fm/vergecast",
+            "The Vergecast (renamed)",
+            &feed(),
+        )
+        .await
+        .expect("resubscribe");
+        assert_eq!(inserted, 0, "no duplicate episodes on refresh");
+
+        let title: String = sqlx::query_scalar(
+            "SELECT title FROM episodes WHERE external_id = 'vergecast-ep-100'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read title");
+        assert_eq!(title, "user-renamed", "refresh never clobbers stored episodes");
+    }
+
+    /// Refresh policy: a feed is due when active and last_fetched_at is older
+    /// than its fetch_interval_minutes (never-fetched counts as due);
+    /// touching resets the cycle; inactive feeds never come due.
+    #[tokio::test]
+    async fn refresh_is_due_when_stale_and_not_when_fresh() {
+        let pool = fresh_pool().await;
+        upsert_podcast_subscription(
+            &pool,
+            "https://feeds.example/vergecast",
+            "The Vergecast",
+            &feed(),
+        )
+        .await
+        .expect("subscribe");
+
+        let due = due_podcast_feeds(&pool).await.expect("due check");
+        assert!(
+            due.is_empty(),
+            "a freshly subscribed feed must not be due (last_fetched_at = now, interval 60m)"
+        );
+
+        // Age the feed past its interval.
+        query("UPDATE podcast_feeds SET last_fetched_at = datetime('now', '-120 minutes')")
+            .execute(&pool)
+            .await
+            .expect("age feed");
+        let due = due_podcast_feeds(&pool).await.expect("due check");
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].0, "https://feeds.example/vergecast");
+
+        // An inactive feed never comes due, even when stale.
+        query("UPDATE podcast_feeds SET is_active = 0")
+            .execute(&pool)
+            .await
+            .expect("deactivate");
+        let due = due_podcast_feeds(&pool).await.expect("due check");
+        assert!(due.is_empty(), "inactive feeds are never due");
+
+        // Touching resets the cycle.
+        query("UPDATE podcast_feeds SET is_active = 1")
+            .execute(&pool)
+            .await
+            .expect("reactivate");
+        touch_podcast_fetch(&pool, "https://feeds.example/vergecast")
+            .await
+            .expect("touch");
+        let due = due_podcast_feeds(&pool).await.expect("due check");
+        assert!(due.is_empty(), "a just-touched feed is not due");
     }
 }

@@ -348,6 +348,20 @@ export interface InstanceHealthReport {
   region?: string;
 }
 
+export interface PodcastSearchResult {
+  title: string;
+  author?: string;
+  feed_url: string;
+  artwork?: string;
+  genres: string[];
+}
+
+export interface SubscribedPodcast {
+  channel_id: string;
+  title: string;
+  new_episodes: number;
+}
+
 export interface StreamInfo {
   url: string;
   headers?: Record<string, string>;

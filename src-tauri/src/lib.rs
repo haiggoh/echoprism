@@ -124,6 +124,9 @@ pub fn run() {
             // Channel commands
             commands::channels::list,
             commands::channels::subscribe,
+            commands::podcasts::search_podcasts,
+            commands::podcasts::subscribe_podcast,
+            commands::podcasts::refresh_podcasts,
             commands::channels::unsubscribe,
             commands::channels::import,
             commands::channels::export,

@@ -3,6 +3,7 @@
 pub mod instances;
 pub mod channels;
 pub mod episodes;
+pub mod podcasts;
 pub mod queue;
 pub mod playback;
 pub mod smart_links;

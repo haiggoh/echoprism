@@ -1,0 +1,347 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:ns0="http://www.w3.org/2005/Atom" xmlns:ns1="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:ns2="http://purl.org/rss/1.0/modules/content/" version="2.0">
+  <channel>
+    <ns0:link href="https://feeds.megaphone.fm/vergecast" rel="self" type="application/rss+xml" />
+    <title>The Vergecast</title>
+    <link>https://www.theverge.com/the-vergecast</link>
+    <language>en</language>
+    <copyright>© 2022 Vox Media, Inc. All Rights Reserved</copyright>
+    <description>The Vergecast is the flagship daily podcast from The Verge about small gadgets, Big Tech, and everything in between. Every Friday, Nilay Patel and David Pierce hang out and make sense of the week’s most important technology news. And Monday through Thursday, David leads a selection of The Verge’s expert staffers in an exploration of how gadgets and software affect our lives – and which ones you should bring into yours.&amp;nbsp;</description>
+    <image>
+      <url>https://megaphone.imgix.net/podcasts/e4c412e6-e1f0-11e8-9bde-83f9d376f059/image/fa367fa8b1b6ca01fc4b8c34d83ba4d8.jpg?ixlib=rails-4.3.1&amp;max-w=3000&amp;max-h=3000&amp;fit=crop&amp;auto=format,compress</url>
+      <title>The Vergecast</title>
+      <link>https://www.theverge.com/the-vergecast</link>
+    </image>
+    <ns1:explicit>no</ns1:explicit>
+    <ns1:type>episodic</ns1:type>
+    <ns1:subtitle>What’s new and next in tech</ns1:subtitle>
+    <ns1:author>The Verge</ns1:author>
+    <ns1:summary>The Vergecast is the flagship daily podcast from The Verge about small gadgets, Big Tech, and everything in between. Every Friday, Nilay Patel and David Pierce hang out and make sense of the week’s most important technology news. And Monday through Thursday, David leads a selection of The Verge’s expert staffers in an exploration of how gadgets and software affect our lives – and which ones you should bring into yours.&amp;nbsp;</ns1:summary>
+    <ns2:encoded>
+      &lt;p&gt;The Vergecast is the flagship daily podcast from The Verge about small gadgets, Big Tech, and everything in between. Every Friday, Nilay Patel and David Pierce hang out and make sense of the week’s most important technology news. And Monday through Thursday, David leads a selection of The Verge’s expert staffers in an exploration of how gadgets and software affect our lives – and which ones you should bring into yours.&amp;nbsp;&lt;/p&gt;
+    </ns2:encoded>
+    <ns1:owner>
+      <ns1:name>Vox Media Podcast Network</ns1:name>
+      <ns1:email>vergecast@theverge.com</ns1:email>
+    </ns1:owner>
+    <ns1:image href="https://megaphone.imgix.net/podcasts/e4c412e6-e1f0-11e8-9bde-83f9d376f059/image/fa367fa8b1b6ca01fc4b8c34d83ba4d8.jpg?ixlib=rails-4.3.1&amp;max-w=3000&amp;max-h=3000&amp;fit=crop&amp;auto=format,compress" />
+    <ns1:category text="Technology">
+    </ns1:category>
+    <ns1:category text="News">
+      <ns1:category text="Tech News" />
+    </ns1:category>
+    <ns1:new-feed-url>https://feeds.megaphone.fm/vergecast</ns1:new-feed-url>
+    <item>
+      <title>Why your favorite creator is building an app</title>
+      <description>Creator life involves using a lot of software. Bad software. Stephen Robles is one of the creators who decided to build something better, for himself and for his community. He tells David how he thinks about his responsibility as a developer, how he makes apps, and how AI is changing the way he builds things for his audience.
+
+
+
+Further reading:
+
+
+  Apple teases MacBook Pro event next week
+
+  You Can See Everything has the biggest opening weekend for a doc in 20 years
+
+  TikTok says ban of Musk documentary account was ‘an error’
+
+  Video game ownership bill introduced in Congress
+
+
+
+
+Subscribe to The Verge for unlimited access to theverge.com, subscriber-exclusive newsletters, and our ad-free podcast feed.
+
+
+
+We love hearing from you! Email your questions and thoughts to vergecast@theverge.com or call us at 866-VERGE11.
+Learn more about your ad choices. Visit podcastchoices.com/adchoices</description>
+      <pubDate>Mon, 19 Oct 2026 20:25:00 -0000</pubDate>
+      <ns1:episodeType>full</ns1:episodeType>
+      <ns1:author>The Verge</ns1:author>
+      <ns1:subtitle />
+      <ns1:summary>Creator life involves using a lot of software. Bad software. Stephen Robles is one of the creators who decided to build something better, for himself and for his community. He tells David how he thinks about his responsibility as a developer, how he makes apps, and how AI is changing the way he builds things for his audience.
+
+
+
+Further reading:
+
+
+  Apple teases MacBook Pro event next week
+
+  You Can See Everything has the biggest opening weekend for a doc in 20 years
+
+  TikTok says ban of Musk documentary account was ‘an error’
+
+  Video game ownership bill introduced in Congress
+
+
+
+
+Subscribe to The Verge for unlimited access to theverge.com, subscriber-exclusive newsletters, and our ad-free podcast feed.
+
+
+
+We love hearing from you! Email your questions and thoughts to vergecast@theverge.com or call us at 866-VERGE11.
+Learn more about your ad choices. Visit podcastchoices.com/adchoices</ns1:summary>
+      <ns2:encoded>
+        &lt;p&gt;Creator life involves using a lot of software. Bad software. Stephen Robles is one of the creators who decided to build something better, for himself and for his community. He tells David how he thinks about his responsibility as a developer, how he makes apps, and how AI is changing the way he builds things for his audience.&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;Further reading:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/tech/1013028/apple-second-october-product-launch-announcement"&gt;Apple teases MacBook Pro event next week&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/entertainment/1013557/you-can-see-everything-has-the-biggest-opening-weekend-for-a-doc-in-20-years"&gt;You Can See Everything has the biggest opening weekend for a doc in 20 years&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/tech/1013527/the-musk-documentarys-tiktok-account-has-been-restored-after-an-error"&gt;TikTok says ban of Musk documentary account was ‘an error’&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/policy/1013521/video-game-ownership-bill-congress-power-to-the-players-act"&gt;Video game ownership bill introduced in Congress&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://www.theverge.com/subscribe"&gt;Subscribe to The Verge&lt;/a&gt; for unlimited access to &lt;a href="http://theverge.com/"&gt;theverge.com&lt;/a&gt;, subscriber-exclusive newsletters, and our &lt;a href="https://www.theverge.com/bulletin/795051/verge-podcast-ad-free-set-up-how-to"&gt;ad-free podcast feed&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;We love hearing from you! Email your questions and thoughts to vergecast@theverge.com or call us at 866-VERGE11.&lt;/p&gt;&lt;p&gt; &lt;/p&gt;&lt;p&gt;Learn more about your ad choices. Visit &lt;a href="https://podcastchoices.com/adchoices"&gt;podcastchoices.com/adchoices&lt;/a&gt;&lt;/p&gt;
+      </ns2:encoded>
+      <ns1:duration>2501</ns1:duration>
+      <guid isPermaLink="false">4a88488a-6e7b-11f1-94bf-5f9c141d6644</guid>
+      <enclosure url="https://www.podtrac.com/pts/redirect.mp3/pdst.fm/e/pscrb.fm/rss/p/mgln.ai/e/257/traffic.megaphone.fm/VMP6286711934.mp3" length="0" type="audio/mpeg" />
+    </item>
+    <item>
+      <title>Apple's HomeView has an app problem</title>
+      <description>Well, it's been a couple of days, and David and Nilay have some more information — and a bunch of new questions — about the Apple HomeView. They also talk about the latest Gemini model, and whether building the best model matters if you can't build the best products around them. They then debate the merits of returning to X, why none of the supposed Twitter replacements worked, the latest in Brendan Carr nonsense, and more.
+
+
+
+Further reading:
+
+
+  HomeView doesn’t natively support any video apps yet — not even Apple’s
+
+
+
+  Apple’s new Find My-compatible remote will also work with your old Apple TV
+
+
+
+  The AI race is back on 
+
+
+
+  Google finally releases Gemini 4 Argon 
+
+
+
+  Google brings its AI coding platform to its Gemini app on Mac. 
+
+
+
+  Google makes it easier to launch your vibe-coded apps 
+
+
+
+  OpenAI employee arrested for allegedly planting a bug in a conference room 
+
+
+
+  OpenAI claims an ex-employee took its product plans and presented them to Apple 
+
+
+
+  Now that Character.AI is going bankrupt, what happens to all of its users’ data? 
+
+
+
+  Daring Fireball: X Once Again Marks the Spot
+
+
+
+  Platformer: Does intelligence need a hard cap?
+
+
+
+  SpaceX announces plan to become a ‘major mobile carrier’
+
+
+
+  JPMorgan Chase is keeping AI agents out. 
+
+
+
+  Xbox is officially embracing the chaos of AI-powered game ports 
+
+
+
+  Global smartphone sales just hit a 14-year low. 
+
+
+
+  Silicon Valley is falling in line with Trump’s attempt to rename AI 
+
+
+
+  The US government launched a “Super Intelligence” website.
+
+
+Subscribe to The Verge for unlimited access to theverge.com, subscriber-exclusive newsletters, and our ad-free podcast feed.
+
+We love hearing from you! Email your questions and thoughts to vergecast@theverge.com or call us at 866-VERGE11.
+
+
+
+0:00 CarPlay Banter01:36 HomeView App Confusion03:40 CarPlay as Home OS08:31 Apple Hardware Software Bet13:28 Should It Just Be an iPad?14:31 Gemini 4 Returns16:18 Meta Muse Strategy19:54 Google Product Dilemma26:28 OpenAI Bugging Scandal29:49 Character AI Bankruptcy32:31 Bankrupt Data Goldmine33:00 Privacy After Shutdown36:55 Why People Return to X39:35 Threads Fumbled It40:49 X Owns AI Talk49:17 Who Should Use X49:57 Reporters And Sources53:00 Video Platforms Win54:44 Gruber Gets It Wrong01:01:29 Brendan Carr is a Dummy01:02:40 Execution Livestream Fallout01:07:21 Sprint Merger Fallout01:08:48 Dish Spectrum to SpaceX01:09:44 Can Starlink Compete01:11:30 SpaceX Phone Rumors01:13:55 Smartphone Sales Slump01:18:37 Agents vs Websites01:24:21 Why UI Still Matters01:26:43 Super Intelligence Rebrand01:30:37 AI Game Decompiling01:36:35 Wrap Up and Plugs
+
+
+Learn more about your ad choices. Visit podcastchoices.com/adchoices</description>
+      <pubDate>Fri, 16 Oct 2026 15:23:00 -0000</pubDate>
+      <ns1:episodeType>full</ns1:episodeType>
+      <ns1:author>The Verge</ns1:author>
+      <ns1:subtitle />
+      <ns1:summary>Well, it's been a couple of days, and David and Nilay have some more information — and a bunch of new questions — about the Apple HomeView. They also talk about the latest Gemini model, and whether building the best model matters if you can't build the best products around them. They then debate the merits of returning to X, why none of the supposed Twitter replacements worked, the latest in Brendan Carr nonsense, and more.
+
+
+
+Further reading:
+
+
+  HomeView doesn’t natively support any video apps yet — not even Apple’s
+
+
+
+  Apple’s new Find My-compatible remote will also work with your old Apple TV
+
+
+
+  The AI race is back on 
+
+
+
+  Google finally releases Gemini 4 Argon 
+
+
+
+  Google brings its AI coding platform to its Gemini app on Mac. 
+
+
+
+  Google makes it easier to launch your vibe-coded apps 
+
+
+
+  OpenAI employee arrested for allegedly planting a bug in a conference room 
+
+
+
+  OpenAI claims an ex-employee took its product plans and presented them to Apple 
+
+
+
+  Now that Character.AI is going bankrupt, what happens to all of its users’ data? 
+
+
+
+  Daring Fireball: X Once Again Marks the Spot
+
+
+
+  Platformer: Does intelligence need a hard cap?
+
+
+
+  SpaceX announces plan to become a ‘major mobile carrier’
+
+
+
+  JPMorgan Chase is keeping AI agents out. 
+
+
+
+  Xbox is officially embracing the chaos of AI-powered game ports 
+
+
+
+  Global smartphone sales just hit a 14-year low. 
+
+
+
+  Silicon Valley is falling in line with Trump’s attempt to rename AI 
+
+
+
+  The US government launched a “Super Intelligence” website.
+
+
+Subscribe to The Verge for unlimited access to theverge.com, subscriber-exclusive newsletters, and our ad-free podcast feed.
+
+We love hearing from you! Email your questions and thoughts to vergecast@theverge.com or call us at 866-VERGE11.
+
+
+
+0:00 CarPlay Banter01:36 HomeView App Confusion03:40 CarPlay as Home OS08:31 Apple Hardware Software Bet13:28 Should It Just Be an iPad?14:31 Gemini 4 Returns16:18 Meta Muse Strategy19:54 Google Product Dilemma26:28 OpenAI Bugging Scandal29:49 Character AI Bankruptcy32:31 Bankrupt Data Goldmine33:00 Privacy After Shutdown36:55 Why People Return to X39:35 Threads Fumbled It40:49 X Owns AI Talk49:17 Who Should Use X49:57 Reporters And Sources53:00 Video Platforms Win54:44 Gruber Gets It Wrong01:01:29 Brendan Carr is a Dummy01:02:40 Execution Livestream Fallout01:07:21 Sprint Merger Fallout01:08:48 Dish Spectrum to SpaceX01:09:44 Can Starlink Compete01:11:30 SpaceX Phone Rumors01:13:55 Smartphone Sales Slump01:18:37 Agents vs Websites01:24:21 Why UI Still Matters01:26:43 Super Intelligence Rebrand01:30:37 AI Game Decompiling01:36:35 Wrap Up and Plugs
+
+
+Learn more about your ad choices. Visit podcastchoices.com/adchoices</ns1:summary>
+      <ns2:encoded>
+        &lt;p&gt;Well, it's been a couple of days, and David and Nilay have some more information — and a bunch of new questions — about the Apple HomeView. They also talk about the latest Gemini model, and whether building the best model matters if you can't build the best products around them. They then debate the merits of returning to X, why none of the supposed Twitter replacements worked, the latest in Brendan Carr nonsense, and more.&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;Further reading:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/tech/1011062/apple-homeview-airplay-apps-streaming"&gt;HomeView doesn’t natively support any video apps yet — not even Apple’s&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/gadgets/1011069/apple-tv-remote-find-my"&gt;Apple’s new Find My-compatible remote will also work with your old Apple TV&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/ai-artificial-intelligence/1011311/the-ai-race-is-back-on"&gt;The AI race is back on &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/ai-artificial-intelligence/1009862/google-releases-gemini-4-argon"&gt;Google finally releases Gemini 4 Argon &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/tech/1010415/google-antigravity-gemini-app-mac"&gt;Google brings its AI coding platform to its Gemini app on Mac. &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/tech/1009066/google-play-vibe-coded-android-apps-launch"&gt;Google makes it easier to launch your vibe-coded apps &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/1010642/openai-employee-arrested-recording-device"&gt;OpenAI employee arrested for allegedly planting a bug in a conference room &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/ai-artificial-intelligence/1011276/openai-employee-unreleased-product-plans"&gt;OpenAI claims an ex-employee took its product plans and presented them to Apple &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/policy/1011417/new-york-ag-characterai-bankruptcy"&gt;Now that Character.AI is going bankrupt, what happens to all of its users’ data? &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;Daring Fireball: &lt;a href="https://daringfireball.net/2026/10/x_once_again_marks_the_spot"&gt;X Once Again Marks the Spot&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;Platformer: &lt;a href="https://www.platformer.news/does-intelligence-need-a-hard-cap/"&gt;Does intelligence need a hard cap?&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/science/1008467/spacex-announces-plan-to-become-a-major-mobile-carrier"&gt;SpaceX announces plan to become a ‘major mobile carrier’&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/ai-artificial-intelligence/1010962/jpmorgan-chase-is-keeping-ai-agents-out"&gt;JPMorgan Chase is keeping AI agents out. &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/news/1010406/xbox-labs-game-decompiling-emulation-exploration"&gt;Xbox is officially embracing the chaos of AI-powered game ports &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/gadgets/1009588/global-smartphone-sales-just-hit-a-14-year-low"&gt;Global smartphone sales just hit a 14-year low. &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/ai-artificial-intelligence/1009406/silicon-valley-is-falling-in-line-with-trumps-attempt-to-rename-ai"&gt;Silicon Valley is falling in line with Trump’s attempt to rename AI &lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href="https://www.theverge.com/policy/1010503/the-government-launched-a-super-intelligence-website"&gt;The US government launched a “Super Intelligence” website.&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;a href="https://www.theverge.com/subscribe"&gt;Subscribe to The Verge&lt;/a&gt; for unlimited access to &lt;a href="http://theverge.com/"&gt;theverge.com&lt;/a&gt;, subscriber-exclusive newsletters, and our &lt;a href="https://www.theverge.com/bulletin/795051/verge-podcast-ad-free-set-up-how-to"&gt;ad-free podcast feed&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;We love hearing from you! Email your questions and thoughts to vergecast@theverge.com or call us at 866-VERGE11.&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;&lt;/p&gt;
+&lt;p&gt;0:00 CarPlay Banter&lt;br&gt;01:36 HomeView App Confusion&lt;br&gt;03:40 CarPlay as Home OS&lt;br&gt;08:31 Apple Hardware Software Bet&lt;br&gt;13:28 Should It Just Be an iPad?&lt;br&gt;14:31 Gemini 4 Returns&lt;br&gt;16:18 Meta Muse Strategy&lt;br&gt;19:54 Google Product Dilemma&lt;br&gt;26:28 OpenAI Bugging Scandal&lt;br&gt;29:49 Character AI Bankruptcy&lt;br&gt;32:31 Bankrupt Data Goldmine&lt;br&gt;33:00 Privacy After Shutdown&lt;br&gt;36:55 Why People Return to X&lt;br&gt;39:35 Threads Fumbled It&lt;br&gt;40:49 X Owns AI Talk&lt;br&gt;49:17 Who Should Use X&lt;br&gt;49:57 Reporters And Sources&lt;br&gt;53:00 Video Platforms Win&lt;br&gt;54:44 Gruber Gets It Wrong&lt;br&gt;01:01:29 Brendan Carr is a Dummy&lt;br&gt;01:02:40 Execution Livestream Fallout&lt;br&gt;01:07:21 Sprint Merger Fallout&lt;br&gt;01:08:48 Dish Spectrum to SpaceX&lt;br&gt;01:09:44 Can Starlink Compete&lt;br&gt;01:11:30 SpaceX Phone Rumors&lt;br&gt;01:13:55 Smartphone Sales Slump&lt;br&gt;01:18:37 Agents vs Websites&lt;br&gt;01:24:21 Why UI Still Matters&lt;br&gt;01:26:43 Super Intelligence Rebrand&lt;br&gt;01:30:37 AI Game Decompiling&lt;br&gt;01:36:35 Wrap Up and Plugs&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;&lt;/p&gt;&lt;p&gt; &lt;/p&gt;&lt;p&gt;Learn more about your ad choices. Visit &lt;a href="https://podcastchoices.com/adchoices"&gt;podcastchoices.com/adchoices&lt;/a&gt;&lt;/p&gt;
+      </ns2:encoded>
+      <ns1:duration>5795</ns1:duration>
+      <guid isPermaLink="false">cb68b3b8-c3c7-11f0-8340-9fd6c7b49460</guid>
+      <enclosure url="https://www.podtrac.com/pts/redirect.mp3/pdst.fm/e/pscrb.fm/rss/p/mgln.ai/e/257/traffic.megaphone.fm/VMP8399712454.mp3" length="0" type="audio/mpeg" />
+    </item>
+    </channel>
+</rss>

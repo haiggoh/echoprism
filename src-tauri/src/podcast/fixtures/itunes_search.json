@@ -1,0 +1,49 @@
+{
+ "resultCount": 1,
+ "results": [
+  {
+   "wrapperType": "track",
+   "kind": "podcast",
+   "artistId": 1439224122,
+   "collectionId": 430333725,
+   "trackId": 430333725,
+   "artistName": "The Verge",
+   "collectionName": "The Vergecast",
+   "trackName": "The Vergecast",
+   "collectionCensoredName": "The Vergecast",
+   "trackCensoredName": "The Vergecast",
+   "artistViewUrl": "https://podcasts.apple.com/us/artist/the-verge/1439224122?uo=4",
+   "collectionViewUrl": "https://podcasts.apple.com/us/podcast/the-vergecast/id430333725?uo=4",
+   "feedUrl": "https://feeds.megaphone.fm/vergecast",
+   "trackViewUrl": "https://podcasts.apple.com/us/podcast/the-vergecast/id430333725?uo=4",
+   "artworkUrl30": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/1d/64/cd/1d64cd45-4497-ee37-0e35-df108046d9e6/mza_781548057726205094.jpg/30x30bb.jpg",
+   "artworkUrl60": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/1d/64/cd/1d64cd45-4497-ee37-0e35-df108046d9e6/mza_781548057726205094.jpg/60x60bb.jpg",
+   "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/1d/64/cd/1d64cd45-4497-ee37-0e35-df108046d9e6/mza_781548057726205094.jpg/100x100bb.jpg",
+   "collectionPrice": 0.0,
+   "trackPrice": 0.0,
+   "collectionHdPrice": 0,
+   "releaseDate": "2026-10-16T15:23:00Z",
+   "collectionExplicitness": "notExplicit",
+   "trackExplicitness": "cleaned",
+   "trackCount": 1097,
+   "trackTimeMillis": 5795,
+   "country": "USA",
+   "currency": "USD",
+   "primaryGenreName": "Technology",
+   "contentAdvisoryRating": "Clean",
+   "artworkUrl600": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/1d/64/cd/1d64cd45-4497-ee37-0e35-df108046d9e6/mza_781548057726205094.jpg/600x600bb.jpg",
+   "genreIds": [
+    "1318",
+    "26",
+    "1489",
+    "1528"
+   ],
+   "genres": [
+    "Technology",
+    "Podcasts",
+    "News",
+    "Tech News"
+   ]
+  }
+ ]
+}
