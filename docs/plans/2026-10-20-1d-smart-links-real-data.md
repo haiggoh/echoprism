@@ -65,17 +65,82 @@ findings ≤4 lines each, triage everything against real code).
    items; Power User YouTube titles mostly OMIT the show name (the channel carries
    the identity) — title-only matching will under-pair there, so channel/date/
    duration signals matter. Durations + pubDates are in the fixtures for the scorer.
-   Phase 1 starts from these.
-1. Wire the two queries (TDD on a temp DB: seeded episodes → matcher input lists;
-   discriminant: already-linked episode excluded).
-2. Matcher fixes + recalibration against real-title fixtures (RED for the right
-   reason: real Vergecast pair must score ≥ threshold; inverted-filter discriminant).
-3. Unstub the three commands + contract test.
-4. Live smoke on the three shows: subscribe (iTunes), search (yt-dlp/Piped), run the
-   matcher, print the pairings; verify D7 play-mode chain on real titles; re-run the
-   playback-while-closed check from the close-to-Dock verification.
-5. Gates (cargo, vitest, tsc, Playwright, contract mutation check) + roadmap
-   "Where things stand" + review dispatch + commit.
+   Phase 1 starts from these. _Phase 4 note: the even_more_news fixture had a
+   capture artifact (duplicated `</channel></rss>` closers on the last line,
+   unparseable); repaired 2026-10-20 during 1d, now parses (1 item)._
+1. **DONE — commit `54785734`.** Both queries wired to the one `episodes`
+   table (podcast side: `podcast_guid IS NOT NULL`; video side:
+   `video_id IS NOT NULL`; either excluded via `NOT EXISTS` against
+   `episode_links`), channels joined for titles, runtime `query_as` (no
+   `query_as!` macros — .sqlx cache rule). `YoutubeVideo.id` carries the
+   external video id because the matcher writes it as
+   `episode_links.youtube_video_id`, which D6 resolution matches against
+   `episodes.video_id`. Tests: 4 (both inputs, both exclusions), RED on the
+   stubs (all four — the "excluded" ones assert the unlinked sibling
+   survives), GREEN after; exclusion clauses mutation-checked (dropped
+   WHERE → red → restored).
+2. **DONE — commit `c8e9d1a7`.** Pure `Scorer` extracted (dead
+   `pool`/`extractor` fields removed); `normalize_text` inverted filter
+   fixed (mutation-checked: re-invert → 2 tests red); `title_similarity` =
+   Jaccard over content words, fuzzy secondary. Calibration matrix
+   (`cargo test --lib calibration_matrix -- --nocapture`): real pairs
+   0.8–1.0, cross-show 0.0. Weight sum normalized to 1 (was 1.2 clamped);
+   constant-0.5 content term removed; `min_title_similarity` now a real
+   gate. `min_confidence` 0.7 → 0.65 initially (Vergecast shape lands
+   lowest: search videos have no absolute date, this feed has no
+   durations → both signals neutral 0.5). Stop list probed, not assumed:
+   the crate's ISO list (1298 words) really contains "problem";
+   all content nouns the pairs rely on survive.
+3. **DONE — commit `3321481e`.** `match_episodes` runs the real matcher
+   from app state; `confirm_smart_link`/`unlink_smart_link` delegate to new
+   `set_episode_link_confirmation`/`delete_episode_link` (unknown id →
+   error, never silent success). Mutation check found a REAL test blind
+   spot: on an empty table a WHERE-less UPDATE also affects 0 rows, so the
+   unknown-id test passed a dropped-WHERE mutation for the wrong reason —
+   fixed by seeding; the flip test asserts a second link stays untouched.
+   MatchResult wire key `matched_count` pinned to the TS contract
+   (useTauriCommands.ts:73).
+4. **DONE — commit `8fa557c0`.** Live smoke (`cargo test --lib -- --ignored
+   live_three_show --nocapture`, ~10s): real iTunes search + feed fetch +
+   subscribe (1098/531/230 episodes) + yt-dlp search (15 video rows) →
+   matcher ran over 1859×15. First run found TWO defects the fixtures
+   missed: (a) fuzzy normalization saturated — SkimMatcherV2 scores ~16 per
+   matched char, not ~2, so ANY subsequence match scored 1.0 ("phone"
+   paired "rip mitch mcconnell"); fixed with coverage-based fuzzy (matched
+   chars / longer string, both directions). (b) titles whose content words
+   collapse below two distinct words (ISO list eats "part"/"two"/
+   "computer") paired at jaccard 1.0 on the show name alone ("The Vergecast
+   Vergecast, part two" ↔ "The AI is in the computer"); fixed with a 0.5
+   cap on one-word evidence — below the title gate, needs human confirm.
+   Gates recomputed together (they must agree): weights 0.7/0.1/0.1/0.1
+   (sum 1.0), `min_confidence` 0.6 — with search rows' neutral
+   date+duration the confidence floor implies title ≥ 0.64, so the 0.7
+   title gate always dominates; thinnest real shape scores 0.675 (margin
+   ≥ 0.075 both directions). Final live run: **7 pairings, all genuine
+   same-episode pairs** (2 Vergecast, 1 Even More News prefix, 4 Some More
+   News suffix), zero false pairs; linked guids drop out of the next
+   matcher run (live re-check of the Phase 1 exclusion). D7 shapes: 205
+   real "Even More News: " podcast titles, 9 rule-matching video titles —
+   the per-title-rule shapes exist in real data; the chain resolution
+   itself is covered by `src/__tests__/d7-play-mode-chain.test.tsx`.
+   Playback-while-closed re-run (automated): built app launched, window
+   closed via AXCloseButton → 0 windows, process alive, background loops
+   still logging; Cmd+Q quits cleanly. Residue honestly out of machine
+   reach: the audible "audio keeps playing" confirmation stays
+   owner-observable (webview hides, does not destroy —
+   `prevent_close` + `hide()` in lib.rs — so the HTML media element
+   survives). Minor note: the AppleScript `quit app` AppleEvent did not
+   quit the app within 3s; Cmd+Q (the user path) does.
+   Future work recorded: anchor feeds publish `<itunes:duration>` (seen in
+   the repaired fixture) but `parse_rss` ignores it — podcast durations are
+   always None from RSS parse, leaving duration neutral in scoring.
+5. **DONE (2026-10-20).** Gates: cargo 45/45 lib + 4 live `#[ignore]`
+   (three 1b/1c smokes + the 1d three-show smoke), tsc clean, vitest
+   116/116, Playwright 8/8, contract mutation check (serde rename
+   `matched_count` → red → restored → green). Adversarial review dispatched
+   (Gemini 3.8 Flash, full 1d diff, 1504 lines): **NO FINDINGS** — first
+   dispatch was void (patch exceeded the 48 KB attachment cap and was not
+   sent; re-dispatched with `--max-file-chars 80000`, file attached).
 
 ### Non-goals
 

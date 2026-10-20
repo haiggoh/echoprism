@@ -48,6 +48,23 @@
   guid de-dup, due check on app-written RFC 3339 timestamps). Verified: cargo 29/29 +
   3 live smoke, vitest 116/116, tsc clean, Playwright 8/8, contract mutation check.
   Deferred to 1e: refresh fetches due feeds one at a time.
+- **Step 1d done (2026-10-20, overnight free session):** smart links work on real
+  data end to end. The two matcher input queries were empty stubs written for tables
+  that never exist — both now read the unified `episodes` table and exclude
+  already-linked ids (commit `54785734`). The matcher's inverted stop-word filter is
+  fixed and scoring recalibrated against the committed real-show fixtures
+  (`c8e9d1a7`); the three smart-link commands are unstubbed and error on unknown
+  link ids (`3321481e`). The live three-show smoke (real iTunes + feeds + yt-dlp,
+  1859×15 candidates) found two defects the fixtures missed — fuzzy normalization
+  saturating on subsequence matches, and titles collapsing to the show name alone —
+  both fixed; the final run pairs exactly the 7 genuine same-episode pairs with zero
+  false pairs (`8fa557c0`). Gates: cargo 45/45 + 4 live, tsc clean, vitest 116/116,
+  Playwright 8/8, contract mutation check; Gemini review of the full diff: no
+  findings. Playback-while-closed re-run automated: close hides the window, the
+  process and background loops keep running, Cmd+Q quits; the audible confirmation
+  stays owner-observable. Plan doc with full receipts:
+  `docs/plans/2026-10-20-1d-smart-links-real-data.md`. Warning count ~25 → 22
+  (matcher dead fields gone); 1e still owns the rest.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -154,7 +171,7 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 1d — smart links on real data: check the video-to-podcast pairing and the
-per-title play mode against Vergecast, Some More News / Even More News and Power User,
-now that both search (1b) and podcast subscriptions (1c) produce real rows. The
-playback-while-closed check from the close-to-Dock verification can also be re-run.
+Step 1e — clean up and harden: clear the remaining ~22 build warnings, look into the
+one flaky test, add tests using recorded real responses for search, and remove the
+unused direct dependencies (`multipart`, `atom_syndication`, `axum`) to retire the
+whole future-incompat warning class. Then step 2 (2a–2c, 2d as far as sensible).
