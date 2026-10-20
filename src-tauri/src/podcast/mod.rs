@@ -31,22 +31,28 @@ impl PodcastManager {
     
     /// Fetch and parse a podcast feed
     pub async fn fetch_feed(&self, feed_url: &str) -> Result<PodcastFeedData, String> {
-        let response = self.client.get(feed_url)
+        Self::fetch_feed_with(&self.client, feed_url).await
+    }
+
+    /// Client-only core of [`Self::fetch_feed`] — `pub(crate)` so the 1d
+    /// live smoke can exercise the real fetch path without app state.
+    pub(crate) async fn fetch_feed_with(client: &Client, feed_url: &str) -> Result<PodcastFeedData, String> {
+        let response = client.get(feed_url)
             .header("Accept", "application/rss+xml, application/atom+xml, application/json, text/xml")
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        
+
         if !response.status().is_success() {
             return Err(format!("Feed fetch failed: {}", response.status()));
         }
-        
+
         let content = response.bytes().await
             .map_err(|e| format!("Failed to read response: {}", e))?;
-        
+
         // Try to detect feed format and parse
         let content_str = String::from_utf8_lossy(&content);
-        
+
         if content_str.trim().starts_with("<?xml") || content_str.trim().starts_with("<rss") || content_str.trim().starts_with("<feed") {
             // XML-based feed (RSS or Atom)
             if content_str.contains("<rss") || content_str.contains("<channel>") {
@@ -223,12 +229,17 @@ impl PodcastManager {
     /// Podcast Index is deferred). Each result's feedUrl is the subscribe
     /// target.
     pub async fn search_itunes(&self, term: &str) -> Result<Vec<PodcastSearchResult>, String> {
+        Self::search_itunes_with(&self.client, term).await
+    }
+
+    /// Client-only core of [`Self::search_itunes`] — `pub(crate)` for the
+    /// 1d live smoke, same reasoning as [`Self::fetch_feed_with`].
+    pub(crate) async fn search_itunes_with(client: &Client, term: &str) -> Result<Vec<PodcastSearchResult>, String> {
         let term = term.trim();
         if term.is_empty() {
             return Ok(Vec::new());
         }
-        let response = self
-            .client
+        let response = client
             .get("https://itunes.apple.com/search")
             .query(&[("term", term), ("media", "podcast"), ("limit", "25")])
             .send()

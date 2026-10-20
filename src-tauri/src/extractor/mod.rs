@@ -736,4 +736,177 @@ mod tests {
             videos[0].id
         );
     }
+
+    // ---- 1d Phase 4 LIVE smoke (network-dependent; #[ignore] keeps CI offline) ----
+    // Run explicitly: cargo test --lib -- --ignored
+    //
+    // The full 1d chain on REAL data for the three test shows: iTunes search
+    // → subscribe (feed fetch + episode rows), yt-dlp search → stored video
+    // rows, then the matcher's REAL input queries (Phase 1) + the calibrated
+    // Scorer (Phase 2) pairing them. Prints every pairing as the receipt.
+
+    #[tokio::test]
+    #[ignore = "live network: iTunes, three podcast feeds, local yt-dlp"]
+    async fn live_three_show_smart_link_smoke() {
+        use crate::db::migrations;
+        use crate::db::queries as q;
+        use crate::matcher::{MatchingConfig, Scorer};
+        use crate::podcast::PodcastManager;
+        use crate::types::{DateTimeUtc, EpisodeLink, MatchSource};
+        use sqlx::query;
+        use sqlx::sqlite::SqlitePoolOptions;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        migrations::run(&pool).await.expect("run migrations");
+        query("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+            .execute(&pool)
+            .await
+            .expect("insert user");
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .expect("http client");
+
+        for (term, name_fragment) in [
+            ("vergecast", "Vergecast"),
+            ("some more news", "Some More News"),
+            ("power user", "Power User"),
+        ] {
+            let results = PodcastManager::search_itunes_with(&client, term)
+                .await
+                .expect("live iTunes search");
+            let hit = results
+                .iter()
+                .find(|r| r.title.to_lowercase().contains(&name_fragment.to_lowercase()))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "iTunes must return {name_fragment}; got {:?}",
+                        results.iter().map(|r| r.title.clone()).collect::<Vec<_>>()
+                    )
+                });
+            let feed = PodcastManager::fetch_feed_with(&client, &hit.feed_url)
+                .await
+                .expect("live feed fetch");
+            let (_, stored) =
+                q::upsert_podcast_subscription(&pool, &hit.feed_url, &hit.title, &feed)
+                    .await
+                    .expect("subscribe");
+            println!(
+                "SUB [{term}] '{}' -> {} episodes from {}",
+                hit.title, stored, hit.feed_url
+            );
+
+            let mut bin = None;
+            for c in ["yt-dlp", "/opt/homebrew/bin/yt-dlp"] {
+                if let Ok(o) = tokio::process::Command::new(c).arg("--version").output().await {
+                    if o.status.success() {
+                        bin = Some(c.to_string());
+                        break;
+                    }
+                }
+            }
+            let bin = bin.expect("yt-dlp installed for live smoke");
+            let out = tokio::process::Command::new(&bin)
+                .args([
+                    "--dump-json",
+                    "--flat-playlist",
+                    "--no-warnings",
+                    &format!("ytsearch5:{term}"),
+                ])
+                .output()
+                .await
+                .expect("run yt-dlp");
+            assert!(
+                out.status.success(),
+                "yt-dlp failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let videos = parse_yt_dlp_search(&String::from_utf8_lossy(&out.stdout)).expect("parse yt-dlp");
+            let new_rows = q::upsert_video_results(&pool, &videos)
+                .await
+                .expect("store video results");
+            println!("VID [{term}] {} results, {} new rows", videos.len(), new_rows);
+        }
+
+        let podcasts = q::get_unmatched_podcasts(&pool).await.expect("matcher podcast input");
+        let candidates = q::get_youtube_videos(&pool).await.expect("matcher video input");
+        println!(
+            "MATCHER INPUT: {} podcast rows, {} video rows",
+            podcasts.len(),
+            candidates.len()
+        );
+
+        let scorer = Scorer::new();
+        let config = MatchingConfig::default();
+        let mut links = 0usize;
+        for pod in &podcasts {
+            if let Some(pairing) = scorer.best_pairing(pod, &candidates, &config) {
+                let video = candidates
+                    .iter()
+                    .find(|v| v.id == pairing.video_id)
+                    .expect("paired video present");
+                println!(
+                    "PAIR {:.3} (title {:.3})\n  POD: {}\n  VID: {}",
+                    pairing.confidence, pairing.title_similarity, pod.title, video.title
+                );
+                let now = DateTimeUtc::from(chrono::Utc::now());
+                q::insert_episode_link(
+                    &pool,
+                    &EpisodeLink {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        podcast_guid: pod.guid.clone(),
+                        youtube_video_id: pairing.video_id.clone(),
+                        confidence: pairing.confidence,
+                        matched_at: now,
+                        matched_by: MatchSource::Auto,
+                        title_similarity: Some(pairing.title_similarity),
+                        date_diff_days: pairing.date_diff_days,
+                        duration_diff_seconds: pairing.duration_diff_seconds,
+                        user_confirmed: false,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                )
+                .await
+                .expect("insert link");
+                links += 1;
+            }
+        }
+        println!("PAIRED {links} of {} podcast rows", podcasts.len());
+
+        // D7 data-shape receipts (the chain resolution itself is covered by
+        // src/__tests__/d7-play-mode-chain.test.tsx): which real titles carry
+        // the per-title rule shapes the owner case relies on.
+        let emn = podcasts
+            .iter()
+            .filter(|p| p.title.starts_with("Even More News: "))
+            .count();
+        let rule_shaped = candidates
+            .iter()
+            .filter(|v| v.title.contains("SOME MORE NEWS") || v.title.contains(" | The Vergecast"))
+            .count();
+        println!(
+            "D7 SHAPES: {emn} 'Even More News: ' podcast titles; {rule_shaped} rule-matching video titles"
+        );
+
+        assert!(
+            links >= 1,
+            "matcher must pair at least one real episode (Vergecast titles are near-identical)"
+        );
+        // Linked guids must drop out of the matcher input (Phase 1 exclusion, live).
+        let pods_after = q::get_unmatched_podcasts(&pool)
+            .await
+            .expect("matcher input after");
+        assert_eq!(
+            pods_after.len() + links,
+            podcasts.len(),
+            "linked guids must be excluded from the next matcher run"
+        );
+        pool.close().await;
+    }
 }

@@ -29,16 +29,21 @@ pub struct MatchingConfig {
 impl Default for MatchingConfig {
     fn default() -> Self {
         Self {
-            // Calibrated 2026-10-20 against the real fixture pairs (1d Phase
-            // 2, see scorer_tests): genuine pairs score 0.73-1.0 (the
-            // Vergecast shape lands lowest — search videos carry no absolute
-            // date and the feed publishes no durations, so both signals sit
-            // at their neutral 0.5), cross-show pairs at most 0.3. 0.65 keeps
-            // both margins wide; the hard gate is min_title_similarity.
-            min_confidence: 0.65,
-            title_weight: 0.6,
-            date_weight: 0.2,
-            duration_weight: 0.2,
+            // Calibrated 2026-10-20 against the real fixture pairs AND the
+            // live three-show smoke (1d Phases 2+4, see scorer_tests).
+            // Search-sourced videos carry no absolute date and the feeds
+            // publish no usable durations, so those two signals sit at their
+            // neutral 0.5 for every real pairing: with weights 0.7/0.1/0.1/
+            // 0.1 the thinnest real shape (Vergecast's 3-word titles,
+            // title 0.75) scores 0.675 and the channel bonus is capped at
+            // 0.05 — margins ≥ 0.075 against min_confidence in both
+            // directions. The hard gate is min_title_similarity (0.7); with
+            // these weights the confidence floor implies title ≥ 0.64, so
+            // the title gate always dominates.
+            min_confidence: 0.6,
+            title_weight: 0.7,
+            date_weight: 0.1,
+            duration_weight: 0.1,
             channel_weight: 0.1,
             content_weight: 0.0,
             max_date_diff_days: 3,
@@ -102,27 +107,43 @@ impl Scorer {
                 best = intersection as f64 / union as f64;
             }
 
-            // Fuzzy on the joined content words. SkimMatcherV2 scores are
-            // open-ended, so normalize by the best achievable score for the
-            // longer string (a perfect match of n chars scores ~2n: 1 per
-            // matched char plus bonuses). Both argument orders are tried:
-            // fuzzy_match(choice, pattern) cannot match a pattern LONGER
-            // than the choice (measured in calibration_matrix: "the verge"
-            // vs "the vergecast" scored 0 in one direction only).
+            // Fuzzy on the joined content words, measured by COVERAGE: the
+            // fraction of the longer string the match accounts for. Raw
+            // SkimMatcherV2 scores are open-ended (~16 per matched char, not
+            // the ~2 the first calibration assumed), so score-based
+            // normalization saturated at 1.0 for ANY subsequence match — the
+            // live 1d smoke paired "phone" with "rip mitch mcconnell" that
+            // way. Coverage keeps identical strings at 1.0 while a few
+            // stray subsequence characters score their true fraction.
+            // Both argument orders: fuzzy_match(choice, pattern) cannot
+            // match a pattern LONGER than the choice.
             let joined1 = words1.join(" ");
             let joined2 = words2.join(" ");
             let longer = joined1.len().max(joined2.len()) as f64;
             let fuzzy_best = [
-                self.fuzzy.fuzzy_match(&joined1, &joined2),
-                self.fuzzy.fuzzy_match(&joined2, &joined1),
+                self.fuzzy.fuzzy_indices(&joined1, &joined2),
+                self.fuzzy.fuzzy_indices(&joined2, &joined1),
             ]
             .into_iter()
             .flatten()
-            .map(|score| (score as f64 / (2.0 * longer)).clamp(0.0, 1.0))
+            .map(|(_, indices)| indices.len() as f64 / longer)
             .fold(0.0f64, f64::max);
             if fuzzy_best > best {
                 best = fuzzy_best;
             }
+        }
+
+        // One-word evidence cannot auto-link: when either title's content
+        // words collapse to a single distinct word (the ISO stop list eats
+        // e.g. "part", "two", "computer"), all that can remain shared is the
+        // show name — the live 1d smoke paired "The Vergecast Vergecast,
+        // part two" with "The AI is in the computer | The Vergecast" at
+        // jaccard 1.0 that way. Cap below the title gate so such pairs need
+        // human confirmation instead.
+        let distinct1: std::collections::HashSet<_> = words1.iter().collect();
+        let distinct2: std::collections::HashSet<_> = words2.iter().collect();
+        if distinct1.len() < 2 || distinct2.len() < 2 {
+            best = best.min(0.5);
         }
 
         best
@@ -219,6 +240,48 @@ impl Scorer {
             _ => None,
         }
     }
+
+    /// Best pairing for one podcast episode across the candidate videos,
+    /// applying both gates (title, confidence). Pure — no I/O — so the 1d
+    /// live smoke can pair real rows without app state.
+    pub(crate) fn best_pairing(
+        &self,
+        podcast: &PodcastEpisode,
+        youtube_videos: &[YoutubeVideo],
+        config: &MatchingConfig,
+    ) -> Option<BestPairing> {
+        let mut best: Option<(f64, f64, &YoutubeVideo)> = None; // (confidence, title_sim, video)
+        for video in youtube_videos {
+            let title_sim = self.title_similarity(&podcast.title, &video.title);
+            // Title gate: the pairing signal is the title. Date/duration
+            // coincidence between two unrelated titles must not cross the
+            // confidence bar on its own.
+            if title_sim < config.min_title_similarity {
+                continue;
+            }
+            let confidence = self.confidence(podcast, video, config);
+            if confidence > config.min_confidence && best.as_ref().is_none_or(|(c, _, _)| confidence > *c) {
+                best = Some((confidence, title_sim, video));
+            }
+        }
+        best.map(|(confidence, title_similarity, video)| BestPairing {
+            video_id: video.id.clone(),
+            confidence,
+            title_similarity,
+            date_diff_days: self.date_diff(podcast.published_at, video.published_at),
+            duration_diff_seconds: self.duration_diff(podcast.duration_seconds, video.duration_seconds),
+        })
+    }
+}
+
+/// The outcome of [`Scorer::best_pairing`]: the winning video's link key and
+/// the per-signal numbers an `episode_links` row carries.
+pub(crate) struct BestPairing {
+    pub video_id: String,
+    pub confidence: f64,
+    pub title_similarity: f64,
+    pub date_diff_days: Option<i64>,
+    pub duration_diff_seconds: Option<i64>,
 }
 
 pub struct EpisodeMatcher {
@@ -273,43 +336,24 @@ impl EpisodeMatcher {
         podcast: &PodcastEpisode,
         youtube_videos: &[YoutubeVideo],
     ) -> Result<Option<EpisodeLink>, String> {
-        let mut best_match = None;
-        let mut best_confidence = 0.0;
-
-        for video in youtube_videos {
-            let title_sim = self.scorer.title_similarity(&podcast.title, &video.title);
-
-            // Title gate: the pairing signal is the title. Date/duration
-            // coincidence between two unrelated titles must not cross the
-            // confidence bar on its own (this also gives the previously dead
-            // `min_title_similarity` config its real job).
-            if title_sim < self.matching_config.min_title_similarity {
-                continue;
-            }
-
-            let confidence = self.scorer.confidence(podcast, video, &self.matching_config);
-
-            if confidence > self.matching_config.min_confidence && confidence > best_confidence {
-                best_confidence = confidence;
-                let now = DateTimeUtc::from(chrono::Utc::now());
-                best_match = Some(EpisodeLink {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    podcast_guid: podcast.guid.clone(),
-                    youtube_video_id: video.id.clone(),
-                    confidence,
-                    matched_at: now,
-                    matched_by: MatchSource::Auto,
-                    title_similarity: Some(title_sim),
-                    date_diff_days: self.scorer.date_diff(podcast.published_at, video.published_at),
-                    duration_diff_seconds: self.scorer.duration_diff(podcast.duration_seconds, video.duration_seconds),
-                    user_confirmed: false,
-                    created_at: now,
-                    updated_at: now,
-                });
-            }
-        }
-
-        Ok(best_match)
+        let Some(pairing) = self.scorer.best_pairing(podcast, youtube_videos, &self.matching_config) else {
+            return Ok(None);
+        };
+        let now = DateTimeUtc::from(chrono::Utc::now());
+        Ok(Some(EpisodeLink {
+            id: uuid::Uuid::new_v4().to_string(),
+            podcast_guid: podcast.guid.clone(),
+            youtube_video_id: pairing.video_id,
+            confidence: pairing.confidence,
+            matched_at: now,
+            matched_by: MatchSource::Auto,
+            title_similarity: Some(pairing.title_similarity),
+            date_diff_days: pairing.date_diff_days,
+            duration_diff_seconds: pairing.duration_diff_seconds,
+            user_confirmed: false,
+            created_at: now,
+            updated_at: now,
+        }))
     }
 }
 
@@ -398,7 +442,10 @@ mod scorer_tests {
 
     /// Cross-show and different-episode titles must stay well below the gate
     /// so they can never pair (the Power User fixture is the honest negative:
-    /// its YouTube titles share no words with its podcast titles).
+    /// its YouTube titles share no words with its podcast titles). The last
+    /// four are REAL false pairs the 1d live smoke produced before the fuzzy
+    /// normalization was fixed — short content sets whose words are loose
+    /// subsequences of the other title.
     #[test]
     fn cross_show_titles_stay_below_the_title_gate() {
         let s = scorer();
@@ -407,6 +454,11 @@ mod scorer_tests {
             ("People Are Secretly Dating AI And Wont Stop", "Why your favorite creator is building an app"),
             ("Is social media destroying kids mental health? // Power User podcast", "Apple's HomeView has an app problem"),
             ("AGI is whatever you want it to be | The Vergecast", "Why your favorite creator is building an app"),
+            // Live-smoke false pairs (2026-10-20): subsequence fuzzy saturation.
+            ("RIP Mitch McConnell", "Here's what an AI-first phone might look like"),
+            ("Why your favorite creator is building an app | The Vergecast", "Everything's recording everybody. What now?"),
+            ("The Vergecast", "The folding iPhone Duo is finally here | The Vergecast Livestream"),
+            ("Why your favorite creator is building an app | The Vergecast", "Why read anymore?"),
         ] {
             let sim = s.title_similarity(video_title, podcast_title);
             assert!(
@@ -415,6 +467,21 @@ mod scorer_tests {
                 video_title, podcast_title, sim
             );
         }
+
+        // Same-show, different-episode: both titles collapse to the show
+        // name once the stop list takes "part"/"two"/"computer". The
+        // one-word cap lands exactly on 0.5 — below the 0.7 gate, but the
+        // bound here is the CAP, not the cross-show floor.
+        let s = scorer();
+        let sim = s.title_similarity(
+            "The AI is in the computer | The Vergecast",
+            "The Vergecast Vergecast, part two",
+        );
+        assert!(
+            sim <= 0.5,
+            "one-word-collapse pair must stay capped, scored {:.3}",
+            sim
+        );
     }
 
     /// Confidence for a real pair shaped like the DB rows (search video: no
@@ -472,18 +539,20 @@ mod scorer_tests {
     }
 
     /// The weight sum must normalize to 1: a candidate perfect on every
-    /// signal scores exactly 1.0, not 1.2 clamped.
+    /// signal scores exactly 1.0, not 1.2 clamped. Channel titles carry two
+    /// content words ("same" is a stop word; one-word names would trip the
+    /// one-word cap, which is a different behavior).
     #[test]
     fn confidence_is_normalized_to_one() {
         let s = scorer();
         let config = MatchingConfig::default();
         let mut podcast = pod("Apple's HomeView has an app problem");
-        podcast.channel_title = Some("Same Channel".into());
+        podcast.channel_title = Some("Channel Creator".into());
         let published = DateTimeUtc::new(chrono::Utc::now());
         podcast.published_at = Some(published);
         podcast.duration_seconds = Some(1000);
         let mut video = vid("Apple's HomeView has an app problem");
-        video.channel_title = Some("Same Channel".into());
+        video.channel_title = Some("Channel Creator".into());
         video.published_at = Some(published);
         video.duration_seconds = Some(1000);
         let confidence = s.confidence(&podcast, &video, &config);
@@ -494,12 +563,36 @@ mod scorer_tests {
         );
     }
 
+    /// best_pairing applies both gates and picks the higher-confidence of
+    /// two viable candidates.
+    #[test]
+    fn best_pairing_picks_viable_and_best() {
+        let s = scorer();
+        let config = MatchingConfig::default();
+
+        // Two viable vergecast-shaped videos, one clearly better (identical
+        // title vs identical + extra word).
+        let podcast = pod("Apple's HomeView has an app problem");
+        let v1 = vid("Apple's HomeView has an app problem | The Vergecast");
+        let mut v2 = vid("Apple's HomeView has an app problem | The Vergecast (Oct 16)");
+        v2.id = "vid-2".into();
+        v2.video_id = "vid-2".into();
+        let videos = vec![v1, v2];
+        let pairing = s.best_pairing(&podcast, &videos, &config).expect("a pairing exists");
+        assert_eq!(pairing.video_id, "vid-1");
+        assert!(pairing.confidence >= config.min_confidence);
+        assert!(pairing.title_similarity >= config.min_title_similarity);
+
+        // Only gated-out candidates: no pairing.
+        let unrelated = vec![vid("Billionaires Are Funding 'Anti AI' Content")];
+        assert!(s.best_pairing(&podcast, &unrelated, &config).is_none());
+    }
+
     /// Calibration matrix printer: run with
     /// `cargo test --lib calibration_matrix -- --nocapture` after capturing
     /// new fixtures to re-derive the thresholds from measured scores.
     #[test]
-    fn calibration_matrix() {
-        let s = scorer();
+    fn calibration_matrix() {        let s = scorer();
         println!("== title_similarity (video | podcast) ==");
         for (video_title, podcast_title) in [
             ("Apple's HomeView has an app problem | The Vergecast", "Apple's HomeView has an app problem"),
