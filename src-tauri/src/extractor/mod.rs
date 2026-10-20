@@ -99,33 +99,70 @@ impl Extractor {
         self.get_stream_with_yt_dlp(video_id, format, quality).await
     }
     
+    /// Resolve a stream from one instance. The instance TYPE decides the
+    /// endpoint and parser — this is the 1e fix: the code used the Invidious
+    /// path for every instance, but the seeded default instance is Piped
+    /// (Invidious-style /api/v1/videos/{id}/streams 404s on Piped; its
+    /// streams live at /streams/{id} with a different response shape), so
+    /// every instance attempt failed and resolution silently fell through
+    /// to yt-dlp (measured against the live instance 2026-10-20).
     async fn get_stream_from_instance(&self, video_id: &str, instance: &Instance, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
+        match instance.instance_type {
+            InstanceType::Piped => self.get_stream_from_piped(video_id, instance, format).await,
+            InstanceType::Invidious => {
+                self.get_stream_from_invidious(video_id, instance, format, quality).await
+            }
+        }
+    }
+
+    async fn get_stream_from_piped(&self, video_id: &str, instance: &Instance, format: Option<&str>) -> Result<StreamUrl, String> {
+        let url = format!("{}/streams/{}", instance.url.trim_end_matches('/'), video_id);
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+        if !response.status().is_success() {
+            return Err("Stream not available from instance".to_string());
+        }
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read streams: {}", e))?;
+        select_piped_stream(parse_piped_streams(&body)?, format, None)
+    }
+
+    async fn get_stream_from_invidious(&self, video_id: &str, instance: &Instance, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
         let url = format!("{}/api/v1/videos/{}/streams", instance.url.trim_end_matches('/'), video_id);
-        
+
         let mut query = vec![];
         if let Some(f) = format { query.push(("format", f.to_string())); }
         if let Some(q) = quality { query.push(("quality", q.to_string())); }
-        
-        let response = reqwest::Client::new()
+
+        // The shared client, not a per-call Client::new() — one user agent
+        // and connection reuse for the whole pool.
+        let response = self
+            .client
             .get(&url)
             .query(&query)
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        
+
         if !response.status().is_success() {
             return Err("Stream not available from instance".to_string());
         }
-        
+
         let streams: Vec<InvidiousStream> = response.json().await
             .map_err(|e| format!("Failed to parse streams: {}", e))?;
-        
+
         let stream = streams.into_iter()
             .filter(|s| format.map_or(true, |f| s.format.contains(f)))
             .filter(|s| quality.map_or(true, |q| s.quality.contains(q)))
             .max_by_key(|s| s.quality.parse::<u32>().unwrap_or(0))
             .ok_or("No suitable stream found")?;
-        
+
         Ok(StreamUrl {
             url: stream.url,
             format: stream.format,
@@ -184,6 +221,79 @@ impl Extractor {
 
         Err("yt-dlp not found. Install it with: brew install yt-dlp".to_string())
     }
+}
+
+/// Recorded-response shape (fixtures/piped_streams.json, real capture
+/// 2026-10-20 from pipedapi.ducks.party): Piped's `/streams/{id}` returns
+/// ONE object with two stream arrays, camelCase keys. Entries are parsed
+/// permissively (serde defaults) so a missing field never kills the parse.
+/// Note the real capture's audioStreams are EMPTY (PO-token gating) — the
+/// instance branch then errors and resolve_stream falls through to yt-dlp,
+/// which is the designed failover.
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct PipedStreams {
+    audio_streams: Vec<PipedStreamEntry>,
+    video_streams: Vec<PipedStreamEntry>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct PipedStreamEntry {
+    url: String,
+    /// "MP4" / "HLS" / "MPEG_4" in the recorded capture
+    format: Option<String>,
+    /// "720p" / "360p" / "LBRY" / "96 kbps"
+    quality: Option<String>,
+    itag: Option<i64>,
+    mime_type: Option<String>,
+}
+
+fn parse_piped_streams(body: &str) -> Result<PipedStreams, String> {
+    serde_json::from_str(body).map_err(|e| format!("Failed to parse Piped streams: {}", e))
+}
+
+/// Numeric rank of a Piped quality string ("360p" → 360, "96 kbps" → 96,
+/// unparseable → 0) for best-pick ordering.
+fn piped_quality_rank(quality: &Option<String>) -> u64 {
+    quality
+        .as_deref()
+        .and_then(|q| {
+            let digits: String = q.chars().take_while(|c| c.is_ascii_digit()).collect();
+            digits.parse::<u64>().ok()
+        })
+        .unwrap_or(0)
+}
+
+/// Pick the best Piped stream for the requested format/quality. `format`
+/// "audio" (case-insensitive) selects audioStreams; anything else selects
+/// videoStreams. `quality` is a substring filter on the quality label when
+/// given. Best pick = highest numeric quality rank.
+fn select_piped_stream(
+    streams: PipedStreams,
+    format: Option<&str>,
+    quality: Option<&str>,
+) -> Result<StreamUrl, String> {
+    let want_audio = matches!(format, Some(f) if f.eq_ignore_ascii_case("audio"));
+    let list = if want_audio {
+        streams.audio_streams
+    } else {
+        streams.video_streams
+    };
+
+    let best = list
+        .into_iter()
+        .filter(|s| !s.url.is_empty())
+        .filter(|s| quality.map_or(true, |q| s.quality.as_deref().map_or(false, |sq| sq.contains(q))))
+        .max_by_key(|s| piped_quality_rank(&s.quality))
+        .ok_or("No suitable stream found")?;
+
+    Ok(StreamUrl {
+        url: best.url,
+        format: best.format.unwrap_or_else(|| "mp4".to_string()),
+        quality: best.quality.unwrap_or_else(|| "720p".to_string()),
+        headers: None,
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -580,6 +690,73 @@ mod tests {
             videos[0].title,
             videos[0].id
         );
+    }
+
+    // ---- 1e: the live stream path against RECORDED real responses ----
+    // The 1b deferral ("live resolution deferred to Phase 5's smoke") closed
+    // by recon: get_stream_from_instance built the INVIDIOUS /api/v1/videos/
+    // {id}/streams URL for every instance type, but the seeded default
+    // instance is PIPED, whose streams live at /streams/{id} with a
+    // different response shape — every instance attempt 404'd and silently
+    // fell through to yt-dlp (measured against the live instance).
+
+    const PIPED_STREAMS_FIXTURE: &str = include_str!("fixtures/piped_streams.json");
+
+    /// The recorded real body must deserialize permissively and select the
+    /// highest-ranked video stream.
+    #[test]
+    fn piped_streams_fixture_deserializes_and_selects_best_video() {
+        let streams = parse_piped_streams(PIPED_STREAMS_FIXTURE)
+            .expect("parse recorded Piped /streams body");
+        assert_eq!(streams.video_streams.len(), 3, "real capture: 3 video streams");
+        assert_eq!(streams.audio_streams.len(), 0, "real capture: audio PO-token gated");
+        let picked = select_piped_stream(streams, Some("video"), None).expect("a video stream");
+        assert_eq!(picked.quality, "360p", "highest numeric quality wins");
+        assert!(picked.url.starts_with("https://"));
+    }
+
+    #[test]
+    fn piped_streams_quality_filter_picks_named_tier() {
+        let streams = parse_piped_streams(PIPED_STREAMS_FIXTURE).expect("parse");
+        // "HLS" matches exactly one tier ("LBRY" would match two — the
+        // filter is a substring, same semantics as the invidious branch).
+        let picked = select_piped_stream(streams, None, Some("HLS")).expect("HLS tier");
+        assert_eq!(picked.quality, "LBRY HLS");
+    }
+
+    #[test]
+    fn piped_streams_audio_selection_on_gated_fixture_errors() {
+        let streams = parse_piped_streams(PIPED_STREAMS_FIXTURE).expect("parse");
+        assert!(
+            select_piped_stream(streams, Some("audio"), None).is_err(),
+            "no audio streams published — resolve_stream must fall through to yt-dlp"
+        );
+    }
+
+    /// Truncated/malformed body must fail the parse, not yield empty-ok.
+    #[test]
+    fn malformed_piped_streams_body_fails() {
+        assert!(parse_piped_streams("{\"audioStreams\": [").is_err());
+    }
+
+    /// Ranking must be by numeric quality, not list order: the recorded
+    /// fixture's best tier happens to sit last, where max_by_key's
+    /// last-maximum tie-break would mask a dead ranking.
+    #[test]
+    fn piped_stream_selection_ranks_by_numeric_quality() {
+        let mk = |url: &str, q: &str| PipedStreamEntry {
+            url: url.into(),
+            format: Some("MP4".into()),
+            quality: Some(q.into()),
+            itag: Some(18),
+            mime_type: None,
+        };
+        let streams = PipedStreams {
+            audio_streams: vec![],
+            video_streams: vec![mk("https://a", "360p"), mk("https://b", "1080p"), mk("https://c", "720p")],
+        };
+        let picked = select_piped_stream(streams, Some("video"), None).expect("best stream");
+        assert_eq!(picked.quality, "1080p", "must rank by numeric quality, not list order");
     }
 
     // ---- 1d Phase 4 LIVE smoke (network-dependent; #[ignore] keeps CI offline) ----

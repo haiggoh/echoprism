@@ -15,8 +15,9 @@ pub struct Database {
 
 impl Database {
     /// Seam constructor: wrap an existing pool. The app path is `new` (it
-    /// owns the data-dir file and runs migrations); callers of this variant
-    /// — tests, and anything injecting a pool — run migrations themselves.
+    /// owns the data-dir file and runs migrations); the test caller runs
+    /// migrations itself.
+    #[cfg(test)]
     pub fn from_pool(pool: SqlitePool) -> Self {
         Self { pool }
     }
