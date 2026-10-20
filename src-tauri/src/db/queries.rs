@@ -1488,16 +1488,106 @@ pub async fn update_shortcut(pool: &SqlitePool, action: String, key: String, con
 }
 
 // Matcher queries
-pub async fn get_unmatched_podcasts(_pool: &SqlitePool) -> DbResult<Vec<PodcastEpisode>> {
-    // This would require a podcast_episodes table which doesn't exist in the schema
-    // For now, return empty list - the podcast module has its own data structures
-    Ok(Vec::new())
+//
+// Both matcher inputs read the ONE unified `episodes` table (1b/1c): the
+// podcast side carries `podcast_guid` (+ audio_url), the video side carries
+// `video_id` (the external YouTube id, NULL on podcast rows — search rows
+// have no absolute date, so published_at is often NULL there too). Either id
+// already present in `episode_links` is excluded: the matcher must only see
+// unlinked candidates. Runtime-checked queries (query_as::<_, Row>), NOT
+// `query_as!` macros — new macro SQL would demand regenerating the .sqlx
+// offline cache (same reasoning as resolve_smart_links below).
+pub async fn get_unmatched_podcasts(pool: &SqlitePool) -> DbResult<Vec<PodcastEpisode>> {
+    #[derive(sqlx::FromRow)]
+    struct PodcastEpisodeRow {
+        id: String,
+        podcast_guid: String,
+        title: String,
+        description: Option<String>,
+        channel_title: Option<String>,
+        channel_id: String,
+        published_at: Option<String>,
+        duration_seconds: Option<i64>,
+        audio_url: Option<String>,
+    }
+
+    let rows = sqlx::query_as::<_, PodcastEpisodeRow>(
+        r#"SELECT e.id, e.podcast_guid, e.title, e.description,
+                  c.title AS channel_title, e.channel_id,
+                  e.published_at, e.duration_seconds, e.audio_url
+           FROM episodes e
+           JOIN channels c ON c.id = e.channel_id
+           WHERE e.podcast_guid IS NOT NULL
+             AND NOT EXISTS (
+                 SELECT 1 FROM episode_links l WHERE l.podcast_guid = e.podcast_guid
+             )"#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| PodcastEpisode {
+            id: r.id,
+            guid: r.podcast_guid,
+            title: r.title,
+            description: r.description,
+            channel_title: r.channel_title,
+            channel_id: Some(r.channel_id),
+            published_at: r.published_at.map(DateTimeUtc::from),
+            duration_seconds: r.duration_seconds.map(|d| d.max(0) as u64),
+            audio_url: r.audio_url,
+            transcript: None,
+        })
+        .collect())
 }
 
-pub async fn get_youtube_videos(_pool: &SqlitePool) -> DbResult<Vec<YoutubeVideo>> {
-    // This would require a youtube_videos table which doesn't exist in the schema
-    // For now, return empty list - the matcher uses extracted video data
-    Ok(Vec::new())
+pub async fn get_youtube_videos(pool: &SqlitePool) -> DbResult<Vec<YoutubeVideo>> {
+    #[derive(sqlx::FromRow)]
+    struct VideoRow {
+        video_id: String,
+        title: String,
+        description: Option<String>,
+        channel_title: Option<String>,
+        channel_id: String,
+        published_at: Option<String>,
+        duration_seconds: Option<i64>,
+        thumbnail_url: Option<String>,
+    }
+
+    let rows = sqlx::query_as::<_, VideoRow>(
+        r#"SELECT e.video_id, e.title, e.description,
+                  c.title AS channel_title, e.channel_id,
+                  e.published_at, e.duration_seconds, e.thumbnail_url
+           FROM episodes e
+           JOIN channels c ON c.id = e.channel_id
+           WHERE e.video_id IS NOT NULL
+             AND NOT EXISTS (
+                 SELECT 1 FROM episode_links l WHERE l.youtube_video_id = e.video_id
+             )"#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| YoutubeVideo {
+            // `id` MUST be the external video id: the matcher writes it into
+            // episode_links.youtube_video_id, and D6 resolution matches that
+            // key against episodes.video_id.
+            id: r.video_id.clone(),
+            video_id: r.video_id,
+            title: r.title,
+            channel_title: r.channel_title,
+            channel_id: Some(r.channel_id),
+            published_at: r.published_at.map(DateTimeUtc::from),
+            duration_seconds: r.duration_seconds.map(|d| d.max(0) as u64),
+            description: r.description,
+            thumbnail_url: r.thumbnail_url,
+        })
+        .collect())
 }
 
 pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbResult<()> {
@@ -2069,6 +2159,168 @@ mod d6_d7_tests {
             json.get("channel_type").is_none(),
             "Rust field name must not leak to the wire"
         );
+    }
+
+    // ---- 1d Phase 1: matcher inputs come from the real `episodes` table ----
+    // The matcher's two input queries used to be empty stubs (they assumed
+    // dedicated podcast_episodes/youtube_videos tables that never existed;
+    // 1b/1c store both streams in `episodes`), so smart linking was inert.
+    // These tests pin the real wiring: unlinked podcast rows in, video rows
+    // in, already-linked ids on either side out.
+
+    /// Full-fidelity episode insert (the shared helper above covers only the
+    /// columns the D6/D7 tests need; the matcher tests need dates, durations
+    /// and the audio URL the podcast subscribe path writes).
+    #[allow(clippy::too_many_arguments)]
+    async fn insert_stream_episode(
+        pool: &SqlitePool,
+        id: &str,
+        channel_id: &str,
+        external_id: &str,
+        title: &str,
+        video_id: Option<&str>,
+        podcast_guid: Option<&str>,
+        audio_url: Option<&str>,
+        published_at: Option<&str>,
+        duration_seconds: Option<i64>,
+    ) {
+        query(
+            "INSERT OR IGNORE INTO episodes \
+             (id, channel_id, external_id, title, video_id, podcast_guid, audio_url, published_at, duration_seconds, is_downloaded, progress_seconds) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)",
+        )
+        .bind(id)
+        .bind(channel_id)
+        .bind(external_id)
+        .bind(title)
+        .bind(video_id)
+        .bind(podcast_guid)
+        .bind(audio_url)
+        .bind(published_at)
+        .bind(duration_seconds)
+        .execute(pool)
+        .await
+        .expect("insert stream episode");
+    }
+
+    #[tokio::test]
+    async fn unlinked_podcast_rows_reach_the_matcher() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-emn", "https://feeds.example.org/emn.xml", "Even More News", "podcast", Some("https://feeds.example.org/emn.xml")).await;
+        insert_channel(&pool, "ch-smn", "UC-mock-smn", "Some More News", "video", None).await;
+        insert_stream_episode(
+            &pool, "ep-emn-1", "ch-emn", "emn-guid-001",
+            "Even More News: JD Vance's Town Hall Was a Disaster",
+            None, Some("emn-guid-001"), Some("https://media.example.org/emn-001.mp3"),
+            Some("2026-10-14T17:00:00+00:00"), Some(1620),
+        )
+        .await;
+        // Minimal podcast row: no date, no duration, no audio URL — must still
+        // surface as a candidate with None fields, not be filtered out.
+        insert_stream_episode(
+            &pool, "ep-emn-2", "ch-emn", "emn-guid-002",
+            "Even More News: The Housing Crisis Is Not an Accident",
+            None, Some("emn-guid-002"), None, None, None,
+        )
+        .await;
+        // A video-side row must NOT appear in the podcast candidate list.
+        insert_stream_episode(
+            &pool, "ep-smn-1", "ch-smn", "smn-vid-001",
+            "Some More News: JD Vance's Town Hall Was a Disaster",
+            Some("smn-vid-001"), None, None, None, Some(1600),
+        )
+        .await;
+
+        let podcasts = get_unmatched_podcasts(&pool).await.expect("unmatched podcasts");
+        assert_eq!(podcasts.len(), 2, "only podcast-side rows are candidates");
+        let full = podcasts.iter().find(|p| p.guid == "emn-guid-001").expect("full row present");
+        assert_eq!(full.title, "Even More News: JD Vance's Town Hall Was a Disaster");
+        assert_eq!(full.channel_title.as_deref(), Some("Even More News"));
+        assert_eq!(full.channel_id.as_deref(), Some("ch-emn"));
+        assert_eq!(full.audio_url.as_deref(), Some("https://media.example.org/emn-001.mp3"));
+        assert_eq!(full.duration_seconds, Some(1620));
+        let published = full.published_at.expect("RFC 3339 date parsed");
+        assert_eq!(published.inner().to_rfc3339(), "2026-10-14T17:00:00+00:00");
+        let minimal = podcasts.iter().find(|p| p.guid == "emn-guid-002").expect("minimal row present");
+        assert_eq!(minimal.title, "Even More News: The Housing Crisis Is Not an Accident");
+        assert!(minimal.published_at.is_none(), "missing date maps to None");
+        assert_eq!(minimal.duration_seconds, None);
+        assert!(minimal.audio_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn linked_podcast_rows_are_excluded_from_matcher_input() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-emn", "https://feeds.example.org/emn.xml", "Even More News", "podcast", Some("https://feeds.example.org/emn.xml")).await;
+        insert_stream_episode(
+            &pool, "ep-emn-1", "ch-emn", "emn-guid-001", "Even More News: The Housing Crisis Is Not an Accident",
+            None, Some("emn-guid-001"), Some("https://media.example.org/emn-001.mp3"), None, Some(1620),
+        )
+        .await;
+        insert_stream_episode(
+            &pool, "ep-emn-2", "ch-emn", "emn-guid-002", "Even More News: Why Billionaires Should Not Exist",
+            None, Some("emn-guid-002"), Some("https://media.example.org/emn-002.mp3"), None, Some(1500),
+        )
+        .await;
+        insert_link(&pool, "link-1", "emn-guid-001", "smn-vid-001").await;
+
+        let podcasts = get_unmatched_podcasts(&pool).await.expect("unmatched podcasts");
+        assert_eq!(podcasts.len(), 1, "linked guid must be excluded");
+        assert_eq!(podcasts[0].guid, "emn-guid-002");
+    }
+
+    #[tokio::test]
+    async fn unlinked_video_rows_reach_the_matcher() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-smn", "UC-mock-smn", "Some More News", "video", None).await;
+        insert_channel(&pool, "ch-emn", "https://feeds.example.org/emn.xml", "Even More News", "podcast", Some("https://feeds.example.org/emn.xml")).await;
+        insert_stream_episode(
+            &pool, "ep-smn-1", "ch-smn", "smn-vid-001",
+            "Some More News: JD Vance's Town Hall Was a Disaster",
+            Some("smn-vid-001"), None, None, None, Some(1600),
+        )
+        .await;
+        // A podcast-side row must NOT appear in the video candidate list.
+        insert_stream_episode(
+            &pool, "ep-emn-1", "ch-emn", "emn-guid-001", "Even More News: JD Vance's Town Hall Was a Disaster",
+            None, Some("emn-guid-001"), Some("https://media.example.org/emn-001.mp3"), None, Some(1620),
+        )
+        .await;
+
+        let videos = get_youtube_videos(&pool).await.expect("youtube videos");
+        assert_eq!(videos.len(), 1, "only video-side rows are candidates");
+        let v = &videos[0];
+        // The matcher writes `video.id` into episode_links.youtube_video_id,
+        // and D6 resolution matches that key against episodes.video_id — so
+        // `id` MUST carry the external YouTube id.
+        assert_eq!(v.id, "smn-vid-001", "id is the external video id (the link key)");
+        assert_eq!(v.video_id, "smn-vid-001");
+        assert_eq!(v.title, "Some More News: JD Vance's Town Hall Was a Disaster");
+        assert_eq!(v.channel_title.as_deref(), Some("Some More News"));
+        assert_eq!(v.channel_id.as_deref(), Some("ch-smn"));
+        assert_eq!(v.duration_seconds, Some(1600));
+        assert!(v.published_at.is_none(), "search rows have no absolute date");
+    }
+
+    #[tokio::test]
+    async fn linked_video_rows_are_excluded_from_matcher_input() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-smn", "UC-mock-smn", "Some More News", "video", None).await;
+        insert_stream_episode(
+            &pool, "ep-smn-1", "ch-smn", "smn-vid-001", "Some More News: Why Billionaires Should Not Exist",
+            Some("smn-vid-001"), None, None, None, Some(1600),
+        )
+        .await;
+        insert_stream_episode(
+            &pool, "ep-smn-2", "ch-smn", "smn-vid-002", "Some More News: The Housing Crisis Is Not an Accident",
+            Some("smn-vid-002"), None, None, None, Some(1540),
+        )
+        .await;
+        insert_link(&pool, "link-1", "emn-guid-001", "smn-vid-001").await;
+
+        let videos = get_youtube_videos(&pool).await.expect("youtube videos");
+        assert_eq!(videos.len(), 1, "linked video id must be excluded");
+        assert_eq!(videos[0].video_id, "smn-vid-002");
     }
 }
 
