@@ -188,6 +188,14 @@ impl Database {
         queries::insert_episode_link(&self.pool, link).await
     }
 
+    pub async fn set_episode_link_confirmation(&self, link_id: &str, confirmed: bool) -> DbResult<()> {
+        queries::set_episode_link_confirmation(&self.pool, link_id, confirmed).await
+    }
+
+    pub async fn delete_episode_link(&self, link_id: &str) -> DbResult<()> {
+        queries::delete_episode_link(&self.pool, link_id).await
+    }
+
     // Preferences
     pub async fn get_preferences(&self) -> DbResult<UserPreferences> {
         queries::get_preferences(&self.pool).await

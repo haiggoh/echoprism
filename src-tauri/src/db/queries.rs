@@ -1619,6 +1619,36 @@ pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbRes
     Ok(())
 }
 
+// 1d Phase 3: the review commands' backing queries. An unknown link id is an
+// ERROR (rows_affected == 0), never a silent success — the UI only offers
+// ids it listed, so a miss is a bug worth surfacing. Runtime queries, not
+// `query_as!` macros (.sqlx offline cache, same rule as the matcher inputs).
+pub async fn set_episode_link_confirmation(pool: &SqlitePool, link_id: &str, confirmed: bool) -> DbResult<()> {
+    let result = sqlx::query("UPDATE episode_links SET user_confirmed = ?, updated_at = ? WHERE id = ?")
+        .bind(confirmed)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(link_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("episode link not found: {}", link_id));
+    }
+    Ok(())
+}
+
+pub async fn delete_episode_link(pool: &SqlitePool, link_id: &str) -> DbResult<()> {
+    let result = sqlx::query("DELETE FROM episode_links WHERE id = ?")
+        .bind(link_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("episode link not found: {}", link_id));
+    }
+    Ok(())
+}
+
 /// D6 (design-decisions.md): resolve smart links for a batch of episodes at
 /// READ time, setting `smart_link_id` (the pairing link) and
 /// `linked_episode_id` (the cross-stream twin) so any episode the user picks
@@ -2321,6 +2351,88 @@ mod d6_d7_tests {
         let videos = get_youtube_videos(&pool).await.expect("youtube videos");
         assert_eq!(videos.len(), 1, "linked video id must be excluded");
         assert_eq!(videos[0].video_id, "smn-vid-002");
+    }
+
+    // ---- 1d Phase 3: the review commands' backing queries ----
+    // confirm_smart_link/unlink_smart_link were no-ops; these pin the
+    // confirmation flip and removal they now delegate to. An unknown link id
+    // must ERROR, not silently succeed — the UI only offers ids it listed,
+    // so a miss is a bug worth surfacing.
+
+    #[tokio::test]
+    async fn confirmation_flip_updates_user_confirmed_and_updated_at() {
+        let pool = fresh_pool().await;
+        insert_link(&pool, "link-1", "emn-guid-001", "smn-vid-001").await;
+        // A second link the flip must NOT touch: a WHERE-less UPDATE would
+        // set every row, and this assertion is what catches it.
+        insert_link(&pool, "link-2", "emn-guid-002", "smn-vid-002").await;
+        let before = chrono::Utc::now() - chrono::Duration::hours(1);
+        query("UPDATE episode_links SET updated_at = ? WHERE id = ?")
+            .bind(before.to_rfc3339())
+            .bind("link-1")
+            .execute(&pool)
+            .await
+            .expect("backdate updated_at");
+
+        set_episode_link_confirmation(&pool, "link-1", true).await.expect("confirm");
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        let link = links.iter().find(|l| l.id == "link-1").expect("link present");
+        assert!(link.user_confirmed, "confirm must set user_confirmed");
+        assert!(link.updated_at.inner() > before, "updated_at must move forward");
+        let other = links.iter().find(|l| l.id == "link-2").expect("other link present");
+        assert!(!other.user_confirmed, "the flip must touch ONLY the named link");
+
+        set_episode_link_confirmation(&pool, "link-1", false).await.expect("unconfirm");
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        let link = links.iter().find(|l| l.id == "link-1").expect("link present");
+        assert!(!link.user_confirmed, "unconfirm must clear user_confirmed");
+    }
+
+    #[tokio::test]
+    async fn unknown_link_id_errors_on_confirm_and_delete() {
+        let pool = fresh_pool().await;
+        // Seeded: on an EMPTY table a WHERE-less UPDATE also affects 0 rows,
+        // so the unknown-id error would pass for the wrong reason and a
+        // dropped WHERE clause would go undetected (measured in the mutation
+        // check). With a row present, rows_affected separates the cases.
+        insert_link(&pool, "link-1", "emn-guid-001", "smn-vid-001").await;
+        assert!(
+            set_episode_link_confirmation(&pool, "no-such-link", true)
+                .await
+                .is_err(),
+            "confirm on unknown id must error"
+        );
+        assert!(
+            delete_episode_link(&pool, "no-such-link").await.is_err(),
+            "delete on unknown id must error"
+        );
+        // The seeded row must be untouched by the failed calls.
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        assert_eq!(links.len(), 1);
+        assert!(!links[0].user_confirmed);
+    }
+
+    #[tokio::test]
+    async fn delete_episode_link_removes_the_row() {
+        let pool = fresh_pool().await;
+        insert_link(&pool, "link-1", "emn-guid-001", "smn-vid-001").await;
+        insert_link(&pool, "link-2", "emn-guid-002", "smn-vid-002").await;
+
+        delete_episode_link(&pool, "link-1").await.expect("delete");
+
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        assert_eq!(links.len(), 1, "only the unlinked row remains");
+        assert_eq!(links[0].id, "link-2");
+    }
+
+    // The TS side calls invoke<{ matched_count: number }>('match_episodes')
+    // (src/hooks/useTauriCommands.ts:73) — the shared core MatchResult is the
+    // wire type, so its serialization key must stay matched_count.
+    #[test]
+    fn match_result_serializes_matched_count_for_the_ts_contract() {
+        let json = serde_json::to_value(MatchResult { matched_count: 7 }).expect("serialize");
+        assert!(json.get("matched_count").is_some(), "wire key must be 'matched_count'");
+        assert_eq!(json.get("matched_count").and_then(|v| v.as_u64()), Some(7));
     }
 }
 
