@@ -1,81 +1,32 @@
 //! Video extraction using yt-dlp and Invidious/Piped APIs
 
 use crate::types::*;
-use crate::instance_pool::InstancePool;
-use tauri::{AppHandle, Manager};
-use std::sync::Arc;
+use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 
 pub struct Extractor {
     client: reqwest::Client,
-    pool: Arc<InstancePool>,
     /// Resolved once on first use; the extractor lives in `Arc` managed state,
     /// so memoization uses `OnceLock` rather than `&mut`.
     yt_dlp_path: std::sync::OnceLock<String>,
 }
 
 impl Extractor {
-    pub fn new(app_handle: AppHandle) -> Self {
-        let pool = app_handle.state::<Arc<crate::instance_pool::InstancePool>>().inner().clone();
-
+    /// The AppHandle parameter predates 1b: instance selection moved to the
+    /// call sites (search/stream commands pass ordered candidates), so the
+    /// extractor no longer reads any managed state. Kept in the signature to
+    /// avoid touching the managed-state construction order in lib.rs.
+    pub fn new(_app_handle: AppHandle) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .user_agent("Mozilla/5.0 (compatible; EchoPrism/0.1)")
                 .build()
                 .expect("Failed to create HTTP client"),
-            pool,
             yt_dlp_path: std::sync::OnceLock::new(),
         }
     }
-    
-    /// Extract video info using yt-dlp
-    pub async fn extract_with_yt_dlp(&self, url: &str) -> Result<VideoInfo, String> {
-        // Try to find yt-dlp binary
-        let yt_dlp = self.find_yt_dlp().await?;
-        
-        let output = tokio::process::Command::new(&yt_dlp)
-            .args([
-                "--dump-json",
-                "--no-playlist",
-                "--no-warnings",
-                "--skip-download",
-                url,
-            ])
-            .output()
-            .await
-            .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
-        
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("yt-dlp failed: {}", stderr));
-        }
-        
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let info: YtDlpOutput = serde_json::from_str(&stdout)
-            .map_err(|e| format!("Failed to parse yt-dlp output: {}", e))?;
-        
-        Ok(self.convert_yt_dlp_output(info))
-    }
-    
-    /// Extract video info using Invidious/Piped instance
-    pub async fn extract_with_instance(&self, video_id: &str, instance: &Instance) -> Result<VideoInfo, String> {
-        let _url = format!("{}/api/v1/videos/{}", instance.url.trim_end_matches('/'), video_id);
-        
-        let response = reqwest::get(&format!("{}/api/v1/videos/{}", instance.url.trim_end_matches('/'), video_id))
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
-        
-        if !response.status().is_success() {
-            return Err(format!("Instance returned error: {}", response.status()));
-        }
-        
-        let invidious_response: InvidiousVideoResponse = response.json().await
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
-        
-        Ok(self.convert_invidious_response(invidious_response))
-    }
-    
+
     /// Search YouTube through one instance's API. The instance type decides
     /// the endpoint and parser (Piped: /search?filter=videos; Invidious:
     /// /api/v1/search?type=video).
@@ -134,11 +85,6 @@ impl Extractor {
             return Err(format!("yt-dlp search failed: {}", stderr));
         }
         parse_yt_dlp_search(&String::from_utf8_lossy(&output.stdout))
-    }
-
-    /// Get stream URL for playback via one instance (yt-dlp fallback inside).
-    pub async fn get_stream_url(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, instance: &Instance) -> Result<StreamUrl, String> {
-        self.resolve_stream(video_id, format, quality, std::slice::from_ref(instance)).await
     }
 
     /// Resolve a playable stream URL: try each candidate instance in order,
@@ -238,94 +184,6 @@ impl Extractor {
 
         Err("yt-dlp not found. Install it with: brew install yt-dlp".to_string())
     }
-    
-    fn convert_yt_dlp_output(&self, info: YtDlpOutput) -> VideoInfo {
-        VideoInfo {
-            id: info.id,
-            title: info.title,
-            description: info.description,
-            duration: info.duration.map(|d| d as u64),
-            thumbnail: info.thumbnail,
-            channel: info.uploader,
-            channel_id: info.uploader_id,
-            upload_date: info.upload_date,
-            view_count: info.view_count,
-            formats: info.formats.unwrap_or_default().into_iter().map(|f| VideoFormat {
-                format_id: f.format_id,
-                ext: f.ext,
-                resolution: f.resolution,
-                fps: f.fps,
-                vcodec: f.vcodec,
-                acodec: f.acodec,
-                filesize: f.filesize,
-                url: f.url,
-            }).collect(),
-        }
-    }
-    
-    fn convert_invidious_response(&self, resp: InvidiousVideoResponse) -> VideoInfo {
-        VideoInfo {
-            id: resp.video_id,
-            title: resp.title,
-            description: Some(resp.description),
-            duration: Some(resp.length_seconds),
-            thumbnail: resp.video_thumbnails.last().map(|t| t.url.clone()),
-            channel: Some(resp.author),
-            channel_id: Some(resp.author_id),
-            upload_date: resp.published_text,
-            view_count: Some(resp.view_count),
-            formats: resp.adaptive_formats.into_iter().map(|f| VideoFormat {
-                format_id: f.format_id,
-                ext: f.container,
-                resolution: Some(format!("{}x{}", f.width, f.height)),
-                fps: None,
-                vcodec: Some(f.encoding),
-                acodec: None,
-                filesize: None,
-                url: f.url,
-            }).collect(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct YtDlpOutput {
-    pub id: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub duration: Option<f64>,
-    pub thumbnail: Option<String>,
-    pub uploader: Option<String>,
-    pub uploader_id: Option<String>,
-    pub upload_date: Option<String>,
-    pub view_count: Option<u64>,
-    pub formats: Option<Vec<YtDlpFormat>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct YtDlpFormat {
-    pub format_id: String,
-    pub ext: String,
-    pub resolution: Option<String>,
-    pub fps: Option<f64>,
-    pub vcodec: Option<String>,
-    pub acodec: Option<String>,
-    pub filesize: Option<u64>,
-    pub url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InvidiousVideoResponse {
-    pub video_id: String,
-    pub title: String,
-    pub description: String,
-    pub length_seconds: u64,
-    pub video_thumbnails: Vec<InvidiousThumbnail>,
-    pub author: String,
-    pub author_id: String,
-    pub published_text: Option<String>,
-    pub view_count: u64,
-    pub adaptive_formats: Vec<InvidiousFormat>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -334,19 +192,6 @@ pub struct InvidiousThumbnail {
     pub width: u32,
     pub height: u32,
     pub quality: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InvidiousFormat {
-    pub format_id: String,
-    pub container: String,
-    pub width: u32,
-    pub height: u32,
-    pub encoding: String,
-    pub bitrate: u64,
-    pub url: String,
-    pub quality: String,
-    pub itag: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

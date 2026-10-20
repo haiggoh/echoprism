@@ -154,7 +154,14 @@ impl PodcastManager {
         })
     }
     
-    /// Import subscriptions from OPML
+    /// Import subscriptions from OPML.
+    ///
+    /// Unwired future feature: the roadmap names OPML import/export as
+    /// existing-but-unused (step 1c delivered the iTunes directory instead),
+    /// and channels::import/export are its registered stub entry points.
+    /// Its persistence half, save_podcast_feed, must call the 1c
+    /// upsert_podcast_subscription when this gets wired.
+    #[allow(dead_code)]
     pub async fn import_opml(&self, opml_content: &str) -> Result<ImportResult, String> {
         let doc = roxmltree::Document::parse(opml_content)
             .map_err(|e| format!("Failed to parse OPML: {}", e))?;
@@ -186,6 +193,10 @@ impl PodcastManager {
         Ok(ImportResult { imported, errors })
     }
     
+    /// Persistence half of import_opml (kept with it, see import_opml); its
+    /// inserts are still commented out and must become a call to the 1c
+    /// upsert_podcast_subscription when OPML import gets wired.
+    #[allow(dead_code)]
     async fn save_podcast_feed(&self, feed_url: &str, title: String, feed_data: PodcastFeedData) -> Result<(), String> {
         // Save podcast feed to database
         let _feed = PodcastFeed {
@@ -219,7 +230,11 @@ impl PodcastManager {
         Ok(())
     }
     
-    /// Export subscriptions to OPML
+    /// Export subscriptions to OPML.
+    ///
+    /// Unwired future feature, kept with import_opml — see the roadmap note
+    /// there. `channels::export` is its registered stub entry point.
+    #[allow(dead_code)]
     pub async fn export_opml(&self) -> Result<String, String> {
         // Generate OPML from database
         Ok("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n  <head><title>EchoPrism Subscriptions</title></head>\n  <body></body>\n</opml>".to_string())
@@ -295,6 +310,10 @@ impl PodcastManager {
     }
 
     /// Import subscriptions from YouTube (via Invidious instance)
+    /// Unwired future feature: import YouTube-channel subscriptions via an
+    /// Invidious-compatible subscriptions endpoint, kept for the
+    /// video-channel subscribe step (see Database::insert_channel).
+    #[allow(dead_code)]
     pub async fn import_from_youtube(&self, instance_url: &str) -> Result<ImportResult, String> {
         // Fetch subscriptions from Invidious instance
         let url = format!("{}/api/v1/subscriptions", instance_url.trim_end_matches('/'));
@@ -372,7 +391,10 @@ pub struct PodcastEpisode {
     pub transcript: Option<String>,
 }
 
+/// Unwired-future: return type of import_opml/import_from_youtube (kept with
+/// them; see PodcastManager::import_opml).
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ImportResult {
     pub imported: u32,
     pub errors: Vec<String>,
@@ -427,7 +449,10 @@ fn parse_itunes_search(body: &str) -> Result<Vec<PodcastSearchResult>, String> {
         .collect())
 }
 
+/// Unwired future feature: shape for a YouTube-channel subscriptions import
+/// (import_from_youtube), kept with it — see PodcastManager::import_opml.
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct YoutubeSubscription {
     pub author: String,
     pub author_id: String,
@@ -436,13 +461,20 @@ pub struct YoutubeSubscription {
     pub subscriber_count: u32,
 }
 
+/// Unwired-future shape, kept with YoutubeSubscription.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Thumbnail {
     pub url: String,
     pub width: u32,
     pub height: u32,
 }
 
+/// Reserved for itunes:duration parsing: feeds publish `<itunes:duration>`
+/// (seen in the Even More News fixture) but parse_rss ignores it today, so
+/// podcast durations are always None and the matcher's duration signal sits
+/// at neutral. Wiring this in is the recorded 1d future work.
+#[allow(dead_code)]
 fn parse_duration(duration: &str) -> Option<u64> {
     // Parse iTunes duration format (HH:MM:SS or MM:SS or seconds)
     let parts: Vec<&str> = duration.split(':').collect();

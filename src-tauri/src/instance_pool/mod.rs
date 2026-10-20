@@ -144,18 +144,10 @@ impl InstancePool {
         
         // Update database
         // TODO: Update DB
-        
+
         Ok(())
     }
-    
-    pub async fn get_best_instance(&self, instance_type: InstanceType) -> Option<Instance> {
-        let instances = self.instances.read().await;
-        instances.values()
-            .filter(|i| i.instance_type == instance_type && i.health == InstanceHealth::Healthy)
-            .min_by_key(|i| i.latency_ms.unwrap_or(i64::MAX))
-            .cloned()
-    }
-    
+
     pub async fn set_auto_failover(&self, enabled: bool) {
         *self.auto_failover.write().await = enabled;
     }

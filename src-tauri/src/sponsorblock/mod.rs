@@ -7,6 +7,13 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
+/// Unwired future feature: the SponsorBlock integration is designed-in
+/// (episodes.sponsors column in the schema; the manager is constructed and
+/// managed at startup; the background sync loop stubs its round) but the
+/// playback path does not query segments yet. Keep the whole manager;
+/// wiring it is post-release work — the roadmap only attributes the API
+/// (step 4a) before then.
+#[allow(dead_code)]
 pub struct SponsorBlockManager {
     client: reqwest::Client,
     db: Arc<Database>,
@@ -20,6 +27,7 @@ pub struct SponsorBlockCacheEntry {
     pub expires_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 impl SponsorBlockManager {
     pub fn new(db: Arc<crate::db::Database>) -> Self {
         Self {

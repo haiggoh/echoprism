@@ -87,10 +87,16 @@ impl Database {
         queries::list_channels(&self.pool, params).await
     }
 
+    /// Unwired until the video-channel subscribe step (1c deferral): the
+    /// subscribe/unsubscribe commands keep their calls commented at
+    /// commands/channels.rs:51/58 pending channel-metadata fetching.
+    #[allow(dead_code)]
     pub async fn insert_channel(&self, channel: &Channel) -> DbResult<()> {
         queries::insert_channel(&self.pool, channel).await
     }
 
+    /// See insert_channel — same video-subscribe deferral.
+    #[allow(dead_code)]
     pub async fn delete_channel(&self, id: &str) -> DbResult<()> {
         queries::delete_channel(&self.pool, id).await
     }

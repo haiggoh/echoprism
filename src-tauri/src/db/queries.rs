@@ -533,6 +533,8 @@ pub async fn list_channels(
     }
 }
 
+/// Unwired until the video-channel subscribe step (see Database::insert_channel).
+#[allow(dead_code)]
 pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()> {
     let format_pref = channel.format_preference.to_string();
     let channel_type_str = channel.channel_type.to_string();
@@ -570,6 +572,8 @@ pub async fn insert_channel(pool: &SqlitePool, channel: &Channel) -> DbResult<()
     Ok(())
 }
 
+/// Unwired until the video-channel subscribe step (see Database::insert_channel).
+#[allow(dead_code)]
 pub async fn delete_channel(pool: &SqlitePool, id: &str) -> DbResult<()> {
     query!("DELETE FROM channels WHERE id = ?", id)
         .execute(pool)
