@@ -8,6 +8,15 @@ use std::sync::Arc;
 use rss::Channel as RssChannel;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use futures::StreamExt;
+
+/// How many feed FETCHES may be in flight at once during a refresh.
+/// Network-bound work on a desktop client: 4 gives ~4x wall-clock on the
+/// common path while keeping ≤4 parallel hits per feed host (RSS
+/// politeness). Stores are sequential by design — see
+/// refresh_due_feeds_with.
+const FEED_REFRESH_CONCURRENCY: usize = 4;
 use chrono::{DateTime, Utc};
 
 pub struct PodcastManager {
@@ -275,9 +284,46 @@ impl PodcastManager {
     /// the others.
     pub async fn refresh_due_feeds(&self) -> Result<usize, String> {
         let due = self.db.due_podcast_feeds().await?;
+        // Each future gets its own Arc handle clone (cheap; the connection
+        // pool underneath is shared, so reuse is preserved — building a
+        // whole new Client per feed is what would lose it).
+        let client = self.client.clone();
+        self.refresh_due_feeds_with(&due, move |url| {
+            let client = client.clone();
+            async move { Self::fetch_feed_with(&client, &url).await }
+        })
+        .await
+    }
+
+    /// Refresh a due set with the given fetch strategy. FETCHES overlap up
+    /// to [`FEED_REFRESH_CONCURRENCY`] in flight (`buffer_unordered` drives
+    /// the futures inline on the caller's task, so the cap structurally
+    /// bounds spawn); STORES run sequentially — the network is where the
+    /// wall-clock goes, and concurrent write transactions on one SQLite
+    /// file take an immediate SQLITE_BUSY (deferred-upgrade deadlock
+    /// avoidance; busy_timeout does not retry it — measured: 2 of 4
+    /// concurrent upserts failed with code 5). Per-feed isolation is
+    /// structural: a fetch or store failure warns and moves on, the feed
+    /// stays due (its last_fetched_at is only touched after a successful
+    /// upsert), and the return count is feeds whose fetch AND store both
+    /// succeeded.
+    pub(crate) async fn refresh_due_feeds_with<F, Fut>(&self, due: &[(String, String)], fetch: F) -> Result<usize, String>
+    where
+        F: Fn(String) -> Fut,
+        Fut: std::future::Future<Output = Result<PodcastFeedData, String>>,
+    {
+        let fetched = futures::stream::iter(due.iter().cloned())
+            .map(move |(feed_url, stored_title)| {
+                let fut = fetch(feed_url.clone());
+                async move { (feed_url, stored_title, fut.await) }
+            })
+            .buffer_unordered(FEED_REFRESH_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await;
+
         let mut refreshed = 0usize;
-        for (feed_url, stored_title) in due {
-            match self.fetch_feed(&feed_url).await {
+        for (feed_url, stored_title, result) in fetched {
+            match result {
                 Ok(data) => {
                     let fallback = if stored_title.is_empty() {
                         data.title.clone()
@@ -579,4 +625,136 @@ mod tests {
             results[0].feed_url
         );
     }
+
+    // ---- 1e: concurrent refresh of due feeds ----
+    // The 1c deferral: refresh fetched due feeds one at a time. The RED
+    // assertion is STRUCTURAL (max observed in-flight fetches), so it fails
+    // against sequential code on any machine, at any speed, with zero
+    // network and zero wall-clock sensitivity: the injected closure sleeps
+    // while holding an in-flight slot, and sequential code can never exceed
+    // one.
+
+    #[allow(clippy::too_many_arguments)]
+    async fn refresh_test_pool() -> (sqlx::SqlitePool, PodcastManager) {
+        // A real temp-file DB, not :memory:: each pool connection gets its
+        // OWN private :memory: database (the trap fresh_pool's comment
+        // documents), so concurrent refresh futures would hit empty schemas.
+        // A file DB is also the honest emulation of production (WAL, one
+        // writer at a time). Left for the OS to clean up.
+        let dir = std::env::temp_dir().join(format!(
+            "echoprism-refresh-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let url = format!("sqlite://{}/test.db?mode=rwc", dir.display());
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect(&url)
+            .await
+            .expect("connect temp-file sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        sqlx::query("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+            .execute(&pool)
+            .await
+            .expect("insert user");
+        let db = std::sync::Arc::new(crate::db::Database::from_pool(pool.clone()));
+        let manager = PodcastManager {
+            client: reqwest::Client::new(),
+            db,
+        };
+        (pool, manager)
+    }
+
+    fn fixture_feed_data() -> PodcastFeedData {
+        const FEED: &str = include_str!("fixtures/vergecast_feed.xml");
+        PodcastManager::parse_rss(FEED).expect("parse vergecast fixture")
+    }
+
+    #[tokio::test]
+    async fn refresh_overlaps_fetches_up_to_cap() {
+        let (pool, manager) = refresh_test_pool().await;
+        let due: Vec<(String, String)> = (0..4)
+            .map(|i| (format!("https://feeds.example.org/feed-{i}.xml"), format!("Feed {i}")))
+            .collect();
+
+        let in_flight = std::sync::atomic::AtomicI64::new(0);
+        let max_in_flight = std::sync::atomic::AtomicI64::new(0);
+        // Borrow the counters into the closure (async move would move them
+        // out on first call, making the closure FnOnce).
+        let in_flight = &in_flight;
+        let max_in_flight = &max_in_flight;
+        let fetch = |_url: String| {
+            in_flight.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            max_in_flight.fetch_max(
+                in_flight.load(std::sync::atomic::Ordering::SeqCst),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                in_flight.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(fixture_feed_data())
+            }
+        };
+
+        let refreshed = manager
+            .refresh_due_feeds_with(&due, fetch)
+            .await
+            .expect("refresh");
+
+        assert_eq!(refreshed, 4, "every feed must refresh");
+        let max = max_in_flight.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            max, 4,
+            "all 4 fetches must overlap (sequential code can never exceed 1)"
+        );
+        // Semantics pinned under concurrency: rows stored, every feed touched.
+        let channels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels")
+            .fetch_one(&pool)
+            .await
+            .expect("count channels");
+        assert_eq!(channels, 4, "one channel row per feed");
+        let touched: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM podcast_feeds WHERE last_fetched_at IS NOT NULL",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("count touched feeds");
+        assert_eq!(touched, 4, "every feed's last_fetched_at must be set");
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn failing_feed_does_not_block_or_count_others() {
+        let (pool, manager) = refresh_test_pool().await;
+        let due = vec![
+            ("https://feeds.example.org/broken.xml".to_string(), "Broken".to_string()),
+            ("https://feeds.example.org/works.xml".to_string(), "Works".to_string()),
+        ];
+
+        let fetch = |url: String| async move {
+            if url.contains("broken") {
+                Err("boom".to_string())
+            } else {
+                Ok(fixture_feed_data())
+            }
+        };
+
+        let refreshed = manager
+            .refresh_due_feeds_with(&due, fetch)
+            .await
+            .expect("refresh");
+
+        assert_eq!(refreshed, 1, "only the successful feed counts");
+        let broken_touched: Option<String> = sqlx::query_scalar(
+            "SELECT last_fetched_at FROM podcast_feeds WHERE feed_url LIKE '%broken%'",
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("query broken feed");
+        // The broken feed never made it into podcast_feeds (upsert happens
+        // only after a successful fetch) — it stays due for the next cycle.
+        assert!(broken_touched.is_none(), "failed feed must stay due");
+        pool.close().await;
+    }
 }
+

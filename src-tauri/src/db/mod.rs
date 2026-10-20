@@ -14,6 +14,13 @@ pub struct Database {
 }
 
 impl Database {
+    /// Seam constructor: wrap an existing pool. The app path is `new` (it
+    /// owns the data-dir file and runs migrations); callers of this variant
+    /// — tests, and anything injecting a pool — run migrations themselves.
+    pub fn from_pool(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
     pub async fn new(app_handle: &tauri::AppHandle) -> DbResult<Self> {
         let app_dir = app_handle
             .path()
