@@ -414,6 +414,8 @@ struct PipedSearchItem {
     #[serde(default)]
     uploader_name: Option<String>,
     #[serde(default)]
+    uploader_url: Option<String>,
+    #[serde(default)]
     duration: Option<i64>,
     #[serde(default)]
     views: Option<i64>,
@@ -459,6 +461,17 @@ fn video_id_from_watch_url(url: &str) -> Option<String> {
     (!id.is_empty()).then(|| id.to_string())
 }
 
+/// Pull the YouTube channel id out of a Piped uploader URL. Only
+/// "/channel/<id>" carries the real UC id; "/@handle" URLs stay None so the
+/// name-derived fallback keys them (review finding 2026-10-20: without this,
+/// the same creator keyed differently per backend and got duplicate channel
+/// rows).
+fn channel_id_from_uploader_url(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("/channel/")?;
+    let id = rest.split('/').next().unwrap_or("");
+    (!id.is_empty()).then(|| id.to_string())
+}
+
 /// Parse a Piped /search response. Malformed JSON is an Err; items without a
 /// parseable watch URL (channel/playlist cards) are skipped.
 fn parse_piped_search(body: &str) -> Result<Vec<VideoInfo>, String> {
@@ -476,7 +489,10 @@ fn parse_piped_search(body: &str) -> Result<Vec<VideoInfo>, String> {
                 duration: item.duration.map(|d| d.max(0) as u64),
                 thumbnail: item.thumbnail,
                 channel: item.uploader_name,
-                channel_id: None,
+                channel_id: item
+                    .uploader_url
+                    .as_deref()
+                    .and_then(channel_id_from_uploader_url),
                 upload_date: item.uploaded_date,
                 view_count: item.views.map(|v| v.max(0) as u64),
                 formats: Vec::new(),
@@ -598,6 +614,11 @@ mod tests {
             "Why your favorite creator is building an app | The Vergecast"
         );
         assert_eq!(v.channel.as_deref(), Some("The Verge"));
+        assert_eq!(
+            v.channel_id.as_deref(),
+            Some("UCddiUEpeqJcYeBxX1IVBKvQ"),
+            "the UC id from /channel/ keys channels identically across backends"
+        );
         assert_eq!(v.duration, Some(2487));
         assert_eq!(v.view_count, Some(1282));
         assert!(

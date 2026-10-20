@@ -118,6 +118,9 @@ pub async fn upsert_video_results(
     pool: &SqlitePool,
     videos: &[crate::extractor::VideoInfo],
 ) -> DbResult<usize> {
+    // One transaction for the whole batch: a mid-batch failure must not leave
+    // orphan channel rows or a half-stored result set behind.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let mut inserted = 0usize;
     for video in videos {
         if video.id.is_empty() || video.title.is_empty() {
@@ -148,7 +151,7 @@ pub async fn upsert_video_results(
             "SELECT id FROM channels WHERE external_id = ? LIMIT 1",
         )
         .bind(&channel_external)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -163,12 +166,12 @@ pub async fn upsert_video_results(
                 )
                 .bind(&channel_external)
                 .bind(&channel_title)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await
                 .map_err(|e| e.to_string())?;
                 sqlx::query_scalar("SELECT id FROM channels WHERE external_id = ? LIMIT 1")
                     .bind(&channel_external)
-                    .fetch_optional(pool)
+                    .fetch_optional(&mut *tx)
                     .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "channel row vanished after insert".to_string())?
@@ -179,7 +182,7 @@ pub async fn upsert_video_results(
             "SELECT id FROM episodes WHERE external_id = ? LIMIT 1",
         )
         .bind(&video.id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
         if exists.is_some() {
@@ -201,11 +204,12 @@ pub async fn upsert_video_results(
         .bind(video.duration.map(|d| d as i64))
         .bind(format!("https://www.youtube.com/watch?v={}", video.id))
         .bind(&video.id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
         inserted += 1;
     }
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(inserted)
 }
 
