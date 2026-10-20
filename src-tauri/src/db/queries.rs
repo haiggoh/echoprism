@@ -905,9 +905,6 @@ pub async fn search_episodes(
     if let Some(episode_type) = params.as_ref().and_then(|p| p.episode_type.as_deref()) {
         qb.push(" AND c.type = ").push_bind(episode_type.to_string());
     }
-    if let Some(episode_type) = params.as_ref().and_then(|p| p.episode_type.as_deref()) {
-        
-    }
     qb.push(" ORDER BY e.published_at DESC LIMIT ")
         .push_bind(limit_i64);
 
