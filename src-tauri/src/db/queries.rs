@@ -285,7 +285,8 @@ pub async fn upsert_podcast_subscription(
             continue;
         }
         let exists: Option<String> =
-            sqlx::query_scalar("SELECT id FROM episodes WHERE external_id = ? LIMIT 1")
+            sqlx::query_scalar("SELECT id FROM episodes WHERE channel_id = ? AND external_id = ? LIMIT 1")
+                .bind(&channel_id)
                 .bind(&episode.guid)
                 .fetch_optional(&mut *tx)
                 .await
@@ -322,7 +323,7 @@ pub async fn due_podcast_feeds(pool: &SqlitePool) -> DbResult<Vec<(String, Strin
         r#"SELECT feed_url, title FROM podcast_feeds
            WHERE is_active = 1
              AND (last_fetched_at IS NULL
-                  OR last_fetched_at < datetime('now', '-' || fetch_interval_minutes || ' minutes'))"#,
+                  OR datetime(last_fetched_at) < datetime('now', '-' || fetch_interval_minutes || ' minutes'))"#,
     )
     .fetch_all(pool)
     .await
@@ -2409,5 +2410,51 @@ mod podcast_subscription_tests {
             .expect("touch");
         let due = due_podcast_feeds(&pool).await.expect("due check");
         assert!(due.is_empty(), "a just-touched feed is not due");
+    }
+
+    /// Regression (1c review): last_fetched_at is written by the app, not by
+    /// SQLite, so the due check must hold for the APP's timestamp format. An
+    /// RFC 3339 value ('T' separator) sorts after SQLite's datetime() (' '),
+    /// which made a feed fetched earlier the same day never come due.
+    #[tokio::test]
+    async fn app_written_timestamp_from_hours_ago_is_due() {
+        let pool = fresh_pool().await;
+        upsert_podcast_subscription(&pool, "https://feeds.example/vergecast", "The Vergecast", &feed())
+            .await
+            .expect("subscribe");
+        let two_hours_ago = (chrono::Utc::now() - chrono::Duration::minutes(120)).to_rfc3339();
+        query("UPDATE podcast_feeds SET last_fetched_at = ?")
+            .bind(&two_hours_ago)
+            .execute(&pool)
+            .await
+            .expect("age feed in app format");
+        let due = due_podcast_feeds(&pool).await.expect("due check");
+        assert_eq!(due.len(), 1, "fetched 2h ago with a 60m interval must be due");
+    }
+
+    /// Regression (1c review): guids are only unique within a feed. Two
+    /// podcasts that both number episodes "1" must each keep their episode.
+    #[tokio::test]
+    async fn same_guid_in_two_podcasts_keeps_both_episodes() {
+        let pool = fresh_pool().await;
+        let mut a = feed();
+        a.episodes.truncate(1);
+        a.episodes[0].guid = "1".into();
+        let mut b = a.clone();
+        b.title = "Power User".into();
+        b.episodes[0].title = "Power User ep 1".into();
+
+        let (_, n_a) = upsert_podcast_subscription(&pool, "https://feeds.example/a", "A", &a)
+            .await
+            .expect("subscribe a");
+        let (_, n_b) = upsert_podcast_subscription(&pool, "https://feeds.example/b", "Power User", &b)
+            .await
+            .expect("subscribe b");
+        assert_eq!((n_a, n_b), (1, 1), "each podcast must store its own guid-1 episode");
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM episodes WHERE external_id = '1'")
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+        assert_eq!(total, 2);
     }
 }
