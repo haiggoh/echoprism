@@ -389,7 +389,12 @@ describe('PlayerProvider media engine', () => {
       });
 
       expect(api.isPlaying).toBe(false);
-      expect(await screen.findByText('Playback unavailable')).toBeTruthy();
+      // Synchronous assert after an act flush (the sibling test's pattern):
+      // findByText polled while shouldAdvanceTime let the mocked 5s toast
+      // auto-dismiss advance with REAL elapsed time — any thread stall
+      // longer than the toast's lifetime removed it before the poll saw it.
+      await act(async () => {}); // flush the rejection → addToast pipeline
+      expect(screen.getByText('Playback unavailable')).toBeTruthy();
       // Dismiss the toast so it cannot leak into later tests.
       await act(async () => {
         vi.runAllTimers();
