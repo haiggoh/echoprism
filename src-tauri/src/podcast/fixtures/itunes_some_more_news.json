@@ -1,0 +1,19 @@
+{
+  "resultCount": 2,
+  "results": [
+    {
+      "trackName": "Some More News",
+      "artistName": "SomeMoreNews | PodcastOne",
+      "collectionName": "Some More News",
+      "feedUrl": "https://rss.pdrl.fm/84a5f4/rss.art19.com/some-more-news",
+      "trackCount": 535
+    },
+    {
+      "trackName": "Even More News",
+      "artistName": "Bunny Darleen",
+      "collectionName": "Even More News",
+      "feedUrl": "https://anchor.fm/s/5e7c285c/podcast/rss",
+      "trackCount": 1
+    }
+  ]
+}

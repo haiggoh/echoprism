@@ -51,9 +51,21 @@ findings ≤4 lines each, triage everything against real code).
 
 ### Phases (receipts per phase; tests fixture-based, live access one smoke)
 
-0. Preflight: revalidate findings above against live source; capture real titles for
-   Vergecast / Some More News / Even More News / Power User (iTunes + yt-dlp/Piped)
-   into fixtures.
+0. **DONE (2026-10-20, pre-handover recon session).** Fixtures committed:
+   `podcast/fixtures/itunes_{vergecast,some_more_news,power_user}.json` (real feed
+   URLs), `podcast/fixtures/{some_more_news,even_more_news,power_user}_feed.xml`
+   (trimmed RSS; the even_more_news anchor feed returned only 1 item — young feed),
+   `extractor/fixtures/yt_search_{vergecast,some_more_news,power_user}.jsonl` (top-3
+   videos each: id, title, duration, timestamp, channel). Pairing shapes in REAL
+   data: Vergecast YouTube titles = podcast title + " | The Vergecast" (near-identical
+   — easy pairing); Some More News YouTube "JD Vance's Town Hall Was a Disaster" ↔
+   podcast "Even More News: JD Vance's Town Hall Was a Disaster" (prefix relationship
+   — exactly the D7 mock shape; per-title substring rules match real titles); the
+   art19 Some More News feed also carries "Some More News:"-prefixed video-version
+   items; Power User YouTube titles mostly OMIT the show name (the channel carries
+   the identity) — title-only matching will under-pair there, so channel/date/
+   duration signals matter. Durations + pubDates are in the fixtures for the scorer.
+   Phase 1 starts from these.
 1. Wire the two queries (TDD on a temp DB: seeded episodes → matcher input lists;
    discriminant: already-linked episode excluded).
 2. Matcher fixes + recalibration against real-title fixtures (RED for the right

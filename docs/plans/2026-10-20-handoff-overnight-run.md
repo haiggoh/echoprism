@@ -1,7 +1,8 @@
 # Handoff — overnight autonomous run, 1d onward
 
-_Written 2026-10-20 17:50 UTC by the Opus gateway session that resumed the killed GLM run. Read
-this file first, then `docs/plans/2026-10-19-release-roadmap.md`._
+_Written 2026-10-20 17:50 UTC by the Opus gateway session that resumed the killed GLM run.
+Amended ~20:35 CEST the same day by the GLM 5.3 Flash overnight session (1d recon + Phase 0
+landed — see State at handoff). Read this file first, then `docs/plans/2026-10-19-release-roadmap.md`._
 
 ## Why this handoff exists
 
@@ -21,6 +22,17 @@ Mistral. Nothing was lost. An Opus session then closed out 1c (below). You conti
   Playwright 8/8. Working tree is clean except `node_modules/.package-lock.json` (npm noise, do not
   commit it).
 - Deferred to 1e from the 1c review: `refresh_due_feeds` fetches due feeds one at a time.
+- **1d recon + Phase 0 done by the overnight GLM session (commit `8f0a1705` + the Phase 0
+  commit):** `docs/plans/2026-10-20-1d-smart-links-real-data.md` records that smart linking
+  is currently INERT — both matcher input queries are empty stubs (`queries.rs:1491/1497`,
+  written for tables that never existed; the real rows live in the one `episodes` table
+  since 1b/1c), the three `smart_links` commands are no-op stubs, `normalize_text` has an
+  inverted stop-word filter, and every real channel defaults `format_preference='both'`.
+  Phase 0 fixtures are committed: iTunes searches, RSS feeds and yt-dlp metadata for all
+  three test shows, with the real pairing shapes recorded in the plan doc (Vergecast YT =
+  podcast title + " | The Vergecast"; "Even More News: " + video title confirms the D7
+  mock shape; Power User YT titles mostly omit the show name). The successor starts at the
+  1d plan's Phase 1.
 
 ## The goal (set this with /jgoal at session start, verbatim)
 
@@ -58,8 +70,12 @@ formula, GitHub Releases workflow) — everything prepared to ship, nothing push
 
 ## Next action
 
-Step 1d — smart links on real data: check the video-to-podcast pairing and the per-title play
-mode (video or audio by default) against Vergecast, Some More News / Even More News and Power
-User, now that search (1b) and podcast subscriptions (1c) produce real rows. Then 1e (warnings
-~25, the flaky test, sequential refresh, removing the unused `multipart`/`atom_syndication`/`axum`
-dependencies), then step 2, step 4 and the delivery routes.
+Step 1d, Phase 1 (plan: `docs/plans/2026-10-20-1d-smart-links-real-data.md` — its Phase 0 is
+DONE, fixtures committed): wire `get_unmatched_podcasts`/`get_youtube_videos` to the real
+`episodes` table, then recalibrate the matcher against the captured real titles, unstub the
+three smart-link commands, and run the live three-show smoke + D7 play-mode check
+(playback-while-closed re-run folded into its Phase 4). Then 1e (warnings ~25, the flaky
+test, sequential refresh, removing the unused `multipart`/`atom_syndication`/`axum`
+dependencies), then step 2, step 4 and the delivery routes. Launch this session with
+`--effort max` (2026-10-20: on NIM `reasoning_effort` is the only GLM dial and the
+thinking alias defaults high, so max is a real step up).

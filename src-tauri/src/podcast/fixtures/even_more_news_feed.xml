@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:anchor="https://anchor.fm/xmlns" xmlns:podcast="https://podcastindex.org/namespace/1.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:psc="http://podlove.org/simple-chapters">
+	<channel>
+		<title><![CDATA[Even More News]]></title>
+		<description><![CDATA[In case you haven't heard, the news never stops. It's happening RIGHT NOW. So if you like yourself some news and love yourself Some More News, you'll likely have positive feelings about Even More News, the podcast companion to the "hit" YouTube series Some More News, brought to you by your co-hosts Cody Johnston and Katy Stoll.]]></description>
+		<link>https://podcasters.spotify.com/pod/show/bunny-darleen</link>
+		<generator>Anchor Podcasts</generator>
+		<lastBuildDate>Thu, 15 Oct 2026 05:03:51 GMT</lastBuildDate>
+		<atom:link href="https://anchor.fm/s/5e7c285c/podcast/rss" rel="self" type="application/rss+xml"/>
+		<author><![CDATA[Bunny Darleen]]></author>
+		<copyright><![CDATA[Bunny Darleen]]></copyright>
+		<language><![CDATA[en]]></language>
+		<atom:link rel="hub" href="https://pubsubhubbub.appspot.com/"/>
+		<itunes:author>Bunny Darleen</itunes:author>
+		<itunes:summary>In case you haven&apos;t heard, the news never stops. It&apos;s happening RIGHT NOW. So if you like yourself some news and love yourself Some More News, you&apos;ll likely have positive feelings about Even More News, the podcast companion to the &quot;hit&quot; YouTube series Some More News, brought to you by your co-hosts Cody Johnston and Katy Stoll.</itunes:summary>
+		<itunes:type>episodic</itunes:type>
+		<itunes:owner>
+			<itunes:name>Bunny Darleen</itunes:name>
+			<itunes:email>podcasts60+5e7c285c@anchor.fm</itunes:email>
+		</itunes:owner>
+		<itunes:explicit>false</itunes:explicit>
+		<itunes:category text="News">
+			<itunes:category text="Daily News"/>
+		</itunes:category>
+		<itunes:image href="https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded/15751951/15751951-1623054336602-9b2098acd3102.jpg"/>
+		<item>
+			<title><![CDATA[Even More News]]></title>
+			<description><![CDATA[<p>In case you haven't heard, the news never stops. It's happening RIGHT NOW. So if you like yourself some news and love yourself Some More News, you'll likely have positive feelings about Even More News, the podcast companion to the "hit" YouTube series Some More News, brought to you by your co-hosts Cody Johnston and Katy Stoll.</p>
+]]></description>
+			<link>https://podcasters.spotify.com/pod/show/bunny-darleen/episodes/Even-More-News-e12a9r1</link>
+			<guid isPermaLink="false">1705f1ad-a5b6-4d43-a8c1-c28fb27061c1</guid>
+			<dc:creator><![CDATA[Bunny Darleen]]></dc:creator>
+			<pubDate>Mon, 07 Jun 2021 08:18:46 GMT</pubDate>
+			<enclosure url="https://anchor.fm/s/5e7c285c/podcast/play/34989345/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2021-5-7%2F5a53679b-c1d0-b839-f432-f94c5d95170d.m4a" length="17183314" type="audio/x-m4a"/>
+			<itunes:summary>&lt;p&gt;In case you haven&apos;t heard, the news never stops. It&apos;s happening RIGHT NOW. So if you like yourself some news and love yourself Some More News, you&apos;ll likely have positive feelings about Even More News, the podcast companion to the &quot;hit&quot; YouTube series Some More News, brought to you by your co-hosts Cody Johnston and Katy Stoll.&lt;/p&gt;
+</itunes:summary>
+			<itunes:explicit>false</itunes:explicit>
+			<itunes:duration>00:17:42</itunes:duration>
+			<itunes:image href="https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded/15751951/15751951-1623054336602-9b2098acd3102.jpg"/>
+			<itunes:episodeType>full</itunes:episodeType>
+		</item>
+	</channel>
+</rss></channel></rss>
