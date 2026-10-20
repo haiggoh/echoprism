@@ -40,6 +40,14 @@
   existing FTS + smart-link search; `stream_episode` resolves real URLs through the
   same failover. Verified: 21 cargo tests + 2 live (network) smoke tests, 116 vitest,
   8 Playwright, contract-test mutation check, live smoke 2/2.
+- **Step 1c done (2026-10-20):** podcast search via the iTunes Search API (no key),
+  subscribe persists channel + feed + episodes in one transaction (idempotent on
+  `UNIQUE(user_id, feed_url)`, FTS-searchable, non-clobbering), and the background
+  feed task refreshes due feeds. Atom feeds fail explicitly instead of returning an
+  empty success. Commits `b2fcaf2c` (feature) and `a7fe9a1d` (review fixes: per-feed
+  guid de-dup, due check on app-written RFC 3339 timestamps). Verified: cargo 29/29 +
+  3 live smoke, vitest 116/116, tsc clean, Playwright 8/8, contract mutation check.
+  Deferred to 1e: refresh fetches due feeds one at a time.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -146,6 +154,7 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 1c — podcast search and subscriptions (RSS/OPML wiring + a directory such as
-iTunes Search or Podcast Index). After 1b, the playback-while-closed check from the
-close-to-Dock verification can also be re-run: search now yields something to play.
+Step 1d — smart links on real data: check the video-to-podcast pairing and the
+per-title play mode against Vergecast, Some More News / Even More News and Power User,
+now that both search (1b) and podcast subscriptions (1c) produce real rows. The
+playback-while-closed check from the close-to-Dock verification can also be re-run.
