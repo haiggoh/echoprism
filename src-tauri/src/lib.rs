@@ -136,7 +136,6 @@ pub fn run() {
             commands::episodes::get_episode,
             commands::episodes::search_episodes,
             commands::episodes::stream_episode,
-            commands::episodes::smart_link_switch_episode,
 
             // Queue commands
             commands::queue::get_queue,
@@ -149,8 +148,6 @@ pub fn run() {
             // Playback commands
             commands::playback::state,
             commands::playback::update,
-            commands::playback::toggle_audio,
-            commands::playback::smart_link,
 
             // Smart Links commands
             commands::smart_links::list_smart_links,
@@ -180,13 +177,6 @@ pub fn run() {
             // Keyboard shortcuts
             commands::shortcuts::list_shortcuts,
             commands::shortcuts::update_shortcut_cmd,
-
-            // Background jobs
-            commands::background::trigger_instance_health_check,
-            commands::background::trigger_smart_linking,
-            commands::background::trigger_feed_fetch,
-            commands::background::trigger_sponsorblock_sync,
-            commands::background::trigger_cleanup,
         ])
         // macOS convention: closing the window HIDES it and the app keeps
         // running in the Dock (playback included); clicking the Dock icon

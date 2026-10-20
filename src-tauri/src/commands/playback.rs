@@ -24,21 +24,3 @@ pub struct PlaybackUpdateParams {
     pub volume: Option<f64>,
     pub audio_mode: Option<bool>,
 }
-
-#[command]
-pub async fn toggle_audio(
-    _db: State<'_, Database>,
-    _episode_id: String,
-) -> std::result::Result<(), String> {
-    // Toggle audio/video mode for current episode
-    Ok(())
-}
-
-#[command]
-pub async fn smart_link(
-    _db: State<'_, Database>,
-    _link_id: String,
-) -> std::result::Result<(), String> {
-    // Switch format via smart link with position sync
-    Ok(())
-}

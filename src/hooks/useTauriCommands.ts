@@ -44,7 +44,6 @@ export const episodeCommands = {
     invoke<Episode[]>('search_episodes', { q, params }),
   stream: (episodeId: string, format?: string) =>
     invoke<StreamInfo>('stream_episode', { episodeId, format }),
-  smartLinkSwitch: (linkId: string) => invoke<void>('smart_link_switch_episode', { linkId }),
 };
 
 // Queue commands (queue.rs)
@@ -63,8 +62,6 @@ export const playbackCommands = {
   state: () => invoke<PlaybackState>('state'),
   update: (params: { position?: number; rate?: number; volume?: number; audio_mode?: boolean }) =>
     invoke<void>('update', { params }),
-  toggleAudio: (episodeId: string) => invoke<void>('toggle_audio', { episodeId }),
-  smartLink: (linkId: string) => invoke<void>('smart_link', { linkId }),
 };
 
 // Smart Links commands (smart_links.rs)
@@ -109,13 +106,4 @@ export const historyCommands = {
 export const shortcutCommands = {
   list: () => invoke<KeyboardShortcut[]>('list_shortcuts'),
   update: (action: string, key: string, context: string) => invoke<void>('update_shortcut_cmd', { action, key, context }),
-};
-
-// Background jobs (background.rs) — manual triggers for the background tasks
-export const backgroundJobs = {
-  instanceHealth: () => invoke<void>('trigger_instance_health_check'),
-  smartLink: () => invoke<void>('trigger_smart_linking'),
-  feedFetch: () => invoke<void>('trigger_feed_fetch'),
-  sponsorblockSync: () => invoke<void>('trigger_sponsorblock_sync'),
-  cleanup: () => invoke<void>('trigger_cleanup'),
 };

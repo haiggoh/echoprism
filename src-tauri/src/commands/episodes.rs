@@ -147,15 +147,6 @@ pub async fn stream_episode(
     Ok(stream_info_from(stream))
 }
 
-#[command]
-pub async fn smart_link_switch_episode(
-    _db: State<'_, Database>,
-    _link_id: String,
-) -> std::result::Result<(), String> {
-    // Switch playback via smart link
-    Ok(())
-}
-
 #[derive(serde::Serialize)]
 pub struct StreamInfo {
     pub url: String,

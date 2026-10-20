@@ -12,4 +12,3 @@ pub mod settings;
 pub mod history;
 pub mod shortcuts;
 pub mod downloads;
-pub mod background;
