@@ -49,8 +49,9 @@ export function SettingsScreen() {
         </nav>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-4">
+      {/* Content. tabIndex + region role: a scrollable area must be
+          keyboard-reachable (axe scrollable-region-focusable, 2b). */}
+      <div role="region" aria-label="Settings content" tabIndex={0} className="flex-1 overflow-auto p-4">
         {activeTab === 'instances' && (
           <InstanceSettingsTab />
         )}

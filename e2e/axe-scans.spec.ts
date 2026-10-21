@@ -34,3 +34,42 @@ test('axe: no critical/serious violations on feed, settings, player', async ({ p
   await expect(page.locator('video')).toBeVisible();
   expect(await criticalSeriousCount(page)).toBe(0);
 });
+
+/**
+ * 2b: every route, not just the three core screens — an unscanned screen is
+ * an unaudited surface. Each route asserts its own heading first so a broken
+ * route fails loudly instead of scanning a redirect.
+ */
+const ROUTES: Array<{ path: string; heading: RegExp }> = [
+  { path: '/feed', heading: /^Feed$/ },
+  { path: '/queue', heading: /^Queue$/ },
+  { path: '/search', heading: /^Search$/ },
+  { path: '/history', heading: /^History$/ },
+  { path: '/downloads', heading: /^Downloads$/ },
+  { path: '/channels', heading: /^Channels$/ },
+  { path: '/smart-links', heading: /^Smart Links$/ },
+];
+
+for (const route of ROUTES) {
+  test(`axe: no critical/serious violations on ${route.path}`, async ({ page }) => {
+    await page.goto(route.path);
+    await expect(page.getByRole('heading', { name: route.heading }).first()).toBeVisible();
+    expect(await criticalSeriousCount(page)).toBe(0);
+  });
+}
+
+/**
+ * 2b: every Settings tab is its own surface — the original scan only saw the
+ * default tab, which is how an inert theme control and the instance badges
+ * went unaudited for so long.
+ */
+const SETTINGS_TABS = ['Instances', 'Preferences', 'Podcasts', 'Smart Links', 'Play Modes', 'Shortcuts', 'About'];
+
+for (const tab of SETTINGS_TABS) {
+  test(`axe: no critical/serious violations on Settings > ${tab}`, async ({ page }) => {
+    await page.goto('/settings');
+    await page.getByRole('tab', { name: tab }).click();
+    await expect(page.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+    expect(await criticalSeriousCount(page)).toBe(0);
+  });
+}

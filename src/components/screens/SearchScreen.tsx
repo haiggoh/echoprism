@@ -33,10 +33,12 @@ export function SearchScreen() {
     <div className="h-full flex flex-col">
       {/* Search Header */}
       <div className="px-4 py-4 border-b border-border">
+        <h1 className="text-2xl font-semibold text-text mb-3">Search</h1>
         <form onSubmit={handleSearch} className="flex gap-4">
           <div className="flex-1 relative">
             <input
               type="search"
+              aria-label="Search videos, podcasts, channels"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search videos, podcasts, channels..."
