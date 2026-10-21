@@ -69,7 +69,7 @@ export const InstanceHealthBar = ({
   const getLatencyColor = (pct: number) => {
     if (pct < 30) return 'bg-success';
     if (pct < 60) return 'bg-warning';
-    if (pct < 85) return 'bg-orange-500';
+    if (pct < 85) return 'bg-warning-strong';
     return 'bg-danger';
   };
 

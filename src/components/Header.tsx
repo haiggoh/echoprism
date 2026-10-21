@@ -68,7 +68,7 @@ export function Header() {
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
             <path d="M13.73 21a2 2 0 0 1-3.4 0"></path>
           </svg>
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-danger rounded-full text-xs text-white flex items-center justify-center">3</span>
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-danger rounded-full text-xs text-text-inverse flex items-center justify-center">3</span>
         </button>
 
         {/* User avatar */}

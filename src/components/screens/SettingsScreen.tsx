@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
 import { useToasts } from '../ui/Toaster';
+import { useTheme } from '../../hooks/useTheme';
 import type { Channel, PlayModeRule } from '../../types';
 
 export function SettingsScreen() {
@@ -166,6 +167,9 @@ function InstanceSettingsTab() {
 function PreferencesTab() {
   const { data: preferences } = useQuery({ queryKey: ['preferences'], queryFn: settingsCommands.get });
   const queryClient = useQueryClient();
+  // The live theme mechanism (ThemeProvider + localStorage) — the control
+  // below writes through this, not only the DB preference.
+  const { theme: currentTheme, setTheme } = useTheme();
 
   const updateMutation = useMutation({
     mutationFn: (prefs: Partial<any>) => settingsCommands.update(prefs),
@@ -300,25 +304,34 @@ function PreferencesTab() {
 
       <div>
         <h3 className="font-semibold mb-4">Theme</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {['system', 'dark', 'light'].map((theme) => (
+        {/* 2a audit: this control was decoration — every radio rendered
+            checked with an empty onChange, so it neither showed nor changed
+            anything. It now drives the live theme mechanism (ThemeProvider;
+            localStorage), and 'light' is gone: brand.md defines a dark-first
+            palette and index.css carries no light rules, so the option never
+            did anything. */}
+        <div className="grid grid-cols-2 gap-3">
+          {(['system', 'dark'] as const).map((theme) => (
             <label key={theme} className="relative cursor-pointer">
               <input
                 type="radio"
                 name="theme"
                 value={theme}
-                checked={true}
-                onChange={() => {}}
+                checked={currentTheme === theme}
+                onChange={() => setTheme(theme)}
                 className="sr-only peer"
               />
               <div className={`p-4 rounded-lg border-2 text-center ${
-                theme === 'system' ? 'border-accent bg-accent-soft text-accent' : 'border-border hover:border-input'
+                currentTheme === theme ? 'border-accent bg-accent-soft text-accent' : 'border-border hover:border-input'
               }`}>
                 <span className="font-medium capitalize">{theme}</span>
               </div>
             </label>
           ))}
         </div>
+        <p className="text-sm text-text-muted mt-3">
+          A light theme is not designed yet — EchoPrism is dark-first.
+        </p>
       </div>
     </div>
   );

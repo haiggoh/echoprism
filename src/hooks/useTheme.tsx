@@ -1,56 +1,59 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-type Theme = 'dark' | 'light' | 'system';
+/**
+ * 2a design audit: the app is dark-only. brand.md defines one (dark) palette
+ * and src/index.css carries no light rules, so 'light' was never a real
+ * option — resolving to it applied a class no stylesheet answered. The type
+ * is narrowed to what exists; a legacy stored 'light' value reads as 'dark'.
+ */
+type Theme = 'dark' | 'system';
 
 interface ThemeContextType {
   theme: Theme;
-  resolvedTheme: 'dark' | 'light';
+  resolvedTheme: 'dark';
   setTheme: (theme: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('theme') as Theme) || 'system';
-    }
+/** Storage is absent in some sandboxed webviews and in jsdom; never assume it. */
+function readStoredTheme(): Theme {
+  try {
+    const stored = window.localStorage?.getItem('theme');
+    return stored === 'dark' ? 'dark' : 'system';
+  } catch {
     return 'system';
-  });
-  const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark');
+  }
+}
+
+function writeStoredTheme(theme: Theme) {
+  try {
+    window.localStorage?.setItem('theme', theme);
+  } catch {
+    // Storage unavailable — the in-memory state still applies for this session.
+  }
+}
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>(() =>
+    typeof window !== 'undefined' ? readStoredTheme() : 'system'
+  );
 
   useEffect(() => {
     const root = document.documentElement;
-    
-    const updateTheme = () => {
-      let resolved: 'dark' | 'light';
-      if (theme === 'system') {
-        resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      } else {
-        resolved = theme;
-      }
-      setResolvedTheme(resolved);
-      root.classList.remove('light', 'dark');
-      root.classList.add(resolved);
-    };
-
-    updateTheme();
-
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handler = () => updateTheme();
-      mediaQuery.addEventListener('change', handler);
-      return () => mediaQuery.removeEventListener('change', handler);
-    }
+    // Both 'system' and 'dark' resolve dark: there is no light palette yet.
+    // When one is designed, this is the single place the resolution changes.
+    root.classList.remove('light');
+    root.classList.add('dark');
   }, [theme]);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('theme', newTheme);
+    writeStoredTheme(newTheme);
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, resolvedTheme: 'dark', setTheme }}>
       {children}
     </ThemeContext.Provider>
   );

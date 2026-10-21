@@ -18,7 +18,10 @@
 
   /* Text */
   --color-text: #E8EDF5;
-  --color-text-muted: #7A8BA8;
+  /* 2a audit: was #7A8BA8, which measured 3.86:1 on --color-surface-hover
+     (below AA's 4.5 for normal text). #8FA3BE clears AA on every surface:
+     bg 7.47, bg-elevated 6.88, surface 6.13, surface-hover 5.17. */
+  --color-text-muted: #8FA3BE;
   --color-text-inverse: #0A0E1A;
   --color-text-disabled: #4A5A6A;
 
@@ -42,13 +45,21 @@
   --color-stream-video-soft: rgba(255, 140, 66, 0.12);
 
   /* Semantic */
-  --color-danger: #EF4444;
-  --color-danger-hover: #DC2626;
-  --color-danger-soft: rgba(239, 68, 68, 0.12);
+  /* 2a audit: --color-danger was #EF4444, which measured 3.76:1 as text on
+     bg-danger-soft (4.19:1 on surface) - below AA. #F87171 clears AA in
+     both roles: text on danger-soft 4.83, on surface 5.71, and dark
+     (text-inverse) text on the solid colour 6.96. */
+  --color-danger: #F87171;
+  --color-danger-hover: #EF4444;
+  --color-danger-soft: rgba(248, 113, 113, 0.12);
   --color-success: #10B981;
   --color-success-soft: rgba(16, 185, 129, 0.12);
   --color-warning: #F59E0B;
   --color-warning-soft: rgba(245, 158, 11, 0.12);
+  /* Fourth severity tier (the latency bar's "severe" step). Token for the
+     raw bg-orange-500 that bypassed the system; same value, so no visual
+     change. 2a audit. */
+  --color-warning-strong: #F97316;
 
   /* Focus, chromatic aberration, glows */
   --color-focus-ring: #10F0A8;
@@ -94,8 +105,12 @@
     }
   }
 
+  /* 2a audit: was text-text-inverse (near-black) on the 12% emerald wash,
+     which measured 1.25:1 over the app background - selected text was
+     effectively invisible. The normal text colour measures 13.07:1 on the
+     same wash. */
   ::selection {
-    @apply bg-accent-soft text-text-inverse;
+    @apply bg-accent-soft text-text;
   }
 
   ::-webkit-scrollbar {

@@ -23,11 +23,11 @@ export function InstanceHealthGrid({ instances }: InstanceHealthGridProps) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap gap-1 mb-2">
-                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${instance.type === 'invidious' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${instance.type === 'invidious' ? 'bg-audio-soft text-audio' : 'bg-video-soft text-video'}`}>
                     {instance.type.toUpperCase()}
                   </span>
                   {instance.supports_sabr && (
-                    <span className="px-2 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-400">
+                    <span className="px-2 py-0.5 text-xs font-medium bg-accent-soft text-accent">
                       SABR
                     </span>
                   )}
