@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { clsx } from 'clsx';
 import { Play, Volume2, Video, Link2, GripVertical, X, MoreHorizontal } from 'lucide-react';
+import { Thumbnail } from './Thumbnail';
 
 export interface QueueItemProps {
   variant?: 'video' | 'audio' | 'smart-link';
@@ -135,7 +136,7 @@ export const QueueItem = forwardRef<HTMLDivElement, QueueItemProps>(
         {/* Thumbnail */}
         <div className="relative flex-shrink-0 overflow-hidden rounded">
           {thumbnailUrl ? (
-            <img
+            <Thumbnail
               src={thumbnailUrl}
               alt=""
               className={clsx('w-full h-full object-cover', size === 'default' ? 'w-12 h-12' : 'w-8 h-8')}

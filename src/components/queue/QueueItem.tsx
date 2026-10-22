@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react';
 import { QueueItem, Episode, PlayMode } from '../../types';
+import { Thumbnail } from '../ui/Thumbnail';
 
 interface QueueItemComponentProps {
   item: QueueItem & { episode?: Episode };
@@ -82,11 +83,10 @@ export function QueueItemComponent({
       {/* Thumbnail */}
       <div className="relative w-16 h-9 flex-shrink-0 rounded-md overflow-hidden bg-bg-elevated">
         {episode?.thumbnail_url && (
-          <img
+          <Thumbnail
             src={episode.thumbnail_url}
             alt=""
             className="w-full h-full object-cover"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
         )}
         {episode?.duration_seconds && (

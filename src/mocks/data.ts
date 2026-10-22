@@ -6,7 +6,7 @@
  * and D2 (card_click_action = 'auto' default).
  */
 import type {
-  Channel, Episode, EpisodeLink, HistoryEntry, Instance, PlayModeRule, UserPreferences,
+  Channel, Download, Episode, EpisodeLink, HistoryEntry, Instance, PlayModeRule, UserPreferences,
 } from '../types';
 
 export interface MockDb {
@@ -16,6 +16,7 @@ export interface MockDb {
   smartLinks: EpisodeLink[];
   playModeRules: PlayModeRule[];
   history: HistoryEntry[];
+  downloads: Download[];
   preferences: UserPreferences;
 }
 
@@ -288,6 +289,44 @@ export const mockDb: MockDb = {
       position_seconds: 120,
       completed: false,
       played_at: '2026-10-16T21:00:00Z',
+    },
+  ],
+  // 2c: the Downloads screen had no fixture at all, so it could only ever
+  // show its empty state. One completed, one in-flight, one failed — the
+  // three row shapes the layout must survive.
+  downloads: [
+    {
+      id: 'dl-1',
+      episode_id: 'ep-video-1',
+      quality: '720p',
+      format: 'video',
+      file_path: '/Users/dev/Downloads/ep-video-1.mp4',
+      file_size: 52428800,
+      status: 'completed',
+      progress: 1,
+      created_at: '2026-10-16T20:00:00Z',
+      completed_at: '2026-10-16T20:05:00Z',
+    },
+    {
+      id: 'dl-2',
+      episode_id: 'ep-video-2',
+      quality: 'audio',
+      format: 'audio',
+      file_path: '/Users/dev/Downloads/ep-video-2.m4a',
+      status: 'downloading',
+      progress: 0.42,
+      created_at: '2026-10-17T09:00:00Z',
+    },
+    {
+      id: 'dl-3',
+      episode_id: 'ep-video-3',
+      quality: '1080p',
+      format: 'video',
+      file_path: '/Users/dev/Downloads/ep-video-3.mp4',
+      status: 'failed',
+      progress: 0,
+      error_message: 'Instance went away mid-download',
+      created_at: '2026-10-17T10:00:00Z',
     },
   ],
   preferences: {

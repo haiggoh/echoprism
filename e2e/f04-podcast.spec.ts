@@ -20,6 +20,9 @@ test('F04-H1 (subset): clicking a podcast card resolves its audio stream', async
   await expect(audio).toHaveCount(1);
   await expect(audio).toHaveAttribute('src', /\/mock-media\/ep-pod-1\.wav$/, { timeout: 10_000 });
 
-  // The episode title is visible on the player screen.
-  await expect(page.getByText('RSS is winning again')).toBeVisible();
+  // The episode title is visible on the player screen. Assert the player's
+  // own heading: the mini player shows the same title text, so a bare
+  // getByText is ambiguous (strict-mode violation) — and the heading role is
+  // the element this assertion actually cares about (2c added it).
+  await expect(page.getByRole('heading', { name: /RSS is winning again/ })).toBeVisible();
 });

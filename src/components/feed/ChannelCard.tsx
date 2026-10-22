@@ -1,3 +1,4 @@
+import { Thumbnail } from '../ui/Thumbnail';
 interface ChannelCardProps {
   channel: {
     id: string;
@@ -20,11 +21,10 @@ export function ChannelCard({ channel, onClick, onSubscribe }: ChannelCardProps)
     >
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <img
-            src={channel.thumbnail_url || ''}
+          <Thumbnail
+            src={channel.thumbnail_url}
             alt=""
             className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
           <div className="min-w-0 flex-1">
             <h3 className="font-medium text-text truncate">{channel.title}</h3>

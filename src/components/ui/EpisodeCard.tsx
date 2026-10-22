@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { Play, Volume2, Video, Link2, Download, Clock } from 'lucide-react';
 
@@ -72,6 +72,11 @@ export const EpisodeCard = forwardRef<HTMLDivElement, EpisodeCardProps>(
       expanded: 'w-full max-w-2xl',
     };
 
+    // 2c: a thumbnail URL that exists but 404s must reach this card's own
+    // variant-aware fallback (the audio Volume2 glyph), not a broken-image
+    // icon. Load failure is state, not just absence.
+    const [imgFailed, setImgFailed] = useState(false);
+
     const thumbnailStyles = {
       feed: 'aspect-video',
       compact: 'aspect-video w-24 h-24 flex-shrink-0',
@@ -98,7 +103,7 @@ export const EpisodeCard = forwardRef<HTMLDivElement, EpisodeCardProps>(
       >
         <div className="relative overflow-hidden">
           <div className={clsx(thumbnailStyles[size])}>
-            {thumbnailUrl ? (
+            {thumbnailUrl && !imgFailed ? (
               <img
                 src={thumbnailUrl}
                 alt=""
@@ -107,6 +112,7 @@ export const EpisodeCard = forwardRef<HTMLDivElement, EpisodeCardProps>(
                   'group-hover:scale-105'
                 )}
                 loading="lazy"
+                onError={() => setImgFailed(true)}
               />
             ) : (
               <div className="w-full h-full bg-surface-hover flex items-center justify-center">

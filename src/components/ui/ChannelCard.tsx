@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { clsx } from 'clsx';
 import { Bell, Plus, MoreHorizontal } from 'lucide-react';
+import { Thumbnail } from './Thumbnail';
 
 export interface ChannelCardProps {
   size?: 'feed' | 'compact' | 'expanded';
@@ -71,7 +72,7 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(
       >
         <div className={clsx('relative flex-shrink-0 overflow-hidden', thumbnailStyles[size])}>
           {thumbnailUrl ? (
-            <img
+            <Thumbnail
               src={thumbnailUrl}
               alt=""
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"

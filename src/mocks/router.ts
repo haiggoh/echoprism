@@ -4,7 +4,7 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { Episode, Instance, PlayModeRule, QueueItem, StreamInfo, UserPreferences } from '../types';
+import type { Download, Episode, Instance, PlayModeRule, QueueItem, StreamInfo, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
@@ -105,6 +105,68 @@ const handlers: Record<string, Handler> = {
   },
   list_smart_links: () => db.smartLinks,
   list_history: () => db.history,
+
+  // Smart-link review (2c wiring; mirrors the Rust commands from 1d):
+  // confirm flips user_confirmed, unlink deletes, both ERROR on an unknown
+  // id rather than silently succeeding.
+  confirm_smart_link: (args): null => {
+    const linkId = args?.linkId as string | undefined;
+    const confirmed = args?.confirmed as boolean | undefined;
+    const link = db.smartLinks.find((l) => l.id === linkId);
+    if (!link) throw new Error(`mock: episode link not found: ${linkId}`);
+    link.user_confirmed = Boolean(confirmed);
+    link.updated_at = new Date().toISOString();
+    return null;
+  },
+  unlink_smart_link: (args): null => {
+    const linkId = args?.linkId as string | undefined;
+    const before = db.smartLinks.length;
+    db.smartLinks = db.smartLinks.filter((l) => l.id !== linkId);
+    if (db.smartLinks.length === before) {
+      throw new Error(`mock: episode link not found: ${linkId}`);
+    }
+    return null;
+  },
+  // The real matcher needs the Rust backend (episodes table + scoring).
+  // The mock reports what it can honestly compute: nothing is newly paired
+  // here, so a dev build sees "0 matched" rather than invented links.
+  match_episodes: () => ({ matched_count: 0 }),
+
+  // 2c screen wiring: channels unsubscribe, history clear, downloads
+  // list/cancel/delete. Same semantics as the Rust commands.
+  unsubscribe: (args): null => {
+    const channelId = args?.channelId as string | undefined;
+    const before = db.channels.length;
+    db.channels = db.channels.filter((c) => c.id !== channelId);
+    if (db.channels.length === before) {
+      throw new Error(`mock: channel not found: ${channelId}`);
+    }
+    return null;
+  },
+  clear_history: (): null => {
+    db.history = [];
+    return null;
+  },
+  list_downloads: (args): Download[] => {
+    const status = args?.status as string | undefined;
+    return db.downloads.filter((d) => !status || status === 'all' || d.status === status);
+  },
+  cancel_download: (args): null => {
+    const id = args?.id as string | undefined;
+    const dl = db.downloads.find((d) => d.id === id);
+    if (!dl) throw new Error(`mock: download not found: ${id}`);
+    dl.status = 'cancelled';
+    return null;
+  },
+  delete_download: (args): null => {
+    const id = args?.id as string | undefined;
+    const before = db.downloads.length;
+    db.downloads = db.downloads.filter((d) => d.id !== id);
+    if (db.downloads.length === before) {
+      throw new Error(`mock: download not found: ${id}`);
+    }
+    return null;
+  },
 
   // Play-mode rules (D7): (channel, title-pattern) → default play mode.
   // Mirrors the Rust commands: upsert on (channel_id, title_pattern), modes

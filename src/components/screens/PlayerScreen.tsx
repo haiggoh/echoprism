@@ -154,6 +154,16 @@ export function PlayerScreen() {
         )}
       </div>
 
+      {/* Title block — 2c: the player never showed which episode is
+          playing. line-clamp-2 wraps long real titles onto two lines; the
+          channel line truncates. */}
+      <div className="px-4 pt-4">
+        <h1 className="text-lg font-semibold text-text line-clamp-2">{episode.title}</h1>
+        {episode.channel?.title && (
+          <p className="text-sm text-text-muted truncate mt-0.5">{episode.channel.title}</p>
+        )}
+      </div>
+
       {/* Player Controls */}
       <div className="p-4 border-t border-border bg-bg-elevated">
         {/* Progress Bar */}

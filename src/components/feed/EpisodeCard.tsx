@@ -1,4 +1,5 @@
 import { Episode } from '../../types';
+import { Thumbnail } from '../ui/Thumbnail';
 
 interface EpisodeCardProps {
   episode: Episode;
@@ -29,7 +30,7 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
       {/* Thumbnail */}
       <div className="relative aspect-video overflow-hidden bg-bg-elevated">
         {episode.thumbnail_url ? (
-          <img
+          <Thumbnail
             src={episode.thumbnail_url}
             alt=""
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
@@ -99,11 +100,10 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
         </h3>
         
         <div className="flex items-center gap-2 text-sm text-text-muted mb-2">
-          <img 
-            src={episode.channel?.thumbnail_url || ''} 
-            alt="" 
+          <Thumbnail
+            src={episode.channel?.thumbnail_url}
+            alt=""
             className="w-5 h-5 rounded-full object-cover"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
           <span className="truncate max-w-[150px]">{episode.channel?.title || 'Unknown'}</span>
           {episode.published_at && (
