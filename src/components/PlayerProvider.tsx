@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, Re
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { episodeCommands } from '../hooks/useTauriCommands';
+import { useMediaSession } from '../hooks/useMediaSession';
 import { useToasts } from './ui/Toaster';
 import { Episode, PlayMode } from '../types';
 
@@ -348,6 +349,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     previousTrack,
     registerVideoElement,
   };
+
+  // macOS Now Playing + hardware media keys (step 2d).
+  useMediaSession(value);
 
   return (
     <PlayerContext.Provider value={value}>
