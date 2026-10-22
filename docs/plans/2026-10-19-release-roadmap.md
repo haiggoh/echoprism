@@ -114,6 +114,17 @@
   it now shows title (line-clamped) + channel. Commit `bf14879a`; plan
   `docs/plans/2026-10-22-2c-real-content.md`. Gates: tsc clean, vitest 129/129,
   Playwright 24/24.
+- **Step 2d done (2026-10-22, Opus):** premise corrected first — the media-session
+  plugin has no macOS backend, so Now Playing + media keys go through the W3C Media
+  Session API (`13e7476a`); native Playback menu inserted before Window (`aaaa9511`);
+  window state persists geometry, not visibility (`3e5e5d8c`, `d97c3001`). The live
+  probe exposed that **search had never stored a result on a real install** (user row
+  only in seed/test fixtures → FK 787, `27c773a9`), **playback could never resolve**
+  (`-f video` passed to yt-dlp; no muxed formats exist → m4a / HLS master,
+  `d4e40721`) and **yt-dlp results had no thumbnails** (`e78274da`). Owner-confirmed:
+  search, thumbnails, video playback. Owner-verify still open: sound, audio-only, Now
+  Playing, media keys, ⌘←/⌘→ in the search box. Gates: cargo 64/64, vitest 150/150,
+  tsc clean, Playwright 24/24. Plan `docs/plans/2026-10-22-2d-native-mac-polish.md`.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -220,11 +231,12 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 2d — native Mac polish: the menu bar, media keys and Now Playing (the media
-plugin is already loaded), and the window remembering its size and position. Then
-step 4 (4b name check; 4c/4d/4e delivery routes: build-from-source installer,
-Homebrew cask in the owner's tap, GitHub Releases workflow — everything prepared,
-nothing pushed/tagged/published until the owner says so). Known gaps carried
-forward: podcast subscribe has no UI affordance (waypoint
-`1c-step-4-debt-podcast-search`), a light theme does not exist (2a), the
-Cross-device sync toggle writes a field nothing reads.
+Follow `docs/plans/2026-10-22-handoff-glm-flash.md`: podcast search/subscribe from the
+UI (waypoint `1c-step-4-debt-podcast-search`), search failing open on a store error,
+every search falling back to yt-dlp (instances answer empty), slow thumbnails — then
+step 4 (4b name check; 4c/4d/4e delivery routes: build-from-source installer, Homebrew
+cask in the owner's tap, GitHub Releases workflow — everything prepared, nothing
+pushed/tagged/published until the owner says so). Known gaps carried forward: a light
+theme does not exist (2a), the Cross-device sync toggle writes a field nothing reads.
+Future feature (owner, 2026-10-22, after the first release unless reprioritised):
+play preview on hover for thumbnails.

@@ -61,11 +61,33 @@ the window remembering its size and position."_
    owner call (see open questions).
 4. **Gates.** cargo test + clippy clean, tsc, vitest, Playwright; receipts here.
 
-### Open questions for the owner
+### Receipts (2026-10-22, Opus gateway session)
 
-- Menu accelerators: Space is taken by in-app play/pause; macOS players commonly
-  use ⌘→ / ⌘← for next/previous. Default proposed: ⌘→ next, ⌘← previous,
-  ⌥⌘→ / ⌥⌘← skip ±; Play/Pause shown with no accelerator (Space handled in-page).
+- **Phase 1 DONE** — `13e7476a`: `src/hooks/useMediaSession.ts`, called from
+  PlayerProvider. 14 tests (`media-session.test.tsx`); 5 mutations caught
+  (unconditional play-toggle, stale closure, missing clamp, missing unregister,
+  removed provider call site).
+- **Phase 2 DONE** — `3e5e5d8c` + correction `d97c3001` (see finding 3).
+- **Phase 3 DONE** — `aaaa9511`: `src-tauri/src/app_menu.rs` (Playback inserted
+  before the default Window menu via `WINDOW_SUBMENU_ID`, so App/Edit/Window and
+  copy/paste stay intact) + `src/hooks/useMenuPlayback.ts`. Accelerators, owner-chosen:
+  ⌘→ next, ⌘← previous, ⌥⌘→ / ⌥⌘← skip 10 s, Play/Pause none (Space stays in-page).
+  3 Rust + 7 vitest tests; provider call site mutation-checked.
+- **Phase 4 gates** — tsc (project 5.9.3) clean, vitest 150/150, Playwright 24/24,
+  cargo lib 64/64.
+- **Phase 0 live probe — PARTIAL.** It could not run at first: search found nothing.
+  That surfaced three real bugs, fixed the same evening (each red first, then green,
+  mutation-checked): `27c773a9` the `current-user` row was created only by
+  scripts/seed.sql and test fixtures, so every stored search result failed the
+  `channels.user_id` FK (787) and search read back an empty DB; `d4e40721` the
+  yt-dlp fallback passed the player's logical `video`/`audio` as `-f video`
+  ("Requested format is not available"), and YouTube serves no muxed files any more
+  — now m4a for audio, the H.264 HLS master manifest for video; `e78274da` the
+  yt-dlp search parser dropped the `thumbnails` list. **Owner-confirmed live:**
+  search results, thumbnails, video plays. **Still unverified:** sound, audio-only
+  mode, Now Playing, the ⏯/⏭/⏮ keys, the scrubber, whether ⌘←/⌘→ in the search
+  box move the cursor or skip tracks (menu key equivalents may win), and window
+  restore after close → Dock → ⌘Q.
 
 ### Non-goals
 
