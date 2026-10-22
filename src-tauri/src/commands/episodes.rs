@@ -18,6 +18,12 @@ pub async fn get_feed(
 pub struct FeedParams {
     #[serde(rename = "type")]
     pub episode_type: Option<String>,
+    /// Optional per-channel filter (2e): the Search screen lists one feed's
+    /// episodes after a subscribe. Nested struct fields follow plain serde
+    /// (Tauri camelCases only top-level args), so the rename is required for
+    /// the frontend's `channelId` key.
+    #[serde(rename = "channelId")]
+    pub channel_id: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
 }

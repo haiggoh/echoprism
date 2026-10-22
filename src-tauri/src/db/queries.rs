@@ -597,8 +597,9 @@ pub async fn get_feed(
     params: Option<crate::commands::episodes::FeedParams>,
 ) -> DbResult<Vec<Episode>> {
     let ep_type = params.as_ref().and_then(|p| p.episode_type.as_deref());
-    let limit = params.as_ref().and_then(|p| p.limit).unwrap_or(50);
-    let offset = params.as_ref().and_then(|p| p.offset).unwrap_or(0);
+    let channel_id = params.as_ref().and_then(|p| p.channel_id.as_deref());
+    let limit = params.as_ref().and_then(|p| p.limit).unwrap_or(50) as i64;
+    let offset = params.as_ref().and_then(|p| p.offset).unwrap_or(0) as i64;
 
     #[derive(sqlx::FromRow)]
     struct EpisodeRow {
@@ -628,146 +629,71 @@ pub async fn get_feed(
         updated_at: String,
     }
 
+    // Runtime QueryBuilder, not `query_as!` macros: BOTH filters are optional
+    // (dynamic WHERE) and new macro SQL would demand regenerating the .sqlx
+    // offline cache (same convention as search_episodes below). The type
+    // filter keeps its channels JOIN (unchanged 1c semantics: type is a
+    // CHANNEL column); the per-channel filter (2e) keys on e.channel_id
+    // directly, so it needs no join.
+    let mut qb = sqlx::QueryBuilder::new(
+        "SELECT e.id, e.channel_id, e.external_id, e.title, e.description,
+                e.thumbnail_url, e.duration_seconds, e.published_at, e.url,
+                e.video_id, e.podcast_guid, e.episode_number, e.season_number,
+                e.audio_url, e.video_url, e.formats, e.chapters, e.sponsors,
+                e.transcript_url, e.is_downloaded, e.download_quality,
+                e.progress_seconds, e.created_at, e.updated_at
+         FROM episodes e",
+    );
     if let Some(et) = ep_type {
-        let limit_i64 = limit as i64;
-        let offset_i64 = offset as i64;
-        let rows = sqlx::query_as!(
-            EpisodeRow,
-            r#"SELECT
-                e.id,
-                e.channel_id,
-                e.external_id,
-                e.title,
-                e.description,
-                e.thumbnail_url,
-                e.duration_seconds,
-                e.published_at,
-                e.url,
-                e.video_id,
-                e.podcast_guid,
-                e.episode_number,
-                e.season_number,
-                e.audio_url,
-                e.video_url,
-                e.formats,
-                e.chapters,
-                e.sponsors,
-                e.transcript_url,
-                e.is_downloaded,
-                e.download_quality,
-                e.progress_seconds,
-                e.created_at,
-                e.updated_at
-             FROM episodes e
-             JOIN channels c ON e.channel_id = c.id
-             WHERE c.type = ?
-             ORDER BY e.published_at DESC
-             LIMIT ? OFFSET ?"#,
-            et,
-            limit_i64,
-            offset_i64
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        Ok(rows.into_iter().map(|r| Episode {
-            id: r.id,
-            channel_id: r.channel_id,
-            external_id: r.external_id,
-            title: r.title,
-            description: r.description,
-            thumbnail_url: r.thumbnail_url,
-            duration_seconds: r.duration_seconds,
-            published_at: r.published_at,
-            url: r.url,
-            video_id: r.video_id,
-            podcast_guid: r.podcast_guid,
-            episode_number: r.episode_number,
-            season_number: r.season_number,
-            audio_url: r.audio_url,
-            video_url: r.video_url,
-            formats: r.formats,
-            chapters: r.chapters,
-            sponsors: r.sponsors,
-            transcript_url: r.transcript_url,
-            is_downloaded: r.is_downloaded != 0,
-            download_quality: r.download_quality,
-            progress_seconds: r.progress_seconds,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            smart_link_id: None,
-            linked_episode_id: None,
-        }).collect())
-    } else {
-        let limit_i64 = limit as i64;
-        let offset_i64 = offset as i64;
-        let rows = sqlx::query_as!(
-            EpisodeRow,
-            r#"SELECT
-                e.id,
-                e.channel_id,
-                e.external_id,
-                e.title,
-                e.description,
-                e.thumbnail_url,
-                e.duration_seconds,
-                e.published_at,
-                e.url,
-                e.video_id,
-                e.podcast_guid,
-                e.episode_number,
-                e.season_number,
-                e.audio_url,
-                e.video_url,
-                e.formats,
-                e.chapters,
-                e.sponsors,
-                e.transcript_url,
-                e.is_downloaded,
-                e.download_quality,
-                e.progress_seconds,
-                e.created_at,
-                e.updated_at
-             FROM episodes e
-             ORDER BY e.published_at DESC
-             LIMIT ? OFFSET ?"#,
-            limit_i64,
-            offset_i64
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        Ok(rows.into_iter().map(|r| Episode {
-            id: r.id,
-            channel_id: r.channel_id,
-            external_id: r.external_id,
-            title: r.title,
-            description: r.description,
-            thumbnail_url: r.thumbnail_url,
-            duration_seconds: r.duration_seconds,
-            published_at: r.published_at,
-            url: r.url,
-            video_id: r.video_id,
-            podcast_guid: r.podcast_guid,
-            episode_number: r.episode_number,
-            season_number: r.season_number,
-            audio_url: r.audio_url,
-            video_url: r.video_url,
-            formats: r.formats,
-            chapters: r.chapters,
-            sponsors: r.sponsors,
-            transcript_url: r.transcript_url,
-            is_downloaded: r.is_downloaded != 0,
-            download_quality: r.download_quality,
-            progress_seconds: r.progress_seconds,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            smart_link_id: None,
-            linked_episode_id: None,
-        }).collect())
+        qb.push(" JOIN channels c ON c.id = e.channel_id WHERE c.type = ")
+            .push_bind(et.to_string());
     }
+    if let Some(ch) = channel_id {
+        if ep_type.is_some() {
+            qb.push(" AND e.channel_id = ").push_bind(ch.to_string());
+        } else {
+            qb.push(" WHERE e.channel_id = ").push_bind(ch.to_string());
+        }
+    }
+    qb.push(" ORDER BY e.published_at DESC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let rows = qb
+        .build_query_as::<EpisodeRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| Episode {
+        id: r.id,
+        channel_id: r.channel_id,
+        external_id: r.external_id,
+        title: r.title,
+        description: r.description,
+        thumbnail_url: r.thumbnail_url,
+        duration_seconds: r.duration_seconds,
+        published_at: r.published_at,
+        url: r.url,
+        video_id: r.video_id,
+        podcast_guid: r.podcast_guid,
+        episode_number: r.episode_number,
+        season_number: r.season_number,
+        audio_url: r.audio_url,
+        video_url: r.video_url,
+        formats: r.formats,
+        chapters: r.chapters,
+        sponsors: r.sponsors,
+        transcript_url: r.transcript_url,
+        is_downloaded: r.is_downloaded != 0,
+        download_quality: r.download_quality,
+        progress_seconds: r.progress_seconds,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        smart_link_id: None,
+        linked_episode_id: None,
+    }).collect())
 }
 
 pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episode> {
@@ -2901,5 +2827,67 @@ mod podcast_subscription_tests {
             .await
             .expect("count");
         assert_eq!(total, 2);
+    }
+
+    /// 2e: after a subscribe the Search screen lists ONE feed's episodes —
+    /// `get_feed` gains an optional `channel_id` filter (invoke key
+    /// `channelId`). Seeded through the production subscribe path only
+    /// (standing rule 11: no rows beyond what production code writes).
+    #[tokio::test]
+    async fn get_feed_with_channel_id_returns_only_that_channels_episodes() {
+        let pool = fresh_pool().await;
+        let (ch_a, _) =
+            upsert_podcast_subscription(&pool, "https://feeds.example/a", "The Vergecast", &feed())
+                .await
+                .expect("subscribe a");
+        let mut b = feed();
+        b.title = "Power User".into();
+        let (ch_b, _) =
+            upsert_podcast_subscription(&pool, "https://feeds.example/b", "Power User", &b)
+                .await
+                .expect("subscribe b");
+
+        let params = crate::commands::episodes::FeedParams {
+            channel_id: Some(ch_a.clone()),
+            ..Default::default()
+        };
+        let rows = get_feed(&pool, Some(params)).await.expect("feed by channel");
+        assert_eq!(rows.len(), 2, "only channel A's episodes");
+        assert!(
+            rows.iter().all(|e| e.channel_id == ch_a),
+            "every row belongs to channel A"
+        );
+
+        // The other channel is reachable the same way — the filter must not
+        // be a hardcoded first-channel shortcut.
+        let rows_b = get_feed(
+            &pool,
+            Some(crate::commands::episodes::FeedParams {
+                channel_id: Some(ch_b.clone()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .expect("feed for b");
+        assert_eq!(rows_b.len(), 2);
+        assert!(rows_b.iter().all(|e| e.channel_id == ch_b));
+
+        // An unknown channel_id yields an EMPTY list, never a leak of every
+        // episode (the naive `WHERE ? IS NULL OR channel_id = ?` shape fails
+        // this on a non-null unknown id only if the OR is wrong; the honest
+        // guard is asserting it).
+        let unknown = get_feed(
+            &pool,
+            Some(crate::commands::episodes::FeedParams {
+                channel_id: Some("ch-nonexistent".into()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .expect("feed unknown channel");
+        assert!(
+            unknown.is_empty(),
+            "unknown channel_id must not leak all episodes"
+        );
     }
 }
