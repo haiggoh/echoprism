@@ -96,10 +96,16 @@ everything prepared to ship, nothing pushed/tagged/published.
    into a silent "no results". Return the error (or surface a toast) when results came
    back from the source but could not be stored. Test with a store that fails.
 3. **Every search falls back to yt-dlp.** Live log 2026-10-22: three searches, all
-   `via yt-dlp`, no instance failure logged — so the Invidious/Piped instances answered
-   with EMPTY lists (`Ok(Ok(_)) => continue` logs nothing). Log that branch, then find
-   out whether the seeded instances are dead or the parser misses their current shape
-   (capture a live response into `src/extractor/fixtures/` first, as 1b did).
+   `via yt-dlp`, no instance failure logged. **Stronger evidence (later run, same
+   evening):** the health task logs every 5 min `ERROR … Failover failed for
+   default-pipedapi-ducks-party: No healthy instance available for failover` — the ONLY
+   seeded instance is unhealthy, so the likeliest story is that `order_for_search`
+   leaves no candidates and search goes straight to yt-dlp silently (verify that in
+   `instance_pool`; the alternative, instances answering with empty lists via
+   `Ok(Ok(_)) => continue`, also logs nothing). Then: log both silent branches, check
+   whether pipedapi.ducks.party is down or our health probe is wrong (curl it), and seed
+   more than one default instance so failover has somewhere to go. Capture any live
+   response into `src/extractor/fixtures/` first, as 1b did.
 4. **Thumbnails load slowly** (owner: "just a few videos get them after seconds").
    Investigate, do not guess. Hypotheses to test in order: (a) rows stored before
    `e78274da` have no image until a search re-returns them (count NULL `thumbnail_url`
