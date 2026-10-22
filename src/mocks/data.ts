@@ -6,12 +6,21 @@
  * and D2 (card_click_action = 'auto' default).
  */
 import type {
-  Channel, Download, Episode, EpisodeLink, HistoryEntry, Instance, PlayModeRule, UserPreferences,
+  Channel, Download, Episode, EpisodeLink, HistoryEntry, Instance, PlayModeRule,
+  PodcastSearchResult, UserPreferences,
 } from '../types';
+
+/** 2e: one iTunes-directory stand-in — the search result plus the episodes a
+ *  subscribe of its feed_url persists. */
+export interface MockPodcastFixture {
+  result: PodcastSearchResult;
+  episodes: Array<{ guid: string; title: string; duration_seconds: number; published_at: string }>;
+}
 
 export interface MockDb {
   channels: Channel[];
   episodes: Episode[];
+  podcastDirectory: MockPodcastFixture[];
   instances: Instance[];
   smartLinks: EpisodeLink[];
   playModeRules: PlayModeRule[];
@@ -207,6 +216,57 @@ export const mockDb: MockDb = {
       published_at: '2026-10-08T00:00:00Z',
       created_at: now,
       updated_at: now,
+    },
+  ],
+  // 2e: two shows the mock search can find and the mock subscribe can
+  // persist. Feed URLs are fixture-unique; a subscribe creates episodes
+  // playable in the browser (generic-audio.wav ships in public/mock-media).
+  podcastDirectory: [
+    {
+      result: {
+        title: 'The Weekly Signal',
+        author: 'Signal Media',
+        feed_url: 'https://feeds.example/weekly-signal.xml',
+        artwork: 'https://img.example/weekly-signal.jpg',
+        genres: ['Technology', 'News'],
+      },
+      episodes: [
+        {
+          guid: 'weekly-signal-118',
+          title: 'Episode 118: The instance reliability problem, revisited',
+          duration_seconds: 3480,
+          published_at: '2026-10-20T00:00:00Z',
+        },
+        {
+          guid: 'weekly-signal-117',
+          title: 'Episode 117: Why RSS outlived every aggregator',
+          duration_seconds: 3120,
+          published_at: '2026-10-13T00:00:00Z',
+        },
+      ],
+    },
+    {
+      result: {
+        title: 'Compiler Hours',
+        author: 'Compiler Collective',
+        feed_url: 'https://feeds.example/compiler-hours.xml',
+        artwork: 'https://img.example/compiler-hours.jpg',
+        genres: ['Software', 'Interviews'],
+      },
+      episodes: [
+        {
+          guid: 'compiler-hours-42',
+          title: 'Episode 42: Shipping a Tauri app without a signing identity',
+          duration_seconds: 4020,
+          published_at: '2026-10-21T00:00:00Z',
+        },
+        {
+          guid: 'compiler-hours-41',
+          title: 'Episode 41: FTS is all you need (until it is not)',
+          duration_seconds: 3720,
+          published_at: '2026-10-14T00:00:00Z',
+        },
+      ],
     },
   ],
   instances: [

@@ -3,7 +3,7 @@ import {
   Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
-  KeyboardShortcut
+  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast
 } from '../types';
 
 // Command names and payloads are derived from the Rust commands registered in
@@ -37,13 +37,22 @@ export const channelCommands = {
 
 // Episode commands (episodes.rs)
 export const episodeCommands = {
-  feed: (params?: { type?: string; filter?: string; limit?: number; offset?: number }) =>
+  feed: (params?: { type?: string; filter?: string; channelId?: string; limit?: number; offset?: number }) =>
     invoke<Episode[]>('get_feed', { params }),
   get: (episodeId: string) => invoke<Episode>('get_episode', { episodeId }),
   search: (q: string, params?: { type?: string; filters?: Record<string, unknown> }) =>
     invoke<Episode[]>('search_episodes', { q, params }),
   stream: (episodeId: string, format?: string) =>
     invoke<StreamInfo>('stream_episode', { episodeId, format }),
+};
+
+// Podcast commands (podcasts.rs) — wired in 2e; the backend existed since 1c.
+// subscribe_podcast's `title` is the optional fallback title (Rust
+// prefers the feed's own title; omit it and the feed decides).
+export const podcastCommands = {
+  search: (term: string) => invoke<PodcastSearchResult[]>('search_podcasts', { term }),
+  subscribe: (feedUrl: string, title?: string) =>
+    invoke<SubscribedPodcast>('subscribe_podcast', { feedUrl, title }),
 };
 
 // Queue commands (queue.rs)

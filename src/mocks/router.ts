@@ -4,7 +4,7 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { Download, Episode, Instance, PlayModeRule, QueueItem, StreamInfo, UserPreferences } from '../types';
+import type { Download, Episode, Instance, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
@@ -59,7 +59,22 @@ function withChannelAndLinks(episodes: Episode[]): Episode[] {
 
 const handlers: Record<string, Handler> = {
   // Episodes
-  get_feed: () => withChannelAndLinks(db.episodes),
+  get_feed: (args) => {
+    // Mirrors the Rust FeedParams: `type` filters by the CHANNEL's type
+    // (the Rust JOIN), `channelId` (2e) by the episode's channel_id.
+    const params = (args?.params ?? {}) as { type?: string; channelId?: string; limit?: number; offset?: number };
+    let rows = db.episodes;
+    if (params.type) {
+      const typeByChannel = new Map(db.channels.map((ch) => [ch.id, ch.type]));
+      rows = rows.filter((e) => typeByChannel.get(e.channel_id) === params.type);
+    }
+    if (params.channelId) {
+      rows = rows.filter((e) => e.channel_id === params.channelId);
+    }
+    const offset = params.offset ?? 0;
+    const limit = params.limit ?? 50;
+    return withChannelAndLinks(rows.slice(offset, offset + limit));
+  },
   get_episode: (args) => {
     const ep = requireEpisode(args?.episodeId as string);
     return withChannelAndLinks([ep])[0];
@@ -79,6 +94,73 @@ const handlers: Record<string, Handler> = {
     // .webm (VP8/opus): headless chromium cannot decode H.264, and the e2e
     // specs play these files from public/mock-media/.
     return { url: `/mock-media/${ep.id}.webm`, format: 'video' };
+  },
+
+  // Podcasts (2e — mirrors commands/podcasts.rs). search_podcasts filters
+  // the fixture directory across title/author/genres (the Rust command hits
+  // iTunes live). subscribe_podcast persists channel + episodes like the
+  // one-transaction Rust upsert, is idempotent on the feed URL, and
+  // REJECTS an unknown feed: the real backend fetches any URL, the mock has
+  // no fetcher, and a silently-invented subscription would hide the
+  // contract from the e2e world.
+  search_podcasts: (args): PodcastSearchResult[] => {
+    const term = String(args?.term ?? '').trim().toLowerCase();
+    if (!term) return [];
+    return db.podcastDirectory
+      .filter((p) =>
+        [p.result.title, p.result.author ?? '', ...p.result.genres].some((v) =>
+          v.toLowerCase().includes(term),
+        ),
+      )
+      .map((p) => ({ ...p.result }));
+  },
+  subscribe_podcast: (args): SubscribedPodcast => {
+    const feedUrl = String(args?.feedUrl ?? '').trim();
+    if (!feedUrl) throw new Error('mock: feed URL required');
+    const fixture = db.podcastDirectory.find((p) => p.result.feed_url === feedUrl);
+    if (!fixture) throw new Error(`mock: unknown podcast feed: ${feedUrl}`);
+    const existing = db.channels.find((c) => c.podcast_feed_url === feedUrl);
+    if (existing) {
+      return { channel_id: existing.id, title: fixture.result.title, new_episodes: 0 };
+    }
+    const channelId = `pod-${crypto.randomUUID().slice(0, 8)}`;
+    const nowIso = new Date().toISOString();
+    db.channels = [
+      ...db.channels,
+      {
+        id: channelId,
+        user_id: 'current-user',
+        external_id: feedUrl,
+        title: fixture.result.title,
+        thumbnail_url: fixture.result.artwork,
+        is_subscribed: true,
+        subscribed_at: nowIso,
+        notifications_enabled: false,
+        format_preference: 'both',
+        type: 'podcast',
+        podcast_feed_url: feedUrl,
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+    ];
+    db.episodes = [
+      ...db.episodes,
+      ...fixture.episodes.map((ep) => ({
+        id: `ep-${ep.guid}`,
+        channel_id: channelId,
+        external_id: ep.guid,
+        title: ep.title,
+        podcast_guid: ep.guid,
+        audio_url: '/mock-media/generic-audio.wav',
+        duration_seconds: ep.duration_seconds,
+        published_at: ep.published_at,
+        is_downloaded: false,
+        progress_seconds: 0,
+        created_at: nowIso,
+        updated_at: nowIso,
+      })),
+    ];
+    return { channel_id: channelId, title: fixture.result.title, new_episodes: fixture.episodes.length };
   },
 
   // Channels / instances / smart links / history
