@@ -15,6 +15,7 @@ mod matcher;
 mod podcast;
 mod sponsorblock;
 mod background_tasks;
+mod app_menu;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -68,6 +69,8 @@ pub fn run() {
         // with none published there is nothing to update from — registering it
         // panics at init ("invalid type: null, expected struct Config").
         // .plugin(tauri_plugin_updater::Builder::new().build())
+        .menu(app_menu::build)
+        .on_menu_event(app_menu::on_menu_event)
         .setup(|app| {
             // Managed-state type contract (measured across the codebase):
             // commands inject `State<'_, Database>` / `State<'_, InstancePool>`

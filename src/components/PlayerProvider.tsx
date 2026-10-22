@@ -3,6 +3,7 @@ import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { episodeCommands } from '../hooks/useTauriCommands';
 import { useMediaSession } from '../hooks/useMediaSession';
+import { useMenuPlayback } from '../hooks/useMenuPlayback';
 import { useToasts } from './ui/Toaster';
 import { Episode, PlayMode } from '../types';
 
@@ -350,8 +351,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     registerVideoElement,
   };
 
-  // macOS Now Playing + hardware media keys (step 2d).
+  // macOS Now Playing + hardware media keys, and the native Playback menu (step 2d).
   useMediaSession(value);
+  useMenuPlayback(value);
 
   return (
     <PlayerContext.Provider value={value}>

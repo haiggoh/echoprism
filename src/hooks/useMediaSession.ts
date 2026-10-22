@@ -15,8 +15,9 @@ export interface MediaSessionPlayer {
   previousTrack: () => void;
 }
 
-/** Skip distance when the OS sends a seek without an offset. */
-const DEFAULT_SEEK_OFFSET = 10;
+/** Skip distance when the OS sends a seek without an offset; the Playback
+ *  menu's Skip items use the same distance. */
+export const DEFAULT_SEEK_OFFSET = 10;
 
 const ACTIONS: MediaSessionAction[] = [
   'play',
