@@ -526,6 +526,16 @@ fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
         channel_id: Option<String>,
         #[serde(default)]
         view_count: Option<u64>,
+        /// --flat-playlist has no single `thumbnail`, only this list.
+        #[serde(default)]
+        thumbnails: Vec<YtDlpThumbnail>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct YtDlpThumbnail {
+        url: String,
+        #[serde(default)]
+        width: Option<u32>,
     }
 
     let trimmed = body.trim();
@@ -558,12 +568,17 @@ fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
         .into_iter()
         .filter_map(|e| {
             let id = e.id?;
+            let thumbnail = e
+                .thumbnails
+                .into_iter()
+                .max_by_key(|t| t.width.unwrap_or(0))
+                .map(|t| t.url);
             Some(VideoInfo {
                 id,
                 title: e.title.unwrap_or_default(),
                 description: None,
                 duration: e.duration.map(|d| d.max(0.0) as u64),
-                thumbnail: None,
+                thumbnail,
                 channel: e.channel,
                 channel_id: e.channel_id,
                 upload_date: None,
@@ -671,6 +686,24 @@ mod tests {
         assert_eq!(v.channel.as_deref(), Some("The Verge"));
         assert_eq!(v.duration, Some(5912));
         assert_eq!(v.view_count, Some(54497));
+    }
+
+    /// --flat-playlist carries no `thumbnail`, only a `thumbnails` list; the
+    /// parser ignored it, so every yt-dlp result was stored without an image
+    /// (observed live 2026-10-22: 0 of 34 episodes had a thumbnail_url).
+    #[test]
+    fn yt_dlp_search_keeps_the_widest_thumbnail() {
+        let videos = parse_yt_dlp_search(YTDLP_FIXTURE).expect("parse yt-dlp fixture");
+        let thumb = videos[0].thumbnail.as_deref().expect("thumbnail from the thumbnails list");
+        assert!(thumb.contains("CNAFEJQD"), "expected the 720-wide variant, got {thumb}");
+
+        // Order must not matter: widest first here.
+        let line = r#"{"id":"a","title":"t","thumbnails":[{"url":"https://i/big.jpg","width":720},{"url":"https://i/small.jpg","width":360}]}"#;
+        let v = parse_yt_dlp_search(line).expect("parse");
+        assert_eq!(v[0].thumbnail.as_deref(), Some("https://i/big.jpg"));
+
+        let none = parse_yt_dlp_search(r#"{"id":"b","title":"t"}"#).expect("parse");
+        assert_eq!(none[0].thumbnail, None);
     }
 
     /// DOC-DERIVED fixture, deliberately not a live capture: the public

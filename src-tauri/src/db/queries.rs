@@ -185,7 +185,17 @@ pub async fn upsert_video_results(
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-        if exists.is_some() {
+        if let Some(episode_id) = exists {
+            // Existing rows keep their user state; only a MISSING thumbnail is
+            // filled (rows stored before the yt-dlp parser read thumbnails).
+            if video.thumbnail.is_some() {
+                sqlx::query("UPDATE episodes SET thumbnail_url = ? WHERE id = ? AND thumbnail_url IS NULL")
+                    .bind(&video.thumbnail)
+                    .bind(&episode_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             continue;
         }
 
@@ -2571,6 +2581,28 @@ mod search_source_tests {
         let videos = vec![video("z00Lhm3CqAM", "Apple's HomeView has an app problem", "The Verge", Some("UCddiUEpeqJcYeBxX1IVBKvQ"), 5912)];
         let inserted = upsert_video_results(&pool, &videos).await.expect("store search results");
         assert_eq!(inserted, 1);
+    }
+
+    /// Rows stored before the yt-dlp parser read thumbnails have none; a later
+    /// search that brings one must fill it — and only a MISSING one.
+    #[tokio::test]
+    async fn search_backfills_a_missing_thumbnail_without_clobbering() {
+        let pool = fresh_pool().await;
+        let mut v = video("tuN5h65fhBk", "Vergecast", "The Verge", Some("UCddiUEpeqJcYeBxX1IVBKvQ"), 3956);
+        v.thumbnail = None; // the helper sets one; this row must start without
+        upsert_video_results(&pool, &[v.clone()]).await.expect("store without thumbnail");
+
+        v.thumbnail = Some("https://i.ytimg.com/vi/tuN5h65fhBk/first.jpg".into());
+        upsert_video_results(&pool, &[v.clone()]).await.expect("re-store with thumbnail");
+        v.thumbnail = Some("https://i.ytimg.com/vi/tuN5h65fhBk/second.jpg".into());
+        upsert_video_results(&pool, &[v]).await.expect("re-store with another thumbnail");
+
+        let stored: Option<String> =
+            sqlx::query_scalar("SELECT thumbnail_url FROM episodes WHERE external_id = 'tuN5h65fhBk'")
+                .fetch_one(&pool)
+                .await
+                .expect("row");
+        assert_eq!(stored.as_deref(), Some("https://i.ytimg.com/vi/tuN5h65fhBk/first.jpg"));
     }
 
     /// Network search results must land in the local FTS index (so the
