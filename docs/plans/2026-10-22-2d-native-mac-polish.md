@@ -25,9 +25,13 @@ the window remembering its size and position."_
    observed on disk: `~/Library/Application Support/app.echoprism/.window-state.json`
    holds `"visible": false` with a real 1015×1170 size. On restore that only skips
    `show()+set_focus()` (`should_show = state.visible`); the window config creates it
-   visible anyway, so today the app still appears (possibly unfocused) — but setting
-   `"visible": false` in tauri.conf.json (the usual anti-flicker pattern) would then
-   launch with NO window. Fix: exclude `VISIBLE` from the saved flags.
+   visible anyway, so today the app still appears (possibly unfocused). Fix: exclude
+   `VISIBLE` from the saved flags, so a close-hidden window no longer decides the next
+   launch. **Correction (same day, after reading restore again):** excluding VISIBLE
+   also means the plugin never calls `show()`, so it does NOT make a future
+   `"visible": false` (anti-flicker) config safe — that config would still need an
+   explicit `show()` after restore. A stale `"visible": false` stays in the state
+   file afterwards (the plugin stops writing the field); it is inert.
    Also: `plugins.windowState.autoSave` in tauri.conf.json is read by nothing in the
    plugin (it is configured only via the Rust Builder) — dead config.
 4. **No custom menu exists**; the app runs Tauri's default macOS menu (app/edit/

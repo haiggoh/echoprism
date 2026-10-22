@@ -29,10 +29,12 @@ fn single_instance_handler(app: &tauri::AppHandle, _args: Vec<String>, _cwd: Str
 }
 
 /// What the window-state plugin persists across launches: geometry, not
-/// visibility. Our macOS close HIDES the window, so the default flags would
-/// save `visible:false` on a later Cmd+Q and the next launch would skip the
-/// plugin's show()+set_focus() — with `"visible": false` in the window config
-/// (the usual anti-flicker setting) the app would launch with no window.
+/// visibility. Our macOS close HIDES the window, so with the default flags a
+/// later Cmd+Q saved `visible:false` and the next launch's focus depended on
+/// how the previous session ended. Without VISIBLE the plugin never calls
+/// show(): the window config (`visible` defaults to true) owns visibility.
+/// If that config is ever set to `"visible": false` (anti-flicker), the app
+/// must call show() itself after restore, or it launches with no window.
 fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
     use tauri_plugin_window_state::StateFlags;
     StateFlags::all() - StateFlags::VISIBLE
