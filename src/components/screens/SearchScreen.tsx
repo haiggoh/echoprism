@@ -4,6 +4,7 @@ import { episodeCommands } from '../../hooks/useTauriCommands';
 import { useEpisodePlay } from '../../hooks/useEpisodePlay';
 import { EpisodeCard } from '../feed/EpisodeCard';
 import { FeedFilterTabs } from '../feed/FeedFilterTabs';
+import { PodcastDirectorySection } from '../search/PodcastDirectorySection';
 import { EmptyState } from '../ui/EmptyState';
 import type { Episode } from '../../types';
 
@@ -13,6 +14,10 @@ export function SearchScreen() {
   // episode IS the match signal" can actually happen here.
   const { handleCardClick, handleQueue } = useEpisodePlay();
   const [query, setQuery] = useState('');
+  // 2e: the term the directory (iTunes) is queried with — updated on SUBMIT
+  // only, because iTunes is a rate-limited third party. The local FTS search
+  // below keeps its per-keystroke behavior.
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
   const [showResults, setShowResults] = useState(false);
 
@@ -26,6 +31,7 @@ export function SearchScreen() {
     e.preventDefault();
     if (query.trim().length >= 2) {
       setShowResults(true);
+      setSubmittedQuery(query.trim());
     }
   };
 
@@ -105,6 +111,13 @@ export function SearchScreen() {
               />
             ))}
           </div>
+        )}
+
+        {/* 2e: the iTunes directory — 'all' and 'podcast' filters only, so the
+            live-smoke criterion (podcast AND videos in one search) holds on
+            the default tab and 'video'/'queue' cost no third-party query. */}
+        {showResults && (filter === 'all' || filter === 'podcast') && (
+          <PodcastDirectorySection query={submittedQuery} />
         )}
       </div>
     </div>
