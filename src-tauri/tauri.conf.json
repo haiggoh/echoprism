@@ -64,7 +64,5 @@
       }
     }
   },
-  "plugins": {
-    "windowState": { "autoSave": true }
-  }
+  "plugins": {}
 }

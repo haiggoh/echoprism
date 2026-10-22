@@ -28,6 +28,16 @@ fn single_instance_handler(app: &tauri::AppHandle, _args: Vec<String>, _cwd: Str
     });
 }
 
+/// What the window-state plugin persists across launches: geometry, not
+/// visibility. Our macOS close HIDES the window, so the default flags would
+/// save `visible:false` on a later Cmd+Q and the next launch would skip the
+/// plugin's show()+set_focus() — with `"visible": false` in the window config
+/// (the usual anti-flicker setting) the app would launch with no window.
+fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::all() - StateFlags::VISIBLE
+}
+
 /// Application entry point. Invoked by the thin binary shim in `src/main.rs`
 /// — a library crate cannot host `fn main()`, and without a bin target
 /// `cargo run` / `tauri dev` fail with "a bin target must be available".
@@ -39,7 +49,11 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(window_state_flags())
+                .build(),
+        )
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
@@ -207,4 +221,20 @@ pub fn run() {
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
         });
+}
+#[cfg(test)]
+mod tests {
+    use super::window_state_flags;
+    use tauri_plugin_window_state::StateFlags;
+
+    /// macOS close HIDES the window, so quitting from the Dock afterwards
+    /// would persist `visible:false` and the next launch would skip
+    /// show()+set_focus() (window-state 2.5 `should_show = state.visible`).
+    /// Geometry must still be remembered.
+    #[test]
+    fn window_state_remembers_geometry_but_not_visibility() {
+        let flags = window_state_flags();
+        assert!(!flags.contains(StateFlags::VISIBLE), "visibility must not be persisted");
+        assert!(flags.contains(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED));
+    }
 }
