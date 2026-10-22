@@ -26,3 +26,34 @@ test('F04-H1 (subset): clicking a podcast card resolves its audio stream', async
   // the element this assertion actually cares about (2c added it).
   await expect(page.getByRole('heading', { name: /RSS is winning again/ })).toBeVisible();
 });
+
+/**
+ * F04-H2 (2e): the iTunes podcast directory is reachable from the Search
+ * screen — a submitted term shows directory cards, and subscribing lists
+ * that feed's episodes inline. The mock router mirrors the Rust contract
+ * (subscribe persists channel + episodes; unknown feeds reject), so this
+ * exercises the real UI flow; the LIVE backend check is the cargo smoke
+ * (podcast/mod.rs, #[ignore]) and the in-app live run stays owner-verify.
+ * Playback is deliberately NOT asserted here: real-backend podcast playback
+ * is a recorded defect (stream_episode never consults audio_url — 2e plan).
+ */
+test('F04-H2 (2e): search shows the podcast directory and subscribing lists its episodes', async ({ page }) => {
+  await page.goto('/search');
+
+  await page.getByLabel('Search videos, podcasts, channels').fill('signal');
+  await page.getByRole('button', { name: /^search$/i }).click();
+
+  // The directory section renders on the default 'all' filter, below the
+  // local results grid.
+  const directory = page.getByRole('heading', { name: /podcast directory/i });
+  await expect(directory).toBeVisible();
+  await expect(page.getByText('The Weekly Signal')).toBeVisible();
+
+  await page.getByRole('button', { name: /subscribe to the weekly signal/i }).click();
+
+  await expect(page.getByRole('button', { name: /subscribed to the weekly signal/i })).toBeVisible();
+  await expect(
+    page.getByText(/Episode 118: The instance reliability problem, revisited/),
+  ).toBeVisible();
+  await expect(page.getByText(/Episode 117: Why RSS outlived every aggregator/)).toBeVisible();
+});
