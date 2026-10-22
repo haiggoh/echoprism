@@ -174,30 +174,24 @@ impl Extractor {
     }
     
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
-        let _yt_dlp = self.find_yt_dlp().await?;
+        let yt_dlp = self.find_yt_dlp().await?;
+        let args = yt_dlp_stream_args(video_id, format);
 
-        let mut args: Vec<String> = vec!["-g".to_string(), "--no-playlist".to_string(), "--no-warnings".to_string()];
-        if let Some(f) = format { args.extend(["-f".to_string(), f.to_string()]); }
-        if let Some(q) = quality {
-            let quality_arg = format!("best[height<={}]", q);
-            args.extend(["-f".to_string(), quality_arg]);
-        }
-        let url_arg = format!("https://www.youtube.com/watch?v={}", video_id);
-        args.push(url_arg);
-
-        let output = tokio::process::Command::new("yt-dlp")
+        let output = tokio::process::Command::new(&yt_dlp)
             .args(&args)
             .output()
             .await
             .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("yt-dlp failed: {}", stderr));
         }
-        
-        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(StreamUrl { url, format: format.unwrap_or("mp4").to_string(), quality: quality.unwrap_or("720p").to_string(), headers: None })
+
+        let url = first_url_line(&String::from_utf8_lossy(&output.stdout))
+            .ok_or_else(|| "yt-dlp returned no stream URL".to_string())?;
+        let kind = if format == Some("audio") { "m4a" } else { "hls" };
+        Ok(StreamUrl { url, format: kind.to_string(), quality: quality.unwrap_or("auto").to_string(), headers: None })
     }
     
     async fn find_yt_dlp(&self) -> Result<String, String> {
@@ -486,6 +480,37 @@ fn parse_invidious_search(body: &str) -> Result<Vec<VideoInfo>, String> {
 
 /// Parse yt-dlp search output: either a JSON array (fixtures/tests) or JSONL —
 /// one object per line, the live `--dump-json --flat-playlist` format.
+/// yt-dlp arguments for ONE playable URL. The player sends a logical format
+/// ('video' | 'audio'), never a yt-dlp selector — passing it through as
+/// `-f video` fails with "Requested format is not available" on every video.
+/// YouTube no longer serves muxed (audio+video) files, so:
+///   - audio: the m4a/AAC stream (plays in WebKit; webm/opus may not);
+///   - video: the HLS MASTER manifest of an H.264 variant — it lists every
+///     resolution plus the separate audio rendition, and WebKit's native HLS
+///     joins them and adapts quality itself (measured 2026-10-22: 16 avc1
+///     variants with AUDIO groups, fetchable without extra headers).
+fn yt_dlp_stream_args(video_id: &str, format: Option<&str>) -> Vec<String> {
+    let (selector, field) = match format {
+        Some("audio") => ("bestaudio[ext=m4a]/bestaudio", "url"),
+        _ => ("best[protocol^=m3u8][vcodec^=avc1]/bv*[protocol^=m3u8][vcodec^=avc1]", "manifest_url"),
+    };
+    vec![
+        "--no-playlist".into(),
+        "--no-warnings".into(),
+        "-f".into(),
+        selector.into(),
+        "--print".into(),
+        field.into(),
+        format!("https://www.youtube.com/watch?v={}", video_id),
+    ]
+}
+
+/// The first non-empty line: a selector that resolves to several formats
+/// prints one URL each, and a media element can take only one.
+fn first_url_line(stdout: &str) -> Option<String> {
+    stdout.lines().map(str::trim).find(|l| l.starts_with("http")).map(str::to_string)
+}
+
 fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
     #[derive(Debug, Deserialize)]
     struct YtDlpSearchEntry {
@@ -556,6 +581,51 @@ mod tests {
     const PIPED_FIXTURE: &str = include_str!("fixtures/piped_search.json");
     const INVIDIOUS_FIXTURE: &str = include_str!("fixtures/invidious_search.json");
     const YTDLP_FIXTURE: &str = include_str!("fixtures/yt_dlp_search.json");
+
+    fn selector(args: &[String]) -> (&str, &str) {
+        let at = |flag: &str| args[args.iter().position(|a| a == flag).expect(flag) + 1].as_str();
+        (at("-f"), at("--print"))
+    }
+
+    /// The player's logical format must never reach yt-dlp as a selector:
+    /// `-f video` / `-f audio` are "Requested format is not available" on
+    /// every video (the live "Playback unavailable" of 2026-10-22).
+    #[test]
+    fn stream_args_translate_logical_formats_to_real_selectors() {
+        for format in [Some("video"), Some("audio"), None] {
+            let args = yt_dlp_stream_args("tuN5h65fhBk", format);
+            let (sel, _) = selector(&args);
+            assert!(sel != "video" && sel != "audio", "{format:?} passed through as {sel}");
+            assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=tuN5h65fhBk");
+        }
+    }
+
+    #[test]
+    fn audio_resolves_to_a_single_m4a_url() {
+        let args = yt_dlp_stream_args("x", Some("audio"));
+        let (sel, print) = selector(&args);
+        assert!(sel.starts_with("bestaudio[ext=m4a]"));
+        assert_eq!(print, "url");
+    }
+
+    /// No muxed files exist any more; video is the HLS master manifest of an
+    /// H.264 variant, which carries the separate audio rendition.
+    #[test]
+    fn video_resolves_to_an_h264_hls_master_manifest() {
+        for format in [Some("video"), None] {
+            let args = yt_dlp_stream_args("x", format);
+            let (sel, print) = selector(&args);
+            assert!(sel.contains("protocol^=m3u8") && sel.contains("vcodec^=avc1"), "{sel}");
+            assert_eq!(print, "manifest_url");
+        }
+    }
+
+    #[test]
+    fn first_url_line_takes_one_url_from_multi_line_output() {
+        assert_eq!(first_url_line("\nhttps://a/1\nhttps://b/2\n").as_deref(), Some("https://a/1"));
+        assert_eq!(first_url_line("NA\n"), None, "yt-dlp prints NA for a missing field");
+        assert_eq!(first_url_line(""), None);
+    }
 
     /// Piped search items arrive wrapped in {"items": [...]} and carry the
     /// video id inside a /watch?v= URL rather than a dedicated field.
