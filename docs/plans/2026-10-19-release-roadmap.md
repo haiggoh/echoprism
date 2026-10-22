@@ -85,6 +85,35 @@
   receipts: `docs/plans/2026-10-20-1e-hardening.md`. Open debt recorded for
   step 2: 1c's plan step 4 (podcast search/subscribe wrappers + UI affordance)
   never shipped — subscriptions are unreachable from the UI.
+- **Step 2a done (2026-10-22):** design audit against the brand, with measured
+  (not eyeballed) contrast. Fixed: the Settings theme control was pure
+  decoration (every radio `checked` with an empty onChange, wired to nothing,
+  offering a "light" that has no palette and — via the provider — a CSS class
+  with zero matching rules); `::selection` was 1.25:1 (invisible selected text)
+  → 13.07:1; `--color-text-muted` failed AA on hover surfaces (3.86) → 5.17 min;
+  `--color-danger` failed as badge text (3.76) → 4.83; 8 raw-palette bypasses
+  swapped to tokens (`--color-warning-strong` added). New theme test file,
+  mutation-checked. Commit `eec0e263`; plan
+  `docs/plans/2026-10-21-2a-design-audit.md` (incl. brand.md's stream-colour
+  table conflicting with the D-spec the code follows — flagged for the owner).
+- **Step 2b done (2026-10-22):** the axe gate now covers every route and every
+  Settings tab (3 → 15 scans; unaudited surfaces are how 2a's defects survived).
+  It immediately found four real defects — `/search` had no heading at all, the
+  Search input and Downloads filter had no accessible names, and the Settings
+  scroll region was keyboard-unreachable — all fixed. New keyboard spec (Tab
+  traversal + the BRAND focus ring, colour-asserted after the first version
+  passed against a deleted ring). Commit `cf73cb8e`; plan
+  `docs/plans/2026-10-21-2b-accessibility.md`.
+- **Step 2c done (2026-10-22):** the biggest find of step 2 — Channels,
+  Downloads, History and SmartLinks were static stubs with ZERO queries, so
+  1d's smart-link backend was unreachable from the UI and three backends had no
+  screen at all. All four wired with loading/error/empty states and tests; the
+  Downloads filter was offering media types the command never accepted (it
+  filters by STATUS). Thumbnails: 8 img sites, 1 onError → a shared
+  `Thumbnail` with an on-brand fallback. The player screen rendered no title;
+  it now shows title (line-clamped) + channel. Commit `bf14879a`; plan
+  `docs/plans/2026-10-22-2c-real-content.md`. Gates: tsc clean, vitest 129/129,
+  Playwright 24/24.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -191,9 +220,11 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Step 2 — frontend evaluation (2a design audit, 2b accessibility, 2c real-content
-layout gaps), starting from a known gap: 1c's plan step 4 never shipped — the
-podcast search/subscribe/refresh wrappers and a subscribe affordance do not exist,
-so subscriptions are unreachable from the UI (waypoint
-`1c-step-4-debt-podcast-search` has the evidence). Then 2d as far as sensible
-(menu bar, media keys, window restore).
+Step 2d — native Mac polish: the menu bar, media keys and Now Playing (the media
+plugin is already loaded), and the window remembering its size and position. Then
+step 4 (4b name check; 4c/4d/4e delivery routes: build-from-source installer,
+Homebrew cask in the owner's tap, GitHub Releases workflow — everything prepared,
+nothing pushed/tagged/published until the owner says so). Known gaps carried
+forward: podcast subscribe has no UI affordance (waypoint
+`1c-step-4-debt-podcast-search`), a light theme does not exist (2a), the
+Cross-device sync toggle writes a field nothing reads.
