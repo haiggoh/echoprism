@@ -51,5 +51,11 @@ async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
             }
         }
     }
+    // The app is single-user: every channel (and so every stored search
+    // result) FKs to this row. It used to exist only in scripts/seed.sql and
+    // the test fixtures, so a real install could store nothing.
+    pool.execute("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

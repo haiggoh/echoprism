@@ -2551,6 +2551,28 @@ mod search_source_tests {
         }
     }
 
+    /// A real install runs ONLY the migrations — never scripts/seed.sql and
+    /// never the test fixtures' user insert. Search-discovered channels FK to
+    /// the single local user, so the migrations must create it; otherwise
+    /// every result batch fails with FOREIGN KEY (787), rolls back, and
+    /// search reads back an empty DB (observed live 2026-10-22).
+    #[tokio::test]
+    async fn search_results_store_on_a_migrations_only_database() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        // sqlx turns FK enforcement on by default (that is why the live app
+        // hits 787); explicit here so the test cannot silently lose it.
+        query("PRAGMA foreign_keys = ON").execute(&pool).await.expect("fk on");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+
+        let videos = vec![video("z00Lhm3CqAM", "Apple's HomeView has an app problem", "The Verge", Some("UCddiUEpeqJcYeBxX1IVBKvQ"), 5912)];
+        let inserted = upsert_video_results(&pool, &videos).await.expect("store search results");
+        assert_eq!(inserted, 1);
+    }
+
     /// Network search results must land in the local FTS index (so the
     /// existing search — with smart links — finds them), be idempotent on the
     /// video id, and never clobber user state on rows that already exist.
