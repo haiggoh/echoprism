@@ -316,6 +316,11 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
+**ACTIVE PLAN (2026-10-23): `docs/plans/2026-10-23-first-release-plan.md`**
+— the owner approved the release gate (public repo + push master, NO tag),
+opt-in crash reporting now, all four gap fixes, and 0.1.0; execute there
+first. Context follows.
+
 Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–4 AND the
 step-4 prep (4b name check; 4c/4d/4e delivery routes) are DONE — every
 handoff item this run was scoped for is closed. What remains for the FIRST
