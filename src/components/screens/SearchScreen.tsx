@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { useEpisodePlay } from '../../hooks/useEpisodePlay';
@@ -24,6 +25,18 @@ export function SearchScreen() {
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
   const [showResults, setShowResults] = useState(false);
+
+  // Live-test pass: the Header's search box navigates here with ?q= —
+  // prefill and run it, so the quick entry lands on real results.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const q = (searchParams.get('q') ?? '').trim();
+    if (q.length >= 2) {
+      setQuery(q);
+      setSubmittedQuery(q);
+      setShowResults(true);
+    }
+  }, [searchParams]);
 
   const { data: episodes, isLoading, error } = useQuery({
     queryKey: ['search', query, filter],

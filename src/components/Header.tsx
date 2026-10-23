@@ -1,13 +1,33 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../store/slices/uiSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
-import { PrismBadge } from './ui/PrismBadge';
 import { useConvergence } from '../hooks/useConvergence';
 
+/**
+ * Live-test honesty pass (2026-10-23): this header carried three things
+ * that lied — a placeholder bell hardcoded to "3" (nothing real is behind
+ * it; episode notifications become a feature when a seen-state exists), a
+ * gradient avatar implying an account system this single-user local app
+ * does not have, and a third wide brand mark between the nav icon and the
+ * prism display. All three are gone. The search input USED to be decoration
+ * too (no handler at all); it is now real: Enter navigates to /search with
+ * the query, which the Search screen prefills and submits.
+ */
 export function Header() {
   const { toggleSidebar } = useUIStore();
   const { audioOnlyMode, setAudioOnlyMode } = useQueueStore();
   const { state, setMode } = useConvergence();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+
+  const submitSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const q = search.trim();
+    if (q.length === 0) return;
+    navigate(`/search?q=${encodeURIComponent(q)}`);
+  };
 
   return (
     <header className="h-16 bg-bg-elevated border-b border-border flex items-center justify-between px-4">
@@ -25,11 +45,18 @@ export function Header() {
           </svg>
         </button>
 
-        {/* Search */}
+        {/* Search — the quick entry to the full Search screen. Its label is
+            deliberately DISTINCT from the Search screen's own field: two
+            inputs with one accessible name is its own a11y defect, and the
+            specs address them by name. */}
         <div className="relative hidden sm:block">
           <input
             type="search"
-            placeholder="Search videos, podcasts, channels..."
+            placeholder="Quick search…"
+            aria-label="Quick search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={submitSearch}
             className="w-64 px-4 py-2 pl-10 bg-surface border border-border rounded-lg text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring transition-all"
           />
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -39,14 +66,8 @@ export function Header() {
         </div>
       </div>
 
-      {/* Center: App title (collapsed sidebar) */}
-      <div className="hidden lg:flex items-center">
-        <PrismBadge width={64} aspect={2} audioOnly={audioOnlyMode} />
-      </div>
-
       {/* Right: Audio mode toggle + PrismConvergeToggle */}
       <div className="flex items-center gap-4">
-        {/* Audio mode toggle */}
         <label className="flex items-center gap-2 cursor-pointer hidden sm:flex">
           <input
             type="checkbox"
@@ -61,23 +82,6 @@ export function Header() {
         {/* PrismConvergeToggle — audioOnly reflects the actual playback
             preference: the video stream pales whenever audio-only is on */}
         <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="md" audioOnly={audioOnlyMode} />
-
-        {/* Notifications — accessible name must contain the visible badge text */}
-        <button className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors relative" aria-label="Notifications, 3 unread">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-            <path d="M13.73 21a2 2 0 0 1-3.4 0"></path>
-          </svg>
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-danger rounded-full text-xs text-text-inverse flex items-center justify-center">3</span>
-        </button>
-
-        {/* User avatar */}
-        <div className="w-8 h-8 bg-gradient-to-br from-stream-video to-stream-audio rounded-full flex items-center justify-center">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-        </div>
       </div>
     </header>
   );
