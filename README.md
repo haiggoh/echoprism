@@ -7,6 +7,11 @@ telemetry; search goes through public YouTube front-ends with the local
 `yt-dlp` binary as the guaranteed fallback, podcasts through Apple's iTunes
 Search API.
 
+EchoPrism is an independent client — not affiliated with YouTube, Apple, or
+any podcast publisher. See [docs/PRIVACY.md](docs/PRIVACY.md) for what the
+app stores locally and what third-party services see, and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for attribution.
+
 ## Build from source
 
 Requirements: Node 20+, npm, Rust (stable), and optionally `yt-dlp`
