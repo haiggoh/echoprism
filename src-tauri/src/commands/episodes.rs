@@ -189,6 +189,34 @@ fn stream_info_from(stream: crate::extractor::StreamUrl) -> StreamInfo {
     }
 }
 
+/// Phase A (the recorded blocker `podcast-episodes-cannot-play`): a
+/// subscribed-podcast episode carries its enclosure DIRECTLY — `audio_url`
+/// from the feed, while `external_id` is an RSS GUID, not a YouTube id.
+/// Resolve it without touching the extractor: yt-dlp would receive the guid
+/// and fail (the mock router returned audio_url all along, so e2e stayed
+/// green while the real shell could not play a single podcast episode).
+/// Video-shaped episodes return None — the 2d m4a/HLS path owns them — and
+/// so do empty enclosures.
+fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<StreamInfo> {
+    let has_video_id = episode
+        .video_id
+        .as_deref()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    if has_video_id {
+        return None;
+    }
+    let url = episode.audio_url.as_deref()?.trim().to_string();
+    if url.is_empty() {
+        return None;
+    }
+    Some(StreamInfo {
+        url,
+        headers: None,
+        format: "audio".into(),
+    })
+}
+
 #[command]
 pub async fn stream_episode(
     db: State<'_, Database>,
@@ -199,6 +227,15 @@ pub async fn stream_episode(
     quality: Option<String>,
 ) -> std::result::Result<StreamInfo, String> {
     let episode = db.get_episode(&episode_id).await?;
+    // Phase A: the enclosure path first — playing the episode's own audio
+    // beats routing an RSS guid into yt-dlp.
+    if let Some(info) = enclosure_stream_for(&episode, format.as_deref()) {
+        tracing::info!(
+            "Resolving '{}' from its podcast enclosure (episode has no video stream)",
+            episode.title
+        );
+        return Ok(info);
+    }
     let video_id = video_id_for(&episode);
     let candidates = crate::instance_pool::order_for_search(&pool.get_all().await);
     let stream = extractor
@@ -347,5 +384,52 @@ mod stream_tests {
         assert_eq!(info.url, "https://media.example/video.m3u8");
         assert_eq!(info.format, "hls");
         assert!(info.headers.is_none());
+    }
+
+    /// Phase A (the recorded blocker): a subscribed-podcast episode carries
+    /// its enclosure directly (audio_url from the feed; external_id is an
+    /// RSS GUID, not a YouTube id). It must resolve WITHOUT touching the
+    /// extractor — yt-dlp would receive the guid and fail. Even a VIDEO
+    /// request resolves the enclosure: no video stream exists, and playing
+    /// the audio beats an error screen.
+    #[test]
+    fn podcast_enclosure_resolves_without_the_extractor() {
+        let mut e = episode_stub();
+        e.audio_url = Some("https://audio.example/ep100.mp3".into());
+        e.external_id = "vergecast-ep-100".into(); // RSS guid, not a YouTube id
+
+        for requested in [Some("video"), Some("audio"), None] {
+            let info =
+                enclosure_stream_for(&e, requested).unwrap_or_else(|| {
+                    panic!("enclosure must resolve for request {requested:?}")
+                });
+            assert_eq!(info.url, "https://audio.example/ep100.mp3");
+            assert_eq!(info.format, "audio");
+            assert!(info.headers.is_none());
+        }
+    }
+
+    /// Video-shaped episodes keep the 2d m4a/HLS path — an enclosure, if
+    /// any, must not hijack them.
+    #[test]
+    fn video_shaped_episodes_stay_on_the_extractor_path() {
+        let mut e = episode_stub();
+        e.video_id = Some("z00Lhm3CqAM".into());
+        e.audio_url = Some("https://audio.example/ignored.mp3".into());
+        assert!(
+            enclosure_stream_for(&e, None).is_none(),
+            "video episodes keep the 2d path"
+        );
+    }
+
+    /// A whitespace enclosure or none at all is not a stream — fall through
+    /// to the extractor path like today.
+    #[test]
+    fn empty_enclosure_is_not_a_stream() {
+        let mut e = episode_stub();
+        e.audio_url = Some("   ".into());
+        assert!(enclosure_stream_for(&e, None).is_none());
+        let e2 = episode_stub();
+        assert!(enclosure_stream_for(&e2, None).is_none());
     }
 }

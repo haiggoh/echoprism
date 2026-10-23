@@ -90,7 +90,14 @@ const handlers: Record<string, Handler> = {
       const url = ep.audio_url ?? '/mock-media/generic-audio.wav';
       return { url, format };
     }
-    if (!ep.video_id) throw new Error(`mock: episode '${ep.id}' has no video stream`);
+    if (!ep.video_id) {
+      // Phase A mirrors the Rust enclosure path: a podcast-shaped episode
+      // (no video stream, enclosure present) resolves its enclosure even
+      // for a video request — playing the audio beats an error.
+      const enclosure = ep.audio_url?.trim();
+      if (enclosure) return { url: enclosure, format: 'audio' };
+      throw new Error(`mock: episode '${ep.id}' has no video stream`);
+    }
     // .webm (VP8/opus): headless chromium cannot decode H.264, and the e2e
     // specs play these files from public/mock-media/.
     return { url: `/mock-media/${ep.id}.webm`, format: 'video' };

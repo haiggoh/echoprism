@@ -75,6 +75,18 @@ describe('2e: mock podcast directory mirrors the Rust commands', () => {
     await expect(mockInvoke('subscribe_podcast', { feedUrl: '   ' })).rejects.toThrow(/feed URL required/);
   });
 
+  it('a VIDEO request on a podcast-shaped episode resolves its enclosure (Phase A parity)', async () => {
+    // ep-pod-1 has audio_url and no video_id — the shape a real subscribe
+    // stores. The Rust enclosure path (Phase A) returns the enclosure even
+    // for a video request; the mock must agree or e2e lies about the shell.
+    const info = await mockInvoke<import('../types').StreamInfo>('stream_episode', {
+      episodeId: 'ep-pod-1',
+      format: 'video',
+    });
+    expect(info.url).toBe('/mock-media/ep-pod-1.wav');
+    expect(info.format).toBe('audio');
+  });
+
   it('get_feed keeps the channel-TYPE filter semantics (parity with the Rust JOIN)', async () => {
     const pods = await mockInvoke<Episode[]>('get_feed', { params: { type: 'podcast' } });
     expect(pods.length).toBeGreaterThan(0);

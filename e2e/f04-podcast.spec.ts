@@ -57,3 +57,30 @@ test('F04-H2 (2e): search shows the podcast directory and subscribing lists its 
   ).toBeVisible();
   await expect(page.getByText(/Episode 117: Why RSS outlived every aggregator/)).toBeVisible();
 });
+
+/**
+ * F04-H3 (Phase A): a subscribed episode PLAYS — end to end through the
+ * real card-click chain. In the real shell this was the recorded blocker
+ * (`podcast-episodes-cannot-play`): stream_episode ignored the enclosure
+ * and handed yt-dlp an RSS guid. The Rust enclosure path + its mock mirror
+ * make the subscribe→play flow resolvable in both worlds; this asserts the
+ * engine's hidden <audio> receives the enclosure URL (the mock's
+ * generic-audio.wav), not an error toast.
+ */
+test('F04-H3 (Phase A): subscribing then clicking an episode resolves its enclosure', async ({ page }) => {
+  await page.goto('/search');
+  await page.getByLabel('Search videos, podcasts, channels').fill('signal');
+  await page.getByRole('button', { name: /^search$/i }).click();
+  await page.getByRole('button', { name: /subscribe to the weekly signal/i }).click();
+  await page
+    .getByTestId('directory-episode-row')
+    .filter({ hasText: /Episode 117/ })
+    .click();
+
+  await expect(page).toHaveURL(/\/player\//, { timeout: 10_000 });
+  const audio = page.locator('audio');
+  await expect(audio).toHaveCount(1);
+  await expect(audio).toHaveAttribute('src', /\/mock-media\/generic-audio\.wav$/, {
+    timeout: 10_000,
+  });
+});
