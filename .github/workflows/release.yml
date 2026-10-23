@@ -1,0 +1,78 @@
+# GitHub Releases workflow (4e) — builds the macOS dmg on a version tag push
+# and publishes it as a release. INERT on master: it only fires on tags
+# matching v*, so committing this file publishes nothing until the OWNER
+# pushes a tag (the standing rule: nothing pushed/tagged/published by the
+# agent — this workflow is the owner's trigger).
+#
+# The build is UNSIGNED (no Apple Developer identity): the release body
+# carries the Gatekeeper first-launch note. Tauri's auto-updater stays off
+# until a signing identity exists (4c/4d decision in the roadmap).
+#
+# The dmg is built with hdiutil from the .app, NOT with tauri's decorated dmg
+# step: that step drives Finder over AppleScript, which times out on CI
+# runners and other headless sessions (measured 2026-10-23: "AppleEvent
+# lieferte eine Zeitüberschreitung (-1712)"; the same fallback ships in
+# scripts/build-from-source.sh).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build the app bundle (app only; dmg comes from hdiutil below)
+        run: npm run tauri:build -- --bundles app
+
+      - name: Package the dmg (plain UDZO, no Finder AppleScript)
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          mkdir -p src-tauri/target/release/bundle/dmg
+          hdiutil create -volname "EchoPrism" \
+            -srcfolder "src-tauri/target/release/bundle/macos/EchoPrism.app" \
+            -ov -format UDZO \
+            "src-tauri/target/release/bundle/dmg/EchoPrism_${version}_aarch64.dmg"
+
+      - name: Verify the dmg mounts and contains the app
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          dmg="src-tauri/target/release/bundle/dmg/EchoPrism_${version}_aarch64.dmg"
+          hdiutil attach "$dmg" -nobrowse -readonly
+          test -d "/Volumes/EchoPrism/EchoPrism.app"
+          hdiutil detach "/Volumes/EchoPrism" -quiet
+          echo "dmg verified: mounts and contains EchoPrism.app"
+
+      - name: Locate the dmg
+        id: dmg
+        run: |
+          path=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' | head -1)
+          [ -n "$path" ] || { echo "no dmg produced" >&2; exit 1; }
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release with the dmg
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.dmg.outputs.path }}
+          body: |
+            Unsigned macOS build (aarch64/Apple Silicon). Gatekeeper blocks
+            first launch: right-click EchoPrism.app → Open, or run
+            `xattr -cr /Applications/EchoPrism.app`.
+            Prefer building from source? See the README.
+          fail_on_unmatched_files: true

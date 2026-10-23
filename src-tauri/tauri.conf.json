@@ -43,15 +43,14 @@
     "shortDescription": "Two streams become one - Unified video & podcast player",
     "longDescription": "EchoPrism is a unified video & podcast player that converges YouTube watching and podcast listening into one seamless stream. Built with Tauri, Rust, and love for privacy.",
     "copyright": "MIT License",
-    "category": "AudioVideo",
+    "category": "Video",
     "macOS": {
       "entitlements": null,
       "exceptionDomain": "",
       "frameworks": [],
       "minimumSystemVersion": "10.15",
       "signingIdentity": null,
-      "providerShortName": null,
-      "infoPlist": "Info.plist"
+      "providerShortName": null
     },
     "windows": {
       "webviewInstallMode": {
