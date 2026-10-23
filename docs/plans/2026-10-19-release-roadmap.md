@@ -187,6 +187,29 @@
   improve immediately. Commit `bd550f42`. Gates: cargo 71/71 + 6 live smokes,
   vitest 160/160, tsc clean, Playwright 25/25. Gemini review: no findings.
   Plan with receipts: `docs/plans/2026-10-23-2h-thumbnail-variant.md`.
+- **Step 4-prep done (2026-10-23, GLM 5.3 Flash free session):** 4b name
+  check + 4c/4d/4e delivery routes PREPARED, nothing pushed/tagged/published
+  (the repo has no remote; the release workflow fires only on the owner's
+  first `v*` tag). 4b: npm free, no exact App Store matches, one 0-star
+  GitHub repo, global `/echoprism` account taken (irrelevant to the owner's
+  namespace); Google Play inconclusive from scraping —
+  `docs/name-check-2026-10-23.md`. The build validation itself caught two
+  bundler blockers, both fixed: `bundle.category: "AudioVideo"` is invalid
+  in Tauri 2 (→ `Video`), and `macOS.infoPlist` pointed at an `Info.plist`
+  that never existed (removed; Tauri generates it). The decorated dmg step
+  times out on headless/CI sessions (Finder AppleScript -1712, measured), so
+  both the build script and the workflow produce the dmg with plain
+  `hdiutil` — the fallback EXECUTED and verified (13.7 MB dmg, mounts,
+  contains the app). `scripts/build-from-source.sh` verified end-to-end on
+  the real failure path; `scripts/check-updates.sh` (4d) verified against
+  the live API — its own verification caught that it documented
+  `ECHOPIRM_REPO` without reading it (fixed); the Homebrew cask ships as a
+  TEMPLATE with the fill-in recipe (a cask pointing at a nonexistent release
+  404s for every user). Gemini review: 3 findings triaged — 1 fixed (numeric
+  version comparison replacing string equality), 2 rejected with executed
+  evidence. Plan with receipts:
+  `docs/plans/2026-10-23-4-prep-delivery-routes.md`. Commit `61825569` +
+  review fix.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -293,17 +316,19 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–4 are DONE
-(2e podcast search/subscribe from the UI; 2f store failures surface; 2g the
-health-probe fix that reconnects the instance tier; 2h the card-appropriate
-thumbnail variant). NEXT: step 4 — 4b name check; 4c/4d/4e delivery routes
-(build-from-source installer, Homebrew cask in the owner's tap, GitHub
-Releases workflow — everything prepared, nothing pushed/tagged/published
-until the owner says so). NEW blocker-quality gap from 2e: podcast episodes
-cannot play in the real backend (waypoint `podcast-episodes-cannot-play`) —
-fix before or with the first release, since the new subscribe flow surfaces
-those episodes. Known gaps carried forward: a light theme does not exist
-(2a), the Cross-device sync toggle writes a field nothing reads, the Search
+Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–4 AND the
+step-4 prep (4b name check; 4c/4d/4e delivery routes) are DONE — every
+handoff item this run was scoped for is closed. What remains for the FIRST
+RELEASE is the owner-gated half: create the GitHub remote and push (the
+release workflow fires on the first `v*` tag), fill the Homebrew cask
+template from the first real release dmg, decide on 4a (licence/privacy/
+attribution) and 4g/4h (beta + launch materials), and the owner-verify
+list below. Blocker-quality gap before release: podcast episodes cannot
+play in the real backend (waypoint `podcast-episodes-cannot-play`) — fix
+before or with the release, since the new subscribe flow surfaces those
+episodes. Known gaps carried forward: a light theme does not exist (2a),
+the Cross-device sync toggle writes a field nothing reads, the Search
 screen's Retry button is dead (`onClick={() => {}}` — more visible now that
-2f makes real errors reach it). Future feature (owner, 2026-10-22, after the
-first release unless reprioritised): play preview on hover for thumbnails.
+2f makes real errors reach it). Future feature (owner, 2026-10-22, after
+the first release unless reprioritised): play preview on hover for
+thumbnails.

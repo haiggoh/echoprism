@@ -68,9 +68,27 @@ print(d.get('tag_name', '').lstrip('v') or '')
 ")
 [ -n "$latest" ] || { echo "could not read a tag_name from the response" >&2; exit 1; }
 
-if [ "$local_version" = "$latest" ]; then
-  echo "up to date: $local_version (latest release v$latest)"
-else
-  echo "update available: local $local_version → release $latest"
-  echo "update by re-running: scripts/build-from-source.sh"
-fi
+# Numeric (not string) comparison: 0.2.0 > 0.1.0 and 10 > 9, and a developer
+# build AHEAD of the latest release must not be told to "rebuild".
+# (Review finding 4-prep/2: exact string equality mis-advised both ways.)
+relation=$(python3 -c "
+import re
+def vkey(v):
+    parts = re.findall(r'\d+', v)
+    return tuple(int(p) for p in parts[:4]) if parts else (0,)
+local = vkey('''$local_version''')
+latest = vkey('''$latest''')
+print('behind' if local < latest else ('equal' if local == latest else 'ahead'))
+")
+case "$relation" in
+  equal)
+    echo "up to date: $local_version (latest release v$latest)" ;;
+  behind)
+    echo "update available: local $local_version → release $latest"
+    echo "update by re-running: scripts/build-from-source.sh" ;;
+  ahead)
+    echo "local $local_version is NEWER than the latest release (v$latest) — a developer build; nothing to update." ;;
+  *)
+    echo "unexpected comparison result: $relation" >&2
+    exit 1 ;;
+esac

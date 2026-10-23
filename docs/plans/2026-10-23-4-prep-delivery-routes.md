@@ -56,3 +56,39 @@ Full details: `docs/name-check-2026-10-23.md`.
 4a (licence/privacy/attribution — separate milestone), 4f (crash reporting),
 4g/4h (beta + launch materials), universal (x86_64) builds, the auto-updater
 (needs signing), any actual push/tag/release.
+
+## Receipts (2026-10-23, GLM 5.3 Flash free session — nothing pushed)
+
+- **The build validation caught two REAL bundler blockers** before any user
+  could: `bundle.category: "AudioVideo"` is not in Tauri 2's bundler enum
+  (→ `Video`), and `macOS.infoPlist` pointed at an `Info.plist` that never
+  existed (dead scaffold config — removed; Tauri generates the plist).
+  After the fixes: `EchoPrism.app` bundles (release build ~1 m).
+- **The dmg step's real failure, measured**: the decorated dmg step drives
+  Finder over AppleScript and times out on headless/CI sessions
+  (`AppleEvent lieferte eine Zeitüberschreitung (-1712)`). The plain
+  `hdiutil` fallback was EXECUTED here (13.7 MB dmg, mounts, contains the
+  app) and wired into BOTH the build script (auto-fallback when the log
+  matches the dmg-bundler signature) and the workflow (app-only build +
+  hdiutil, deterministic CI).
+- **build-from-source.sh verified END-TO-END** on this session's real
+  failure path: prereqs → `npm ci` → `tauri:build` → dmg step failed exactly
+  as predicted → automatic fallback → plain dmg → artifact receipts,
+  exit 0. `--help` run (never grepped); unknown flag exits 2 with usage and
+  does no work.
+- **check-updates.sh verified against the live API**, and the verification
+  caught a real bug: it documented `ECHOPIRM_REPO` without reading it (the
+  doc-vs-behaviour lie the "run it, don't read it" rule exists for). Fixed;
+  the graceful no-releases 404 path and the behind-path (tailscale/tailscale
+  → "update available") both exercised.
+- **Gemini review (503 once, retried)** returned 3 findings; triaged against
+  the code: **(1) stale-app fallback — rejected**: the trigger string only
+  appears after the SAME run's app bundling succeeded, so the packaged app
+  cannot be from a prior build; **(2) version comparison — ACCEPTED and
+  fixed**: exact string equality mis-advised a developer ahead of the
+  release and breaks on v10-vs-v9; the comparison is now numeric in python3
+  (already a dependency), 5 cases verified including both flagged edges;
+  **(3) hdiutil -srcfolder puts Contents/ at the dmg root — rejected as
+  factually wrong**: the executed mount listing shows `EchoPrism.app` at the
+  volume root, and the workflow's own mount-verify step asserts it in CI.
+- **Roadmap updated** below (Where things stand + Next action).
