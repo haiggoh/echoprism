@@ -115,6 +115,25 @@ pub struct SearchParams {
     pub limit: Option<u32>,
 }
 
+/// The serde renames are the REAL invoke contract: Tauri camelCases only
+/// top-level args, so inside `params` the frontend's `channelId` key must
+/// match by serde. Nothing else exercises this path — the db test builds
+/// FeedParams as a struct literal and the contract test only sees the
+/// top-level `params` key — so a wrong rename would pass every gate while
+/// the real shell silently lost the filter (2e adversarial triage).
+#[test]
+fn feed_params_deserializes_frontend_keys() {
+    let params: FeedParams = serde_json::from_str(r#"{"channelId":"ch-1"}"#).expect("channelId");
+    assert_eq!(params.channel_id.as_deref(), Some("ch-1"));
+    let both: FeedParams =
+        serde_json::from_str(r#"{"type":"podcast","channelId":"ch-2"}"#).expect("type+channelId");
+    assert_eq!(both.episode_type.as_deref(), Some("podcast"));
+    assert_eq!(both.channel_id.as_deref(), Some("ch-2"));
+    // Absent keys stay None (no default-by-accident).
+    let none: FeedParams = serde_json::from_str("{}").expect("empty");
+    assert!(none.channel_id.is_none() && none.episode_type.is_none());
+}
+
 /// The stream resolver keys on the YouTube video id; search-upserted rows
 /// carry it in video_id, everything else falls back to external_id.
 fn video_id_for(episode: &Episode) -> String {
