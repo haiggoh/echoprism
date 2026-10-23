@@ -125,6 +125,25 @@
   search, thumbnails, video playback. Owner-verify still open: sound, audio-only, Now
   Playing, media keys, ⌘←/⌘→ in the search box. Gates: cargo 64/64, vitest 150/150,
   tsc clean, Playwright 24/24. Plan `docs/plans/2026-10-22-2d-native-mac-polish.md`.
+- **Step 2e done (2026-10-23, GLM 5.3 Flash free session):** 1c's step-4 debt
+  closed — the podcast backend is reachable from the UI. A "Podcast directory"
+  section on the Search screen queries iTunes on the SUBMITTED term (rate-limit
+  courtesy; the local FTS search keeps its per-keystroke behaviour) and renders on
+  the 'all' and 'podcast' filters; Subscribe runs the 1c one-transaction command,
+  toasts, and lists that feed's episodes inline through a new optional
+  `channel_id` filter on `get_feed` (QueryBuilder rewrite of the two `query_as!`
+  branches; serde renames pinned by a contract test after the review pass found
+  nothing exercised the serde path). The mock world mirrors the Rust contract
+  (idempotent subscribe, unknown feeds REJECT). Commits `0b7371cb` (plan),
+  `6ba6483a`, `fef9e447`, `ca471732`, `5f439d43`, `420c32f6`. Gates: cargo 66/66
+  + 5 live smokes (iTunes "vergecast" and the video smokes green), vitest
+  160/160, tsc clean, Playwright 25/25. Gemini review of the diff: no findings.
+  NEW known gap (discovered during 2e, deliberately not fixed there — scope):
+  **podcast episodes cannot play in the real backend** — `stream_episode` never
+  consults the episode's `audio_url` enclosure, so yt-dlp receives the RSS guid
+  and fails (e2e only passes because the mock returns `audio_url`; waypoint
+  `podcast-episodes-cannot-play`). Plan with receipts:
+  `docs/plans/2026-10-23-2e-podcast-search-ui.md`.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -231,12 +250,16 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Follow `docs/plans/2026-10-22-handoff-glm-flash.md`: podcast search/subscribe from the
-UI (waypoint `1c-step-4-debt-podcast-search`), search failing open on a store error,
-every search falling back to yt-dlp (instances answer empty), slow thumbnails — then
-step 4 (4b name check; 4c/4d/4e delivery routes: build-from-source installer, Homebrew
-cask in the owner's tap, GitHub Releases workflow — everything prepared, nothing
-pushed/tagged/published until the owner says so). Known gaps carried forward: a light
-theme does not exist (2a), the Cross-device sync toggle writes a field nothing reads.
-Future feature (owner, 2026-10-22, after the first release unless reprioritised):
-play preview on hover for thumbnails.
+Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Item 1 (podcast
+search/subscribe from the UI, waypoint `1c-step-4-debt-podcast-search`) is DONE
+(2e, 2026-10-23). NEXT: search failing open on a store error (handoff item 2),
+then every search falling back to yt-dlp (item 3, instances answer empty), slow
+thumbnails (item 4) — then step 4 (4b name check; 4c/4d/4e delivery routes:
+build-from-source installer, Homebrew cask in the owner's tap, GitHub Releases
+workflow — everything prepared, nothing pushed/tagged/published until the owner
+says so). NEW blocker-quality gap from 2e: podcast episodes cannot play in the
+real backend (waypoint `podcast-episodes-cannot-play`) — fix before or with the
+first release, since the new subscribe flow surfaces those episodes. Known gaps
+carried forward: a light theme does not exist (2a), the Cross-device sync toggle
+writes a field nothing reads. Future feature (owner, 2026-10-22, after the first
+release unless reprioritised): play preview on hover for thumbnails.

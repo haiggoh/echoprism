@@ -222,3 +222,51 @@ would add overhead, not save cost.
 `refresh_podcasts` wrapper (background task covers refresh), podcast episode
 playback against the real backend (recorded defect), OPML import UI, light
 theme, play-preview-on-hover (owner: after first release).
+
+## Receipts (2026-10-23, GLM 5.3 Flash free session — all on master, nothing pushed)
+
+- **Phase 0 preflight** — tree clean except npm noise; NO running tauri/vite/cargo
+  process (rule-10 check); `generic-audio.wav` present; `.sqlx` cache present
+  (→ QueryBuilder convention). Model verified from the LIVE proxy config
+  (proxy-4141.yaml → `nvidia_nim/z-ai/glm-5.3-flash`) before the first commit.
+- **Phase 1 DONE** — `6ba6483a`. RED 1: E0560 (no `channel_id` field); RED 2 for
+  the right reason after adding the field (left 4 / right 2 — filter ignored);
+  QueryBuilder rewrite → green 65/65. Mutation: dropping the WHERE push → red
+  4-vs-2; restore cmp-verified byte-identical; green re-collected after.
+- **Phase 2 DONE** — `fef9e447`. RED first (6/6, no handlers) → green 6/6. One
+  test fixed during green-up because its expectation was RECALLED, not derived:
+  the type-filter assertion forgot the fixtures have TWO podcast channels
+  (ch-2 AND ch-4) — re-derived from the fixture definitions (the exact trap of
+  observation 0032). Mutations: idempotence guard disabled → red (2 new episodes
+  on re-subscribe); term filter dropped → red (unfiltered directory); restores
+  cmp-verified; green 6/6 after. Full suite 160/160, tsc clean.
+- **Phase 3 DONE** — `ca471732`. RED (no section) → green 4/4. Mutations: filter
+  gate dropped → red on the 'video'-tab assertion; episode-list expansion
+  disabled → red on the subscribe assertions; restores cmp-verified; green
+  10/10 across both files.
+- **Phase 4 DONE** — `5f439d43` (e2e F04-H2). Gates: cargo 66/66 (phase 5 added
+  one), tsc clean (project TS 5.9.3 binary), vitest 160/160, Playwright 25/25
+  (all 15 axe scans unbroken).
+- **Phase 5 DONE** — live smokes 5/5 (`cargo test --lib -- --ignored`, 9.6s),
+  including `live_itunes_search_returns_parseable_results` ("vergecast") and the
+  yt-dlp/piped video smokes → the BACKEND half of the live criterion holds
+  (podcast feed AND videos both resolve live). The in-app live run stays
+  owner-verify. Adversarial review: Gemini 3.8 Flash on the 997-line diff
+  (12,830 prompt tokens, 81.7s) → **NO FINDINGS**; my own triage of the plan's
+  risk list then found the serde-rename hole — nothing exercised the serde
+  path (db test uses struct literals, contract test sees only the top-level
+  `params` key, e2e is mock-world), so a wrong rename would have passed every
+  gate while the real shell silently lost the filter → `420c32f6` pins
+  FeedParams from JSON; mutation (rename removed) → red; restore cmp-verified;
+  cargo 66/66 after.
+- **Phase 6 DONE** — this section; roadmap "Where things stand" + "Next action"
+  updated; waypoint `1c-step-4-debt-podcast-search` closed with evidence; new
+  waypoint `podcast-episodes-cannot-play` records the discovered defect.
+
+### Live criterion (handoff item 1) — status
+
+Backend-level live: PROVEN (iTunes "vergecast" + video smokes green 2026-10-23).
+UI-level live: NOT claimed — the owner runs the app (search "Vergecast" → the
+podcast card under "Podcast directory" AND the YouTube videos on one screen;
+Subscribe → the episode list appears). Reproduced in the owner-verify list of
+the final report.
