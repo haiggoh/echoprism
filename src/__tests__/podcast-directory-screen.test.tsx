@@ -11,13 +11,14 @@
  * removing the episode-list fetch fails the subscribe assertions (both
  * mutation-checked in the plan).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { SearchScreen } from '../components/screens/SearchScreen';
 import { PlayerProvider } from '../components/PlayerProvider';
-import { resetMockState } from '../mocks/router';
+import { mockInvoke, resetMockState } from '../mocks/router';
+import * as bridge from '../tauri-bridge';
 
 function renderSearch() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,7 +41,10 @@ function submitQuery(term: string) {
 }
 
 beforeEach(() => resetMockState());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('2e: podcast directory on the Search screen', () => {
   it('shows directory results with a Subscribe action for the submitted term', async () => {
@@ -92,5 +96,36 @@ describe('2e: podcast directory on the Search screen', () => {
       expect(screen.getByText(/enter a search query|no results|search failed/i)).toBeTruthy();
     });
     expect(screen.queryByRole('heading', { name: /podcast directory/i })).toBeNull();
+  });
+
+  it('Phase B: the Retry button refetches the failed search', async () => {
+    // 2f made store failures surface as the command's Err; the Search
+    // screen's error state then offered a Retry button wired to NOTHING
+    // (the 2c relic `onClick={() => {}}`). Retry must invalidate the
+    // failed query so a transient store error is recoverable in-place.
+    let searchCalls = 0;
+    vi.spyOn(bridge, 'invoke').mockImplementation((cmd, args) => {
+      if (cmd === 'search_episodes') {
+        searchCalls += 1;
+        if (searchCalls === 1) return Promise.reject(new Error('store failed'));
+      }
+      return mockInvoke(cmd as string, args as Record<string, unknown> | undefined);
+    });
+
+    renderSearch();
+    submitQuery('signal');
+    await screen.findByText('Search failed');
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(searchCalls).toBe(2);
+    }, { timeout: 3000 });
+    // Recovery proven by the error state clearing (derived from the
+    // fixtures: no local episode title contains 'signal', so the refetched
+    // search renders its empty state, not a results grid).
+    await waitFor(() => {
+      expect(screen.queryByText('Search failed')).toBeNull();
+    });
   });
 });

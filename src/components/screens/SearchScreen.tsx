@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { useEpisodePlay } from '../../hooks/useEpisodePlay';
 import { EpisodeCard } from '../feed/EpisodeCard';
@@ -13,6 +13,10 @@ export function SearchScreen() {
   // same D2 semantics as the feed (shared hook), so "the user's choice of an
   // episode IS the match signal" can actually happen here.
   const { handleCardClick, handleQueue } = useEpisodePlay();
+  // Phase B: Retry invalidates the failed search query — the button was a
+  // dead `onClick={() => {}}` relic from 2c, more visible since 2f made real
+  // store errors reach this state.
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   // 2e: the term the directory (iTunes) is queried with — updated on SUBMIT
   // only, because iTunes is a rate-limited third party. The local FTS search
@@ -88,7 +92,12 @@ export function SearchScreen() {
           <div className="flex h-64 items-center justify-center">
             <div className="text-center p-8">
               <p className="text-danger mb-4">Search failed</p>
-              <button className="btn-unified" onClick={() => {}}>Retry</button>
+              <button
+                className="btn-unified"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['search'] })}
+              >
+                Retry
+              </button>
             </div>
           </div>
         )}

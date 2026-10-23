@@ -80,6 +80,64 @@
   --shadow-pop: 0 4px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
+/* Phase B: the light palette — every --color-* token from :root with a
+   light-mode value, contrast-measured by light-theme-contrast.test.ts
+   (2a's discipline, applied to the new surface). The hues keep their
+   semantic identity but darken enough to carry TEXT roles on light
+   surfaces (the dark theme's neon accent #10F0A8 measures ~1.4:1 on a
+   light background — unusable as text, so accent becomes #00805A). */
+html.light {
+  --color-bg: #F5F8FB;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-overlay: rgba(245, 248, 251, 0.92);
+  --color-surface: #EAEFF5;
+  --color-surface-hover: #DFE7EF;
+
+  --color-border: #C9D4E0;
+  --color-border-input: #B0BFCE;
+  --color-border-strong: #7188A0;
+
+  --color-text: #101B2D;
+  --color-text-muted: #4E5F73;
+  --color-text-inverse: #F5F8FB;
+  --color-text-disabled: #77889A;
+
+  --color-accent: #00744F;
+  --color-accent-hover: #005C3F;
+  --color-accent-soft: rgba(0, 116, 79, 0.12);
+
+  --color-audio: #00605A;
+  --color-audio-hover: #004D46;
+  --color-audio-soft: rgba(0, 96, 90, 0.12);
+  --color-video: #8F410B;
+  --color-video-hover: #7A3709;
+  --color-video-soft: rgba(143, 65, 11, 0.12);
+  --color-stream-audio: #00605A;
+  --color-stream-video: #8F410B;
+  --color-stream-unified: #00744F;
+  --color-stream-audio-soft: rgba(0, 96, 90, 0.12);
+  --color-stream-video-soft: rgba(143, 65, 11, 0.12);
+
+  /* Semantic — the 2a audit's roles, light-side: each hue must clear AA as
+     text on bg, on surface, and on its own soft wash. */
+  --color-danger: #B32920;
+  --color-danger-hover: #96241C;
+  --color-danger-soft: rgba(179, 41, 32, 0.12);
+  --color-success: #047857;
+  --color-success-soft: rgba(4, 120, 87, 0.12);
+  --color-warning: #8F4B08;
+  --color-warning-soft: rgba(143, 75, 8, 0.12);
+  --color-warning-strong: #B4470A;
+
+  --color-focus-ring: #00744F;
+  --color-ca-warm: #8F410B;
+  --color-ca-cool: #00605A;
+  --color-unified-glow: rgba(0, 128, 90, 0.35);
+  --color-unified-glow-strong: rgba(0, 128, 90, 0.55);
+  --color-audio-glow: rgba(143, 65, 11, 0.4);
+  --color-video-glow: rgba(0, 96, 90, 0.4);
+}
+
 @layer base {
   * {
     @apply border-border;

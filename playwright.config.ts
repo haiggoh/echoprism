@@ -13,6 +13,12 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'retain-on-failure',
+    // Phase B: the app's 'system' theme now follows the OS preference, and
+    // headless Chromium prefers LIGHT — this suite was authored against the
+    // dark brand (the focus-ring spec asserts #10F0A8). Pin the emulated
+    // scheme to dark for determinism; theme-light.spec.ts covers the light
+    // palette explicitly (axe + class assertions).
+    colorScheme: 'dark',
     // The engine's play() is called from effect/promise context detached from
     // the click gesture, so headless chromium's autoplay policy would reject
     // it and the stream resolve effect (gated on isPlaying) would never fire.

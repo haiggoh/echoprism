@@ -42,7 +42,9 @@ function stubMatchMedia(prefersDark: boolean) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: (query: string) => ({
-      matches: query.includes('dark') ? prefersDark : false,
+      // Phase B: answer the light query too — the stub predates the light
+      // theme and only spoke for 'dark'.
+      matches: query.includes('dark') ? prefersDark : query.includes('light') ? !prefersDark : false,
       media: query,
       addEventListener: () => {},
       removeEventListener: () => {},
@@ -78,7 +80,7 @@ afterEach(() => {
 });
 
 describe('2a: the Settings theme control is truthful', () => {
-  it('offers only themes that exist, and says why light is absent', async () => {
+  it('offers exactly the themes that exist (Phase B: light now does)', async () => {
     renderSettings();
     openPreferencesTab();
     await waitFor(() => expect(screen.getByText('Theme')).toBeTruthy());
@@ -90,8 +92,10 @@ describe('2a: the Settings theme control is truthful', () => {
 
     expect(values).toContain('dark');
     expect(values).toContain('system');
-    expect(values).not.toContain('light');
-    expect(within(group).getByText(/light theme is not designed yet/i)).toBeTruthy();
+    // Phase B: the light palette EXISTS now (contrast-measured — see
+    // light-theme-contrast.test.ts), so the option is offered again.
+    expect(values).toContain('light');
+    expect(within(group).queryByText(/not designed yet/i)).toBeNull();
   });
 
   it('applies the chosen theme through the real mechanism (class + localStorage)', async () => {
@@ -111,12 +115,47 @@ describe('2a: the Settings theme control is truthful', () => {
     expect(window.localStorage.getItem('theme')).toBe('dark');
   });
 
-  it('resolves a light-preferring OS to the app dark theme, never the unstyled class', async () => {
-    stubMatchMedia(false); // OS prefers LIGHT — the app has no light palette
+  it('Phase B: choosing light applies the light class and persists it', async () => {
+    renderSettings();
+    openPreferencesTab();
+    await waitFor(() => expect(screen.getByText('Theme')).toBeTruthy());
+
+    const group = screen.getByText('Theme').closest('div') as HTMLElement;
+    const lightRadio = within(group)
+      .getAllByRole('radio')
+      .find((el) => (el as HTMLInputElement).value === 'light') as HTMLInputElement;
+    fireEvent.click(lightRadio);
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('light')).toBe(true);
+    });
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(window.localStorage.getItem('theme')).toBe('light');
+  });
+
+  it('Phase B: a light-preferring OS resolves to the light theme (system resolution)', async () => {
+    stubMatchMedia(false); // OS prefers LIGHT
     renderSettings();
     await waitFor(() => {
-      expect(document.documentElement.classList.contains('dark')).toBe(true);
+      expect(document.documentElement.classList.contains('light')).toBe(true);
     });
-    expect(document.documentElement.classList.contains('light')).toBe(false);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+  });
+});
+
+describe('Phase B: Settings offers no control for a feature that does not exist', () => {
+  // The cross-device sync toggle persisted
+  // preferences.cross_device_sync_enabled, which NOTHING reads (verified
+  // 2026-10-22, 2a known-gap list; re-verified before this change). A
+  // control for an unbuilt feature is dishonest UI — it is hidden, not
+  // implemented; the schema field stays (no data migration). The RED run
+  // against the toggle-present code is this test's own mutation check:
+  // reverting the removal reproduces it exactly.
+  it('the cross-device sync toggle is absent', async () => {
+    renderSettings();
+    openPreferencesTab();
+    await waitFor(() => expect(screen.getByText('Theme')).toBeTruthy());
+    expect(screen.queryByText(/cross-device sync/i)).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /cross-device sync/i })).toBeNull();
   });
 });
