@@ -53,6 +53,14 @@ pub async fn search_episodes(
     // yt-dlp binary as the guaranteed fallback. Total failure degrades to
     // local-only results (the app stays usable offline).
     let candidates = crate::instance_pool::order_for_search(&pool.get_all().await);
+    if candidates.is_empty() {
+        // 2g: this branch used to be SILENT — the only seeded instance sat in
+        // Failed (wrong probe) and every search went to yt-dlp with no trace.
+        tracing::warn!(
+            "Search '{}': no candidate instances (none seeded or all Failed) — going straight to yt-dlp",
+            query
+        );
+    }
     let mut videos: Vec<crate::extractor::VideoInfo> = Vec::new();
     let mut source = String::from("none");
     for instance in &candidates {
@@ -67,12 +75,24 @@ pub async fn search_episodes(
                 source = instance.url.clone();
                 break;
             }
-            Ok(Ok(_)) => continue, // answered with no hits — try the next source
+            Ok(Ok(_)) => {
+                // 2g: an empty answer used to `continue` silently — the other
+                // unlogged branch of the silent yt-dlp fallback.
+                tracing::info!("Search via {} answered with no hits", instance.url);
+                continue; // answered with no hits — try the next source
+            }
             Ok(Err(e)) => tracing::warn!("Search via {} failed: {}", instance.url, e),
             Err(_) => tracing::warn!("Search via {} timed out after 8s", instance.url),
         }
     }
     if videos.is_empty() {
+        if !candidates.is_empty() {
+            tracing::info!(
+                "Search '{}': all {} candidate(s) exhausted — falling back to yt-dlp",
+                query,
+                candidates.len()
+            );
+        }
         match tokio::time::timeout(
             std::time::Duration::from_secs(45),
             extractor.search_with_yt_dlp(&query),

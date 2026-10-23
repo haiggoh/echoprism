@@ -71,7 +71,13 @@ pub async fn list_instances(pool: &SqlitePool) -> DbResult<Vec<Instance>> {
 /// API was verified live make the default cut; the public Invidious fleet has
 /// disabled its API ecosystem-wide (official registry api:false, verified
 /// 2026-10-20), so no Invidious instances are seeded.
-pub const DEFAULT_INSTANCES: [&str; 1] = ["https://pipedapi.ducks.party"];
+/// Live-verified 2026-10-23 before seeding (the 1b standard): both answer
+/// `GET /search?q=test&filter=videos` with 200 — kavin.rocks (502),
+/// adminforge.de (301) and drgns.space (dead) were checked and rejected the
+/// same day. Existing installs keep exactly what they configured; these land
+/// on fresh installs so failover has somewhere to go (2g).
+pub const DEFAULT_INSTANCES: [&str; 2] =
+    ["https://pipedapi.ducks.party", "https://api.piped.private.coffee"];
 
 /// Insert the default search instances, but only into an empty table — a user
 /// who already configured instances keeps exactly what they configured.
@@ -2444,17 +2450,31 @@ mod search_source_tests {
     async fn seeds_default_instances_only_when_table_is_empty() {
         let pool = fresh_pool().await;
 
+        // The expected count DERIVES from the list (2g: derive, don't
+        // duplicate) — every entry is live-verified before it joins
+        // DEFAULT_INSTANCES, so the count moving means the list moved.
         let seeded = seed_default_instances_if_empty(&pool).await.expect("seed");
-        assert_eq!(seeded, 1, "exactly the one API-verified default instance");
+        assert_eq!(
+            seeded,
+            DEFAULT_INSTANCES.len(),
+            "every API-verified default instance seeds"
+        );
 
         let again = seed_default_instances_if_empty(&pool).await.expect("re-seed");
         assert_eq!(again, 0, "second run must not duplicate");
 
         let all = list_instances(&pool).await.expect("list");
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].instance_type, InstanceType::Piped);
-        assert_eq!(all[0].url, "https://pipedapi.ducks.party");
-        assert!(all[0].auto_failover);
+        assert_eq!(all.len(), DEFAULT_INSTANCES.len());
+        assert!(all.iter().all(|i| i.instance_type == InstanceType::Piped));
+        assert!(
+            all.iter().any(|i| i.url == "https://pipedapi.ducks.party"),
+            "the original API-verified default stays"
+        );
+        assert!(
+            all.iter().any(|i| i.url == "https://api.piped.private.coffee"),
+            "the 2g live-verified second default is present (failover needs somewhere to go)"
+        );
+        assert!(all.iter().all(|i| i.auto_failover));
     }
 
     #[tokio::test]
