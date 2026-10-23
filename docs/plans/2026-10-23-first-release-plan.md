@@ -108,6 +108,33 @@ enclosure beats an error). Episodes WITH a `video_id` are unchanged (the
    largest Phase-B item; if it exceeds a sane slice it splits into its own
    milestone — the plan prefers honest splitting over silent over-run.
 
+## Phase B/C receipts (2026-10-23/24, GLM 5.3 Flash — all committed)
+
+- **Phase A DONE** (`0023ef62`) — the blocker closed: `enclosure_stream_for`
+  resolves a podcast episode's own `audio_url` before the extractor (even
+  for a video request); F04-H3 drives subscribe→play end to end; waypoint
+  `podcast-episodes-cannot-play` done with evidence.
+- **Phase B DONE** (`3283f02c`) — Retry wired (recovery proven: first call
+  rejects, Retry refetches, error clears); sync toggle hidden; light theme
+  MEASURED (`light-theme-contrast.test.ts` parses `html.light` and computes
+  WCAG ratios; the first run missed the badge-on-wash pairs the live axe
+  scan caught at 4.03/4.12 → fixed to 5.5/5.3). The provider resolves
+  'system' through the OS — which flipped the whole e2e suite to light
+  (headless prefers light); the suite is pinned dark (authored brand) and
+  theme-light.spec.ts covers light explicitly.
+- **Phase C DONE** (`d08e74a5`) — local-only capture (Rust panic hook + JS
+  error/rejection listeners → bounded 10-record ring, sanitized: no home
+  paths, no usernames — tested), opt-in-gated submission via a prefilled
+  GitHub issue (no tokens), scheduled triage action. The contract test's
+  refusal to find the commands at crate root moved them to
+  commands/crash.rs — the convention talking.
+- **Live-test pass 1 DONE** (`17720006`) — the four UI findings from the
+  owner's first live test (see Early discovery above).
+- **Live-test pass 2 DONE** (`16a060b8`) — history records every playback
+  (the surface had NO writer before) and Channels rows carry avatars +
+  derived home links. Gates at each milestone: cargo 78→81/81, vitest
+  193→199/199, tsc clean, Playwright 30/30.
+
 ## Phase C — 4f opt-in crash reporting
 
 **Design decision (recorded, with the alternative):** no embedded upload
