@@ -230,6 +230,21 @@ them. The preview never hijacks the card's click (D2 unchanged) and is
 - **Non-goals guard:** no fake screenshots of unbuilt UI; every image is
   captured from the real app.
 
+## Early discovery (owner live test, 2026-10-23 — the Phase G budget firing ahead of schedule)
+
+The owner's live test found four UI items, fixed in commit `17720006`
+(frontend-design pass within the existing brand): the podcast filter glyph
+became a headphones silhouette; the placeholder bell (hardcoded "3") and
+the account-style avatar are GONE — episode notifications are recorded as
+a real feature needing seen-state (waypoint `episode-notifications-a-real`);
+the third wide brand mark left the header; and the playbar architecture is
+settled: ONE engine, TWO control surfaces — the MiniPlayer is a single bar
+with an integrated keyboard-operable seek strip (its hover-expanded
+duplicate panel — the owner's "second queue bar" — is gone) and its expand
+control navigates to the full player screen. Bonus find from the same
+pass: the header search input was decoration; it now routes to
+/search?q= which the Search screen prefills and runs.
+
 ## Phase G — the proper final test run (gates the delivery)
 
 - **Flow matrix first:** enumerate EVERY user flow (onboarding, feed,
