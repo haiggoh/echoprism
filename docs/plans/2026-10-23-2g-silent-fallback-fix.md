@@ -82,3 +82,31 @@ pushed/tagged/published, TDD + cmp-guarded mutations, Gemini review)._
 Auto-failover persistence (the `TODO: Update DB` in `failover`), adding
 defaults to NON-empty installs, Invidious probing changes, SABR/age-gate
 flags.
+
+## Receipts (2026-10-23, GLM 5.3 Flash free session — nothing pushed)
+
+- **Diagnosis DONE before code** — the handoff's fork answered: the instance is
+  UP (probe + search 200), the PROBE was wrong (Invidious path on Piped → 404
+  → Failed → silently skipped). Second default candidates live-checked; only
+  `api.piped.private.coffee` passed (200, shape == committed fixture).
+- **Phase 1 DONE** (probe seam, `cbcd38b8`) — RED 1: E0425 (fns missing). One
+  type error in the new code caught by the compiler (tuple's first element as
+  String vs &str) before any green claim. GREEN 71/71 incl. 4 new tests:
+  probe request per type, the classify table, and the Piped marker against
+  the COMMITTED 1b live fixture (captured-then-coded). Mutation: Piped probe
+  reverted to the Invidious path → red; restore cmp-verified; green after.
+- **Phase 2 DONE** (seed, same commit) — test updated FIRST to derive its
+  expected count from `DEFAULT_INSTANCES.len()` → RED (1 ≠ 2) → const gains
+  the live-verified host → GREEN. Seed-if-empty semantics unchanged (the
+  existing-instances test still passes).
+- **Phase 3 DONE** (logging, same commit) — WARN on zero candidates, INFO on
+  an instance answering zero hits, INFO before the yt-dlp fallback. Not unit
+  tested (no tracing harness; observability lines — decision 4).
+- **Phase 4 DONE** (live smoke, same commit) — new `#[ignore]`
+  `live_piped_probe_url_answers_200`: GETs the probe URL for the seeded
+  default and asserts 200 + marker. Live run 6/6 (was 5/5) — the direct
+  regression test for the root cause, green against the real host.
+- **Phase 5 DONE** — gates: cargo 71/71 + 6 live smokes, tsc clean, vitest
+  160/160, Playwright 25/25. Gemini review of the 304-line diff: **NO
+  FINDINGS**; own triage (Invidious drift, health-loop side effects, seed
+  semantics) — nothing survives. Roadmap updated.

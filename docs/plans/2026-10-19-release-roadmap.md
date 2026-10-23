@@ -156,6 +156,23 @@
   cargo 67/67, vitest 160/160, tsc clean, Playwright 25/25. Gemini review: no
   finding survived triage. Plan with receipts:
   `docs/plans/2026-10-23-2f-search-fails-closed.md`.
+- **Step 2g done (2026-10-23, GLM 5.3 Flash free session):** the instance tier
+  is back. Root cause of "every search falls back to yt-dlp": the health probe
+  used the Invidious path (`/api/v1/videos/test`) for BOTH instance types — it
+  404s on the Piped default (live-checked: that host answers `/search` 200 in
+  1.5 s while the probe path 404s), so the only seeded instance sat in
+  `Failed`, `order_for_search` silently dropped it, and the health task logged
+  `Failover failed` every 5 minutes. The probe is now type-aware (Piped → its
+  own `/search` endpoint with the `items` JSON marker; Invidious unchanged),
+  both silent search branches log (no candidates WARN; empty answer INFO;
+  fallback INFO), and `DEFAULT_INSTANCES` gains `api.piped.private.coffee`
+  (live-verified 2026-10-23; kavin.rocks 502, adminforge 301, drgns.space dead
+  the same day). Seed-if-empty semantics unchanged: existing installs heal via
+  the probe fix; the second default lands on fresh installs. Commit
+  `cbcd38b8`. Gates: cargo 71/71 + 6 live smokes (new probe smoke green
+  against the real host), vitest 160/160, tsc clean, Playwright 25/25. Gemini
+  review: no findings. Plan with receipts:
+  `docs/plans/2026-10-23-2g-silent-fallback-fix.md`.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -262,19 +279,18 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–2 are DONE
-(2e podcast search/subscribe from the UI; 2f store failures surface). NEXT:
-every search falling back to yt-dlp (handoff item 3 — log the silent
-failover branches, check pipedapi.ducks.party, seed more than one default
-instance), slow thumbnails (item 4) — then step 4 (4b name check; 4c/4d/4e
-delivery routes: build-from-source installer, Homebrew cask in the owner's
-tap, GitHub Releases workflow — everything prepared, nothing
-pushed/tagged/published until the owner says so). NEW blocker-quality gap
-from 2e: podcast episodes cannot play in the real backend (waypoint
-`podcast-episodes-cannot-play`) — fix before or with the first release,
-since the new subscribe flow surfaces those episodes. Known gaps carried
-forward: a light theme does not exist (2a), the Cross-device sync toggle
-writes a field nothing reads, the Search screen's Retry button is dead
-(`onClick={() => {}}` — more visible now that 2f makes real errors reach
-it). Future feature (owner, 2026-10-22, after the first release unless
-reprioritised): play preview on hover for thumbnails.
+Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–3 are DONE
+(2e podcast search/subscribe from the UI; 2f store failures surface; 2g the
+health-probe fix that reconnects the instance tier). NEXT: slow thumbnails
+(handoff item 4 — investigate, do not guess; hypotheses listed there in
+order) — then step 4 (4b name check; 4c/4d/4e delivery routes:
+build-from-source installer, Homebrew cask in the owner's tap, GitHub
+Releases workflow — everything prepared, nothing pushed/tagged/published
+until the owner says so). NEW blocker-quality gap from 2e: podcast episodes
+cannot play in the real backend (waypoint `podcast-episodes-cannot-play`) —
+fix before or with the first release, since the new subscribe flow surfaces
+those episodes. Known gaps carried forward: a light theme does not exist
+(2a), the Cross-device sync toggle writes a field nothing reads, the Search
+screen's Retry button is dead (`onClick={() => {}}` — more visible now that
+2f makes real errors reach it). Future feature (owner, 2026-10-22, after the
+first release unless reprioritised): play preview on hover for thumbnails.
