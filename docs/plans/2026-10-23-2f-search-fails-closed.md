@@ -49,3 +49,39 @@ existing live smokes.
 
 The dead Retry button, toasts for store failures, instance-resolution
 logging (that is handoff item 3's scope: silent failover branches).
+
+## Receipts (2026-10-23, GLM 5.3 Flash free session — nothing pushed)
+
+- **Phase 1 DONE** — RED 1: E0425 (fn missing). The seam added with the CURRENT
+  swallow behaviour → RED 2 for the right reason ("a store failure must surface,
+  not read back as success: []" — the exact incident behaviour). Wired `?` →
+  GREEN. One test-design correction along the way, caught because RED 2 refused
+  to appear: my first pool assumed a migrations-only DB lacks the
+  `current-user` row — but the 2d FIX made the migrations create it, so nothing
+  failed. The incident state is now injected explicitly (migrations + FK pragma
+  + `DELETE FROM users`), documented as a fault fixture, not a setup skip
+  (rule 11 intact: the 2d install-behaviour test still runs migrations and
+  nothing else).
+- **Phase 2 DONE** — mutation (`?` → `unwrap_or(0)`) → red; restore
+  cmp-verified byte-identical; cargo 67/67 re-collected after the restore.
+- **Phase 3 DONE** — gates: cargo 67/67 + 5 ignored live smokes untouched,
+  tsc clean, vitest 160/160, Playwright 25/25.
+- **Phase 4 DONE** — Gemini 3.8 Flash on the 125-line diff (115s). Output
+  truncated mid-stream; its one substantive starter — `sqlite::memory:` is
+  private per connection — is a trap this repo already documents (the podcast
+  test helpers' comment; single-connection `max_connections(1)` pools are the
+  established pattern, and only the CONCURRENT refresh test needs a temp-file
+  DB). The moved `query`/`params` are used by nothing after the delegation
+  (and a later use would be a compile error, not a silent bug). No finding
+  survives triage.
+- **Phase 5 DONE** — roadmap "Where things stand" + "Next action" updated
+  (item 2 closed, item 3 next).
+
+### Behaviour note
+
+The store branch only runs when a source returned results, so the legitimate
+offline path (source fails → nothing to store → local read as success) is
+unchanged — that is 1b's designed degradation, not a swallow. What changed:
+source SUCCEEDED but storage failed → the command now returns Err and the
+Search screen renders its error state (the dead Retry button it reveals is
+recorded in the final report as a separate pre-existing defect).

@@ -144,6 +144,18 @@
   and fails (e2e only passes because the mock returns `audio_url`; waypoint
   `podcast-episodes-cannot-play`). Plan with receipts:
   `docs/plans/2026-10-23-2e-podcast-search-ui.md`.
+- **Step 2f done (2026-10-23, GLM 5.3 Flash free session):** search no longer
+  fails open — a store failure after a source returned results now surfaces as
+  the command's Err (the WARN-and-continue was how the 2d FK bug became a
+  silent "no results"; the store error carried the diagnosis). The
+  post-resolution tail is extracted into `search_episodes_resolved`, tested
+  offline against the injected 2d incident state (migrations + FK, then
+  `DELETE FROM users` — a fault fixture; the real migrations-only install now
+  stores fine since 2d). The designed offline degradation (source fails →
+  nothing to store → local read) is unchanged. Commit `3a10d332`. Gates:
+  cargo 67/67, vitest 160/160, tsc clean, Playwright 25/25. Gemini review: no
+  finding survived triage. Plan with receipts:
+  `docs/plans/2026-10-23-2f-search-fails-closed.md`.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -250,16 +262,19 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Item 1 (podcast
-search/subscribe from the UI, waypoint `1c-step-4-debt-podcast-search`) is DONE
-(2e, 2026-10-23). NEXT: search failing open on a store error (handoff item 2),
-then every search falling back to yt-dlp (item 3, instances answer empty), slow
-thumbnails (item 4) — then step 4 (4b name check; 4c/4d/4e delivery routes:
-build-from-source installer, Homebrew cask in the owner's tap, GitHub Releases
-workflow — everything prepared, nothing pushed/tagged/published until the owner
-says so). NEW blocker-quality gap from 2e: podcast episodes cannot play in the
-real backend (waypoint `podcast-episodes-cannot-play`) — fix before or with the
-first release, since the new subscribe flow surfaces those episodes. Known gaps
-carried forward: a light theme does not exist (2a), the Cross-device sync toggle
-writes a field nothing reads. Future feature (owner, 2026-10-22, after the first
-release unless reprioritised): play preview on hover for thumbnails.
+Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–2 are DONE
+(2e podcast search/subscribe from the UI; 2f store failures surface). NEXT:
+every search falling back to yt-dlp (handoff item 3 — log the silent
+failover branches, check pipedapi.ducks.party, seed more than one default
+instance), slow thumbnails (item 4) — then step 4 (4b name check; 4c/4d/4e
+delivery routes: build-from-source installer, Homebrew cask in the owner's
+tap, GitHub Releases workflow — everything prepared, nothing
+pushed/tagged/published until the owner says so). NEW blocker-quality gap
+from 2e: podcast episodes cannot play in the real backend (waypoint
+`podcast-episodes-cannot-play`) — fix before or with the first release,
+since the new subscribe flow surfaces those episodes. Known gaps carried
+forward: a light theme does not exist (2a), the Cross-device sync toggle
+writes a field nothing reads, the Search screen's Retry button is dead
+(`onClick={() => {}}` — more visible now that 2f makes real errors reach
+it). Future feature (owner, 2026-10-22, after the first release unless
+reprioritised): play preview on hover for thumbnails.
