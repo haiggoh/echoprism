@@ -89,17 +89,32 @@ pub async fn search_episodes(
         }
     }
 
+    search_episodes_resolved(&db, query, params, &videos, &source).await
+}
+
+/// The post-resolution tail of `search_episodes` (2f seam): store what the
+/// source returned, then read the local results. Extracted so the
+/// store-then-read policy is testable OFFLINE — a real failing store (the
+/// migrations-only FK shape, rule 11) needs no network.
+async fn search_episodes_resolved(
+    db: &Database,
+    query: String,
+    params: Option<SearchParams>,
+    videos: &[crate::extractor::VideoInfo],
+    source: &str,
+) -> std::result::Result<Vec<Episode>, String> {
     if !videos.is_empty() {
-        match db.upsert_video_results(&videos).await {
-            Ok(n) => tracing::info!(
-                "Search '{}' via {}: {} result(s), {} new",
-                query,
-                source,
-                videos.len(),
-                n
-            ),
-            Err(e) => tracing::warn!("Storing search results failed: {}", e),
-        }
+        // 2f: results came back from the source but could not be stored —
+        // SURFACE the failure. The old WARN-and-continue turned the 2d FK bug
+        // into a silent "no results" (the store error carried the diagnosis).
+        let n = db.upsert_video_results(videos).await?;
+        tracing::info!(
+            "Search '{}' via {}: {} result(s), {} new",
+            query,
+            source,
+            videos.len(),
+            n
+        );
     }
 
     // Local results (including anything just stored), smart links resolved.
@@ -177,6 +192,77 @@ pub struct StreamInfo {
     pub url: String,
     pub headers: Option<std::collections::HashMap<String, String>>,
     pub format: String,
+}
+
+#[cfg(test)]
+mod search_store_tests {
+    //! 2f: the store-then-read policy of search_episodes, offline-testable.
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    /// A pool in the recorded 2d incident state: migrations ran, but the
+    /// `current-user` row is gone, so the batch upsert's channel insert hits
+    /// the users FK and the whole transaction rolls back. The 2d FIX made the
+    /// migrations create that row (see
+    /// `search_results_store_on_a_migrations_only_database`), so the failure
+    /// is injected explicitly — a fault fixture, not a setup skip.
+    async fn incident_state_pool() -> sqlx::SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        // sqlx turns FK enforcement on by default; explicit so the test
+        // cannot silently lose it (same guard as the 2d test).
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("fk on");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        sqlx::query("DELETE FROM users")
+            .execute(&pool)
+            .await
+            .expect("inject the 2d incident state (no user row)");
+        pool
+    }
+
+    fn synthetic_video(id: &str) -> crate::extractor::VideoInfo {
+        crate::extractor::VideoInfo {
+            id: id.into(),
+            title: format!("video {id}"),
+            description: None,
+            duration: Some(60),
+            thumbnail: None,
+            channel: Some("Some Channel".into()),
+            channel_id: None,
+            upload_date: None,
+            view_count: None,
+            formats: Vec::new(),
+        }
+    }
+
+    /// Results came back from the source but could not be stored → the error
+    /// must SURFACE. The old behaviour (WARN + return the local read) turned
+    /// this hard failure into a silent "no results" (the 2d incident).
+    #[tokio::test]
+    async fn store_failure_surfaces_instead_of_reading_back_empty() {
+        let pool = incident_state_pool().await;
+        let db = crate::db::Database::from_pool(pool);
+        let err = search_episodes_resolved(
+            &db,
+            "vergecast".to_string(),
+            None,
+            &[synthetic_video("vid-1")],
+            "test-source",
+        )
+        .await
+        .expect_err("a store failure must surface, not read back as success");
+        let lowered = err.to_lowercase();
+        assert!(
+            lowered.contains("foreign key") || err.contains("787"),
+            "error should name the store failure, got: {err}"
+        );
+    }
 }
 
 #[cfg(test)]
