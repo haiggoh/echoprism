@@ -56,3 +56,29 @@ thumbnail parsing — no `thumbnails` key).
 
 Backfilling 720 URLs out of stored rows (non-clobbering), Piped parser
 changes, Thumbnail.tsx changes, a thumbnail proxy/cache.
+
+## Receipts (2026-10-23, GLM 5.3 Flash free session — nothing pushed)
+
+- **Investigation DONE before code** (all three hypotheses measured, in the
+  handoff's order): (a) 11/62 NULL rows, all pre-`e78274da` video rows,
+  self-healing; (b) all 51 stored thumbnails are the 720 signed variant,
+  picked deliberately by `max_by_key`; live capture shows the list carries a
+  360-wide 24 KB crop alongside (720 = 60–220 KB, ~same latency) — 3–9× the
+  bytes per search; (c) `loading="lazy"` already flows from EpisodeCard
+  through Thumbnail to the `<img>`.
+- **Phase 1 DONE** (`bd550f42`) — RED: the new test fails against the widest
+  policy with the 720 URL in the message. The OLD test
+  (`yt_dlp_search_keeps_the_widest_thumbnail`) was a deliberate 2d pin — it
+  is REWRITTEN to pin the new policy with its supersession rationale in the
+  doc comment (not silently deleted). Edges tested: 360-over-720 from the
+  committed live fixture; only-{720,1280} → 720; only-{120,200} → 200;
+  absent list → None.
+- **Phase 2 DONE** — `pick_card_thumbnail` extracted (module level; the
+  nested `YtDlpThumbnail` moved out with it); the parser delegates. GREEN
+  71/71.
+- **Phase 3 DONE** — mutation (`max_by_key` restored) → red; restore
+  cmp-verified; green re-collected after.
+- **Phase 4 DONE** — gates: cargo 71/71 + 6 live smokes, tsc clean, vitest
+  160/160, Playwright 25/25. Gemini review: **NO FINDINGS**; own triage of
+  the width-absent/equal-width/only-huge edges — nothing survives. Roadmap
+  updated.

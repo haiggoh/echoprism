@@ -173,6 +173,20 @@
   against the real host), vitest 160/160, tsc clean, Playwright 25/25. Gemini
   review: no findings. Plan with receipts:
   `docs/plans/2026-10-23-2g-silent-fallback-fix.md`.
+- **Step 2h done (2026-10-23, GLM 5.3 Flash free session):** thumbnails
+  measured, not guessed. (a) 11/62 NULL rows are all pre-`e78274da` video rows
+  and self-heal via the shipped backfill; (c) lazy loading already present.
+  The live issue was (b): the parser's `max_by_key` picked the signed
+  720-wide variant (60–220 KB) where the same yt-dlp list carries a properly
+  16:9-cropped 360-wide variant (24 KB) — a 50-card search pulled 3–11 MB,
+  which IS "the first few thumbnails arrive, the rest take seconds".
+  `pick_card_thumbnail` now takes the smallest variant ≥ 300 px, else the
+  largest below; the 2d widest-variant test is superseded (rewritten with its
+  rationale), and the live capture is committed as a fixture. Stored rows
+  keep their 720 URLs until re-returned (non-clobbering); new searches
+  improve immediately. Commit `bd550f42`. Gates: cargo 71/71 + 6 live smokes,
+  vitest 160/160, tsc clean, Playwright 25/25. Gemini review: no findings.
+  Plan with receipts: `docs/plans/2026-10-23-2h-thumbnail-variant.md`.
 
 ## Step 1 — Fix search (blocks everything else)
 
@@ -279,12 +293,11 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–3 are DONE
+Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–4 are DONE
 (2e podcast search/subscribe from the UI; 2f store failures surface; 2g the
-health-probe fix that reconnects the instance tier). NEXT: slow thumbnails
-(handoff item 4 — investigate, do not guess; hypotheses listed there in
-order) — then step 4 (4b name check; 4c/4d/4e delivery routes:
-build-from-source installer, Homebrew cask in the owner's tap, GitHub
+health-probe fix that reconnects the instance tier; 2h the card-appropriate
+thumbnail variant). NEXT: step 4 — 4b name check; 4c/4d/4e delivery routes
+(build-from-source installer, Homebrew cask in the owner's tap, GitHub
 Releases workflow — everything prepared, nothing pushed/tagged/published
 until the owner says so). NEW blocker-quality gap from 2e: podcast episodes
 cannot play in the real backend (waypoint `podcast-episodes-cannot-play`) —
