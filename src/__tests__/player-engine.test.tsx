@@ -23,6 +23,9 @@ import type { Episode, QueueItem } from '../types';
 
 vi.mock('../hooks/useTauriCommands', () => ({
   episodeCommands: { stream: vi.fn() },
+  // Phase (live-test pass): the resolve effect now also records history —
+  // the engine tests must not break on it (and can assert it).
+  historyCommands: { record: vi.fn().mockResolvedValue(undefined) },
 }));
 
 const streamMock = vi.mocked(episodeCommands.stream);
@@ -126,6 +129,10 @@ describe('PlayerProvider media engine', () => {
     expect(streamMock).toHaveBeenCalledWith(ep.id, 'video');
     expect(probeVideo.src).toContain('https://mock/ep.m3u8');
     expect(api.isPlaying).toBe(true);
+    // Live-test pass: a successful resolve RECORDS history (one row per
+    // actual playback start — every source, one hook).
+    const { historyCommands } = await import('../hooks/useTauriCommands');
+    expect(vi.mocked(historyCommands.record)).toHaveBeenCalledWith(ep.id);
   });
 
   it('restores position from playback state on src change (D3/F06)', async () => {

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { episodeCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands } from '../hooks/useTauriCommands';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
 import { useToasts } from './ui/Toaster';
@@ -179,7 +179,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       .stream(ep.id, wantAudio ? 'audio' : 'video')
       .then((info) => {
         // Only commit if this episode is still the one the engine is playing.
-        if (currentEpisodeRef.current?.id === ep.id) setStreamUrl(info.url);
+        if (currentEpisodeRef.current?.id === ep.id) {
+          setStreamUrl(info.url);
+          // Live-test finding: history had no writer. One row per actual
+          // playback start — here, where the resolve SUCCEEDED (media that
+          // fails to resolve never played, so it never enters history).
+          historyCommands.record(ep.id).catch(() => {
+            /* a history failure must never break playback */
+          });
+        }
       })
       .catch(() => {
         if (currentEpisodeRef.current?.id !== ep.id) return;

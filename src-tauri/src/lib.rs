@@ -197,6 +197,7 @@ pub fn run() {
             // History commands
             commands::history::list_history,
             commands::history::clear_history,
+            commands::history::record_history,
 
             // Crash reporting (4f, Phase C) — capture is local-only;
             // submission is the user's own browser action.

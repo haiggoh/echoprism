@@ -119,6 +119,7 @@ export const settingsCommands = {
 export const historyCommands = {
   list: (limit?: number, offset?: number) => invoke<HistoryEntry[]>('list_history', { limit, offset }),
   clear: () => invoke<void>('clear_history'),
+  record: (episodeId: string) => invoke<HistoryEntry>('record_history', { episodeId }),
 };
 
 // Keyboard shortcuts (shortcuts.rs)

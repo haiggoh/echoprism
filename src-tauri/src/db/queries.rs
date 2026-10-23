@@ -1284,6 +1284,54 @@ pub async fn clear_history(pool: &SqlitePool) -> DbResult<()> {
     Ok(())
 }
 
+/// Live-test pass: the feed's published SITE link per feed_url (non-empty
+/// only) — the podcast channel's home for the Channels screen.
+pub async fn podcast_feed_links(pool: &SqlitePool) -> DbResult<std::collections::HashMap<String, String>> {
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT feed_url, link FROM podcast_feeds WHERE link IS NOT NULL AND link != ''")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(url, link)| link.map(|l| (url, l)))
+        .collect())
+}
+
+/// Live-test finding: the history surface existed as a READ only — no code
+/// path ever wrote a row, so "History" could only show seed data. One row
+/// per actual playback start (the player records after a successful
+/// resolve, so only media that actually plays enters history).
+pub async fn record_history_entry(pool: &SqlitePool, episode_id: &str) -> DbResult<HistoryEntry> {
+    let entry = HistoryEntry {
+        id: uuid::Uuid::new_v4().to_string(),
+        user_id: "current-user".into(),
+        episode_id: episode_id.into(),
+        position_seconds: 0.0,
+        duration_seconds: None,
+        completed: false,
+        played_at: chrono::Utc::now().into(),
+    };
+    // Runtime-checked sqlx::query, not the query! macro: new macro SQL
+    // would demand regenerating the .sqlx offline cache (the repo's
+    // documented convention for added statements).
+    sqlx::query(
+        "INSERT INTO history (id, user_id, episode_id, position_seconds, duration_seconds, completed, played_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&entry.id)
+    .bind(&entry.user_id)
+    .bind(&entry.episode_id)
+    .bind(entry.position_seconds)
+    .bind(entry.duration_seconds)
+    .bind(entry.completed)
+    .bind(entry.played_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(entry)
+}
+
 pub async fn list_downloads(pool: &SqlitePool, status: Option<String>) -> DbResult<Vec<Download>> {
     #[derive(sqlx::FromRow)]
     struct DownloadRow {

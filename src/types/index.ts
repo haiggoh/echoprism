@@ -78,6 +78,7 @@ export interface Channel {
   format_preference: FormatPreference;
   instance_id?: string;
   type: ChannelType;
+  home_url?: string;
   podcast_feed_url?: string;
   podcast_guid?: string;
   last_fetched_at?: string;

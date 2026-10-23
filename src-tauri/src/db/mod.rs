@@ -238,6 +238,16 @@ impl Database {
         queries::list_history(&self.pool, limit, offset).await
     }
 
+    /// Live-test finding: one row per actual playback start.
+    pub async fn record_history_entry(&self, episode_id: &str) -> DbResult<HistoryEntry> {
+        queries::record_history_entry(&self.pool, episode_id).await
+    }
+
+    /// Live-test pass: feed site links for the Channels screen's home links.
+    pub async fn podcast_feed_links(&self) -> DbResult<std::collections::HashMap<String, String>> {
+        queries::podcast_feed_links(&self.pool).await
+    }
+
     pub async fn clear_history(&self) -> DbResult<()> {
         queries::clear_history(&self.pool).await
     }

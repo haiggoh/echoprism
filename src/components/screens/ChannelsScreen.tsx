@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { channelCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
+import { Thumbnail } from '../ui/Thumbnail';
 
 /**
  * 2c: was a static stub (permanent empty state, no query) while
@@ -54,20 +55,45 @@ export function ChannelsScreen() {
                 data-testid="channel-row"
                 className="flex items-center justify-between gap-4 bg-surface border border-border rounded-lg px-4 py-3"
               >
-                <div className="min-w-0">
-                  <p className="font-medium text-text truncate">{channel.title}</p>
-                  <p className="text-xs text-text-muted truncate mt-0.5">
-                    {channel.external_id} · {channel.format_preference}
-                  </p>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Thumbnail
+                    src={channel.thumbnail_url}
+                    alt=""
+                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-medium text-text truncate">{channel.title}</p>
+                    <p className="text-xs text-text-muted truncate mt-0.5">
+                      {channel.format_preference}
+                    </p>
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  aria-label={`Unsubscribe from ${channel.title}`}
-                  disabled={unsubscribe.isPending}
-                  onClick={() => unsubscribe.mutate(channel.id)}
-                >
-                  Unsubscribe
-                </Button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {channel.home_url && (
+                    <a
+                      href={channel.home_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Open ${channel.title} home`}
+                      className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                      </svg>
+                    </a>
+                  )}
+                  <Button
+                    variant="ghost"
+                    aria-label={`Unsubscribe from ${channel.title}`}
+                    disabled={unsubscribe.isPending}
+                    onClick={() => unsubscribe.mutate(channel.id)}
+                  >
+                    Unsubscribe
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>

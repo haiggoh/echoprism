@@ -181,7 +181,14 @@ const handlers: Record<string, Handler> = {
   },
 
   // Channels / instances / smart links / history
-  list: () => db.channels,
+  list: () =>
+    db.channels.map((c) => ({
+      ...c,
+      // Mirrors home_url_for: video channels link to their YouTube id;
+      // podcast channels get a link only when a site link exists (the
+      // fixtures carry none, so they honestly have none).
+      home_url: c.type === 'podcast' ? undefined : `https://www.youtube.com/channel/${c.external_id}`,
+    })),
   list_instances: () => db.instances,
   add_instance: (args): Instance => {
     const url = String(args?.url ?? '').trim();
@@ -245,6 +252,23 @@ const handlers: Record<string, Handler> = {
   clear_history: (): null => {
     db.history = [];
     return null;
+  },
+  // Live-test pass: history records one row per actual playback start
+  // (mirrors the Rust record_history; the player calls it after a
+  // successful stream resolve).
+  record_history: (args) => {
+    const episode = requireEpisode(args?.episodeId as string);
+    const entry = {
+      id: crypto.randomUUID(),
+      user_id: 'current-user',
+      episode_id: episode.id,
+      position_seconds: 0,
+      duration_seconds: episode.duration_seconds,
+      completed: false,
+      played_at: new Date().toISOString(),
+    };
+    db.history = [entry, ...db.history];
+    return entry;
   },
   list_downloads: (args): Download[] => {
     const status = args?.status as string | undefined;

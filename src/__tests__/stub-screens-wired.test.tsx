@@ -39,6 +39,25 @@ describe('2c: previously-static screens now load real content', () => {
     });
   });
 
+  it('live-test pass: channel rows carry an avatar and a home link where one exists', async () => {
+    renderScreen(<ChannelsScreen />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('channel-row').length).toBe(mockDb.channels.length);
+    });
+
+    // Every row renders the avatar surface (real image or the shared
+    // Thumbnail fallback) — "profile picture matching each channel".
+    expect(document.querySelectorAll('[data-testid="channel-row"] img, [data-testid="channel-row"] [data-testid="thumbnail-fallback"]').length)
+      .toBe(mockDb.channels.length);
+
+    // Home links derive per type (mirrors home_url_for): video channels
+    // link to their YouTube id; the fixture podcast feeds carry no site
+    // link, so those rows honestly have none.
+    const videoRow = screen.getByRole('link', { name: /open tech talks weekly home/i });
+    expect(videoRow.getAttribute('href')).toBe('https://www.youtube.com/channel/UC-mock-tech-talks');
+    expect(screen.queryByRole('link', { name: /open the deep dive podcast home/i })).toBeNull();
+  });
+
   it('History lists playback history and clears it', async () => {
     renderScreen(<HistoryScreen />);
     await waitFor(() => {
