@@ -145,34 +145,73 @@ zero server and zero secrets. Alternative rejected for v1: hosted collector
 - MIT licence exists ✓ — verify the year/holder line is what the owner
   wants visible ("EchoPrism contributors" is fine; note only).
 
-## Phase E — play preview on hover (feature, TDD)
+## Phase E — play preview on hover (feature, TDD; RESEARCHED 2026-10-23)
 
-**Behaviour contract:** hovering an episode card's thumbnail (Feed, Search,
-directory rows) for ~600 ms starts a MUTED inline preview; leaving cancels
-and destroys it. Video-shaped episodes (with `video_id`) resolve a stream
-through the existing `stream_episode` path; podcast-shaped episodes
-(audio-only) get NO preview — nothing dishonest is invented for them. The
-preview never hijacks the card's click (D2 semantics unchanged) and is
-`aria-hidden` (it is an enhancement; play remains the action).
+**Research findings (primary sources, live):**
+- **YouTube's own hover preview is a STORYBOARD SPRITE SHEET, not a video
+  stream.** `yt-dlp -F` lists `sb0–sb3` (mhtml sprite formats, 48×27 →
+  320×180) for real videos; Piped's `/streams` response — the SAME response
+  family the app already parses for playback (1e fixture) — carries
+  `previewFrames` (80×45, 160×90 levels with per-level URL lists). Playing a
+  real muted stream per hover is NOT how the biggest deployment of this
+  pattern does it, and our stream resolution costs 1–8 s + an instance/yt-dlp
+  round trip — exactly the churn risk identified in revision 2.
+- **Libraries evaluated:** `react-hover-video-player` (npm v10.0.2, GitHub
+  Gyanreyer/react-hover-video-player ★100, maintained) manages the muted
+  `<video>` hover lifecycle — the right pick ONLY if we played real streams;
+  it does nothing about our actual cost (RESOLUTION). `hover-video-player`
+  (npm 1.3.0) is a non-React web component — no fit.
+  `cj-image-flip-previewer` (★7, TypeScript, updated 2026-10-14) implements
+  exactly the sprite-flip interaction ("flip through images by mouse position
+  or animate frames on hover") — evaluated and REJECTED for v1: a 7-star
+  dependency is a bus-factor risk for a core affordance whose interaction is
+  ~80 lines we can own with tests. Revisit if the renderer grows.
+- **Live snapshot caveat (2026-10-23):** `pipedapi.ducks.party`'s /streams
+  endpoint is currently bot-blocked by YouTube (`LOGIN_REQUIRED` from the
+  instance's NewPipe extractor — search still works), so previewFrames came
+  back empty live; the committed 2026-10-20 fixture (Rick Astley capture)
+  proves the field exists when the instance is healthy. The yt-dlp storyboard
+  route (sb formats) is instance-independent and worked live.
+
+**Revised behaviour contract:** hovering an episode card's thumbnail for
+~600 ms starts a STORYBOARD preview — sprite frames flipped by mouse
+position (the cj-image-flip interaction, owned) or auto-advanced; leaving
+cancels and destroys the element. Video-shaped episodes only (with
+`video_id`); podcast-shaped episodes get NO preview — nothing invented for
+them. The preview never hijacks the card's click (D2 unchanged) and is
+`aria-hidden` (enhancement; play remains the action).
 
 **Design decisions (recorded):**
-- **Resolution cost is bounded**: one resolve per preview, an LRU cache
-  (~8 entries) so re-hovers reuse the resolved URL, and a cancel that
-  destroys the element (no hidden network churn after leave). The 2g fix is
-  what makes instance resolution cheap enough for this.
-- **Reduced motion honoured**: `prefers-reduced-motion: reduce` disables
-  previews entirely (2b's a11y bar).
-- **Mock world mirrors it**: the existing `.webm` fixtures are the preview
-  sources, so the behaviour is e2e-testable headless.
+- **Cost model, bounded:** preview SOURCE resolution is one call per NEW
+  hovered id (LRU ~8, keyed on video id): Piped `previewFrames` when an
+  instance is healthy, else the yt-dlp `sb` storyboard format (guaranteed
+  path; one invocation per id, cached). Sprite fetches are static i.ytimg
+  CDN assets (~100–300 KB, small). NO stream resolution, NO video decode,
+  NO media element for the preview.
+- **Modularity — the owner's unplug requirement:** the feature lives behind
+  ONE import surface: `src/components/ui/EpisodePreview.tsx` +
+  `src/hooks/useHoverPreview.ts`, imported ONLY by EpisodeCard, with a
+  single `PREVIEW_ENABLED` module constant; the Rust side is one isolated
+  helper (`preview_frames_for(video_id)`) in the extractor. Unplugging =
+  flip the constant (or delete two files + one import) — call sites never
+  see the internals. If the perf contract is ever violated in real use, the
+  feature comes out whole; the contract tests below define "violated".
+- **Reduced motion + touch:** `prefers-reduced-motion: reduce` and
+  non-hover-capable pointers disable previews entirely (2b's a11y bar).
+- **Mock world mirrors it:** a tiny fixture sprite (checked-in PNG grid +
+  a `preview_frames` mock command) makes the interaction e2e-testable
+  headless without any network.
 
-- **TDD:** a `useHoverPreview` hook (delay, cancel, LRU — pure logic
-  tested directly: timer fires only after the delay, leave cancels
-  mid-delay, cache hit skips resolve, cache evicts beyond 8) + component
-  wiring tests (video element appears muted with the resolved src,
-  aria-hidden, removed on leave, absent for podcast-shaped episodes and
-  under reduced motion). e2e: hover → muted video with mock src visible.
-- **Mutations:** remove the leave-cancel → red (element lingers); break
-  the LRU bound → red; restore, cmp, green.
+- **TDD:** `useHoverPreview` hook (delay, cancel-mid-delay, LRU hit/evict —
+  pure logic tested directly) + `EpisodePreview` component tests (frame flip
+  by mouse position from the sprite spec, aria-hidden, destroy on leave,
+  absent for podcast rows / reduced motion / PREVIEW_ENABLED=false — the
+  UNPLUG assertion is itself a test) + Rust tests for
+  `preview_frames_for` (Piped parse from the committed fixture with
+  previewFrames; sb-format fallback parse from a live yt-dlp capture).
+- **Mutations:** remove leave-cancel → red; break LRU bound → red; ignore
+  the reduced-motion gate → red; flip PREVIEW_ENABLED=false → preview
+  absent (the unplug test). Restores cmp-verified, green after.
 
 ## Phase F — 4h launch materials
 
