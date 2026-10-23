@@ -1,0 +1,51 @@
+# 4f crash triage (roadmap decision 3): a scheduled action groups the
+# `crash:` issues the in-app "File GitHub issue" flow creates — same
+# signature in the title = same crash. The OLDEST issue of each signature
+# group stays open; newer duplicates get a comment, the `crash-duplicate`
+# label, and a close. The owner reads GitHub issues only — never raw
+# reports — so this action is the only thing that touches them.
+#
+# The dedupe key is the signature token in the title
+# (`crash: <kind> <hex>`); issues without it are left alone.
+name: Crash triage
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # daily, off the hour
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Group crash issues by signature, close duplicates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # signature -> "issue-number issue-number ..." (oldest first)
+          declare -A groups
+          while IFS=$'\t' read -r number title; do
+            sig=$(printf '%s' "$title" | sed -n 's/^crash: [^ ]* \([0-9a-f]\{6,\}\)$/\1/p')
+            [ -n "$sig" ] || continue
+            groups["$sig"]+="$number "
+          done < <(gh issue list --state open --search 'crash: in:title' --json number,title \
+                     --jq '.[] | [.number, .title] | @tsv' | sort -n)
+
+          for sig in "${!groups[@]}"; do
+            issues=${groups[$sig]}
+            set -- $issues
+            keep=$1; shift
+            [ $# -eq 0 ] && continue
+            echo "signature $sig: keeping #$keep, closing duplicates: $*"
+            for dup in "$@"; do
+              gh issue comment "$dup" --body "Duplicate of #$keep (same signature \`$sig\`); closed by crash triage."
+              gh issue close "$dup" --reason "not planned" \
+                && gh issue edit "$dup" --add-label "crash-duplicate" || true
+            done
+            gh issue edit "$keep" --add-label "crash" >/dev/null 2>&1 || true
+          done
+          echo "triage done"

@@ -4,16 +4,26 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { Download, Episode, Instance, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
+import type { CrashRecord, Download, Episode, Instance, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
 let queueItems: QueueItem[];
+let crashRecords: CrashRecord[];
 
 /** Deep-clone the fixture db so tests (and dev reloads) start identical. */
 export function resetMockState(): void {
   db = JSON.parse(JSON.stringify(mockDb)) as MockDb;
   queueItems = [];
+  crashRecords = [
+    {
+      kind: 'panic',
+      signature: '1a2b3c4d',
+      message: 'panicked at src/main.rs:42:10:\nfixture crash for the settings section',
+      app_version: '0.1.0',
+      at: '2026-10-23T12:00:00Z',
+    },
+  ];
 }
 resetMockState();
 
@@ -309,6 +319,25 @@ const handlers: Record<string, Handler> = {
     const prefs = (args?.prefs ?? {}) as Partial<UserPreferences>;
     db.preferences = { ...db.preferences, ...prefs };
   },
+
+  // Crash reporting (4f): capture is local-only; one fixture record so the
+  // Settings section is exercisable in the mock world.
+  get_crash_reports: (): CrashRecord[] => crashRecords,
+  clear_crash_reports: (): null => {
+    crashRecords = [];
+    return null;
+  },
+  log_frontend_error: (args): null => {
+    crashRecords.push({
+      kind: String(args?.kind ?? 'js-error'),
+      signature: `mock-${crashRecords.length + 1}`,
+      message: String(args?.message ?? ''),
+      app_version: '0.1.0',
+      at: new Date().toISOString(),
+    });
+    return null;
+  },
+  open_external_url: (args) => `mock: would open ${String(args?.url ?? '')}`,
 
   // Queue (local mirror; the frontend store is authoritative in the slice)
   get_queue: () => ({

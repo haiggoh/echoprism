@@ -16,6 +16,7 @@ mod podcast;
 mod sponsorblock;
 mod background_tasks;
 mod app_menu;
+mod crash;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -72,6 +73,10 @@ pub fn run() {
         .menu(app_menu::build)
         .on_menu_event(app_menu::on_menu_event)
         .setup(|app| {
+            // 4f: panic capture FIRST, so a startup panic also leaves a
+            // record. The previous hook still runs (Tauri's own diagnostics).
+            crash::install_panic_hook(app.handle().clone());
+
             // Managed-state type contract (measured across the codebase):
             // commands inject `State<'_, Database>` / `State<'_, InstancePool>`
             // (43 + 9 sites, bare), while the manager constructors in
@@ -192,6 +197,13 @@ pub fn run() {
             // History commands
             commands::history::list_history,
             commands::history::clear_history,
+
+            // Crash reporting (4f, Phase C) — capture is local-only;
+            // submission is the user's own browser action.
+            commands::crash::get_crash_reports,
+            commands::crash::clear_crash_reports,
+            commands::crash::log_frontend_error,
+            commands::crash::open_external_url,
 
             // Keyboard shortcuts
             commands::shortcuts::list_shortcuts,

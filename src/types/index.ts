@@ -368,6 +368,18 @@ export interface StreamInfo {
   format: string;
 }
 
+/** 4f: one locally captured crash record (sanitized backend-side). */
+export interface CrashRecord {
+  /** "panic" | "js-error" | "js-rejection" */
+  kind: string;
+  /** The dedup key the triage Action groups issues by. */
+  signature: string;
+  /** Sanitized — no home paths, no usernames. */
+  message: string;
+  app_version: string;
+  at: string;
+}
+
 export interface EpisodeWithChannel extends Episode {
   channel?: {
     id: string;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { channelCommands, instanceCommands, playModeRuleCommands, settingsCommands } from '../../hooks/useTauriCommands';
+import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, settingsCommands } from '../../hooks/useTauriCommands';
+import { crashIssueUrl } from '../../lib/crashIssue';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
@@ -328,6 +329,93 @@ function PreferencesTab() {
           contrast-measured to the same accessibility bar as dark.
         </p>
       </div>
+
+      <CrashReportsSection />
+    </div>
+  );
+}
+
+/**
+ * 4f crash reporting (Phase C) — honest by construction: capture is ALWAYS
+ * local-only (nothing uploads), and the "file a report" affordance exists
+ * only when you opt in AND a report exists. Submission is your own browser
+ * action on a prefilled GitHub issue — no embedded tokens (any token in a
+ * public app is extractable), which is why there is no auto-upload to
+ * break or leak.
+ */
+function CrashReportsSection() {
+  const queryClientShared = useQueryClient();
+  const [optIn, setOptIn] = useState(() => {
+    try {
+      return window.localStorage?.getItem('crashReportingOptIn') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const { data: reports = [] } = useQuery({
+    queryKey: ['crash-reports'],
+    queryFn: () => crashCommands.reports(),
+    enabled: optIn,
+  });
+  const latest = reports.length > 0 ? reports[reports.length - 1] : undefined;
+
+  const toggleOptIn = (on: boolean) => {
+    setOptIn(on);
+    try {
+      window.localStorage?.setItem('crashReportingOptIn', on ? 'true' : 'false');
+    } catch {
+      // Storage unavailable — the in-memory state applies for this session.
+    }
+  };
+
+  const { addToast } = useToasts();
+  const fileIssue = async () => {
+    if (!latest) return;
+    await crashCommands.openExternalUrl(crashIssueUrl(latest));
+    addToast({ title: 'Opening GitHub with the prefilled issue', variant: 'success' });
+  };
+
+  const clearReports = async () => {
+    await crashCommands.clear();
+    queryClientShared.invalidateQueries({ queryKey: ['crash-reports'] });
+  };
+
+  return (
+    <div>
+      <h3 className="font-semibold mb-4">Crash reports</h3>
+      <p className="text-sm text-text-muted mb-3">
+        Panics and page errors are captured locally only — nothing is ever
+        uploaded. If you opt in, EchoPrism helps you file a stripped GitHub
+        issue for the crash; a scheduled action groups duplicates so the
+        maintainer reads issues, never raw reports.
+      </p>
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={optIn}
+          onChange={(e) => toggleOptIn(e.target.checked)}
+          className="w-4 h-4 accent-accent rounded border-border"
+          aria-label="Help me file crash reports on GitHub"
+        />
+        <span>Help me file crash reports on GitHub</span>
+      </label>
+      {optIn && latest && (
+        <div className="mt-3 p-3 bg-surface rounded-lg border border-border" role="group" aria-label="Last crash report">
+          <p className="text-sm text-text truncate">
+            Last capture: <span className="font-medium">{latest.kind}</span> ·{' '}
+            {latest.at.slice(0, 19).replace('T', ' ')}
+          </p>
+          <pre className="mt-2 text-xs text-text-muted whitespace-pre-wrap max-h-24 overflow-y-auto">{latest.message}</pre>
+          <div className="mt-3 flex gap-2">
+            <Button variant="unified" onClick={() => void fileIssue()}>
+              File GitHub issue
+            </Button>
+            <Button variant="ghost" onClick={() => void clearReports()}>
+              Clear reports
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import {
   Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
-  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast
+  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord
 } from '../types';
 
 // Command names and payloads are derived from the Rust commands registered in
@@ -53,6 +53,16 @@ export const podcastCommands = {
   search: (term: string) => invoke<PodcastSearchResult[]>('search_podcasts', { term }),
   subscribe: (feedUrl: string, title?: string) =>
     invoke<SubscribedPodcast>('subscribe_podcast', { feedUrl, title }),
+};
+
+// Crash reporting (crash.rs, 4f) — capture is local-only; the only egress
+// is open_external_url for the user's own prefilled-issue submission.
+export const crashCommands = {
+  reports: () => invoke<CrashRecord[]>('get_crash_reports'),
+  clear: () => invoke<void>('clear_crash_reports'),
+  logFrontendError: (kind: string, message: string) =>
+    invoke<void>('log_frontend_error', { kind, message }),
+  openExternalUrl: (url: string) => invoke<void>('open_external_url', { url }),
 };
 
 // Queue commands (queue.rs)
