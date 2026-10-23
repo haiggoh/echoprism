@@ -511,6 +511,39 @@ fn first_url_line(stdout: &str) -> Option<String> {
     stdout.lines().map(str::trim).find(|l| l.starts_with("http")).map(str::to_string)
 }
 
+/// 2h: card-appropriate thumbnail from a yt-dlp `thumbnails` list — the
+/// SMALLEST variant at or above 300 px (the live list's 360-wide signed crop
+/// measures 24 KB where the 720-wide one measures 60–220 KB; a 50-card
+/// search pulled 3–11 MB, which IS the "thumbnails load slowly" report).
+/// Nothing at or above 300 → the largest below (a small image beats none).
+/// Replaces `max_by_key(width)`, the 2d policy that chose the widest
+/// variant when the problem was "no thumbnail at all".
+fn pick_card_thumbnail(thumbnails: Vec<YtDlpThumbnail>) -> Option<String> {
+    let mut candidates: Vec<(u32, String)> = thumbnails
+        .into_iter()
+        .map(|t| (t.width.unwrap_or(0), t.url))
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by_key(|(w, _)| *w);
+    let above = candidates.iter().filter(|(w, _)| *w >= 300);
+    match above.min_by_key(|(w, _)| *w) {
+        Some((_, url)) => Some(url.clone()),
+        None => candidates.last().map(|(_, url)| url.clone()),
+    }
+}
+
+/// One thumbnail variant of a yt-dlp --flat-playlist entry (width is absent
+/// on some captures). Module level since 2h: the card-appropriate picker
+/// works over the list too.
+#[derive(Debug, Deserialize)]
+struct YtDlpThumbnail {
+    url: String,
+    #[serde(default)]
+    width: Option<u32>,
+}
+
 fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
     #[derive(Debug, Deserialize)]
     struct YtDlpSearchEntry {
@@ -529,13 +562,6 @@ fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
         /// --flat-playlist has no single `thumbnail`, only this list.
         #[serde(default)]
         thumbnails: Vec<YtDlpThumbnail>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct YtDlpThumbnail {
-        url: String,
-        #[serde(default)]
-        width: Option<u32>,
     }
 
     let trimmed = body.trim();
@@ -568,11 +594,7 @@ fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
         .into_iter()
         .filter_map(|e| {
             let id = e.id?;
-            let thumbnail = e
-                .thumbnails
-                .into_iter()
-                .max_by_key(|t| t.width.unwrap_or(0))
-                .map(|t| t.url);
+            let thumbnail = pick_card_thumbnail(e.thumbnails);
             Some(VideoInfo {
                 id,
                 title: e.title.unwrap_or_default(),
@@ -596,6 +618,11 @@ mod tests {
     const PIPED_FIXTURE: &str = include_str!("fixtures/piped_search.json");
     const INVIDIOUS_FIXTURE: &str = include_str!("fixtures/invidious_search.json");
     const YTDLP_FIXTURE: &str = include_str!("fixtures/yt_dlp_search.json");
+    /// Live capture 2026-10-23 (ytsearch3:vergecast, --flat-playlist): the
+    /// first entries whose `thumbnails` list is present — two signed variants
+    /// per video (360×202 ≈ 24 KB, 720×404 ≈ 60–220 KB).
+    const LIVE_THUMBNAILS_FIXTURE: &str =
+        include_str!("fixtures/yt_search_vergecast_thumbnails.jsonl");
 
     fn selector(args: &[String]) -> (&str, &str) {
         let at = |flag: &str| args[args.iter().position(|a| a == flag).expect(flag) + 1].as_str();
@@ -691,16 +718,36 @@ mod tests {
     /// --flat-playlist carries no `thumbnail`, only a `thumbnails` list; the
     /// parser ignored it, so every yt-dlp result was stored without an image
     /// (observed live 2026-10-22: 0 of 34 episodes had a thumbnail_url).
+    /// 2h SUPERSEDES the widest-variant policy this test used to pin: the
+    /// card grid pulled 3–11 MB per search (the 720 signed variant measures
+    /// 60–220 KB vs the 360's 24 KB, same list) — that IS the "thumbnails
+    /// load slowly" report. Card-appropriate = smallest width ≥ 300.
     #[test]
-    fn yt_dlp_search_keeps_the_widest_thumbnail() {
-        let videos = parse_yt_dlp_search(YTDLP_FIXTURE).expect("parse yt-dlp fixture");
+    fn yt_dlp_search_picks_the_card_appropriate_thumbnail() {
+        // Live capture (fixtures/yt_search_vergecast_thumbnails.jsonl, taken
+        // 2026-10-23): every entry carries the 360 and 720 signed variants.
+        let videos =
+            parse_yt_dlp_search(LIVE_THUMBNAILS_FIXTURE).expect("parse live fixture");
         let thumb = videos[0].thumbnail.as_deref().expect("thumbnail from the thumbnails list");
-        assert!(thumb.contains("CNAFEJQD"), "expected the 720-wide variant, got {thumb}");
+        assert!(
+            thumb.contains("COgCEM"),
+            "expected the 360-wide variant (24 KB), got the 720-wide one: {thumb}"
+        );
 
-        // Order must not matter: widest first here.
-        let line = r#"{"id":"a","title":"t","thumbnails":[{"url":"https://i/big.jpg","width":720},{"url":"https://i/small.jpg","width":360}]}"#;
-        let v = parse_yt_dlp_search(line).expect("parse");
-        assert_eq!(v[0].thumbnail.as_deref(), Some("https://i/big.jpg"));
+        // Edges of the selection rule (synthetic; widths from the real list).
+        // Prefer the smallest ≥ 300; only larger exist → the smallest of them.
+        let both = r#"{"id":"a","title":"t","thumbnails":[{"url":"https://i/big.jpg","width":720},{"url":"https://i/small.jpg","width":360}]}"#;
+        let v = parse_yt_dlp_search(both).expect("parse");
+        assert_eq!(v[0].thumbnail.as_deref(), Some("https://i/small.jpg"));
+
+        let only_big = r#"{"id":"a","title":"t","thumbnails":[{"url":"https://i/x.jpg","width":1280},{"url":"https://i/y.jpg","width":720}]}"#;
+        let v = parse_yt_dlp_search(only_big).expect("parse");
+        assert_eq!(v[0].thumbnail.as_deref(), Some("https://i/y.jpg"));
+
+        // Nothing ≥ 300 → the largest below (a small image beats none).
+        let only_small = r#"{"id":"a","title":"t","thumbnails":[{"url":"https://i/s.jpg","width":120},{"url":"https://i/m.jpg","width":200}]}"#;
+        let v = parse_yt_dlp_search(only_small).expect("parse");
+        assert_eq!(v[0].thumbnail.as_deref(), Some("https://i/m.jpg"));
 
         let none = parse_yt_dlp_search(r#"{"id":"b","title":"t"}"#).expect("parse");
         assert_eq!(none[0].thumbnail, None);
