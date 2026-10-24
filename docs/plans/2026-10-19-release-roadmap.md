@@ -316,10 +316,12 @@ TestFlight check in 3d can run alongside the rest once a developer membership ex
 
 ## Next action
 
-**ACTIVE PLAN (2026-10-23): `docs/plans/2026-10-23-first-release-plan.md`**
-— the owner approved the release gate (public repo + push master, NO tag),
-opt-in crash reporting now, all four gap fixes, and 0.1.0; execute there
-first. Context follows.
+**STATUS (2026-10-24): the first-release run is EXECUTED.**
+`docs/plans/2026-10-23-first-release-plan.md` phases A–H all done with
+receipts; the repo is LIVE at github.com/haiggoh/echoprism (public, master
+pushed, NO tag — the owner's first `v*` tag fires the release workflow).
+Remaining: Phase I owner verification, the cask fill-in and Pages toggle
+after the first tagged release.
 
 Follow `docs/plans/2026-10-22-handoff-glm-flash.md`. Items 1–4 AND the
 step-4 prep (4b name check; 4c/4d/4e delivery routes) are DONE — every

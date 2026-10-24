@@ -272,6 +272,39 @@ control navigates to the full player screen. Bonus find from the same
 pass: the header search input was decoration; it now routes to
 /search?q= which the Search screen prefills and runs.
 
+## Phase D/E/F/G/H receipts (2026-10-24, GLM 5.3 Flash)
+
+- **Phase D DONE** (`090b28e9`) — docs/PRIVACY.md (local-first, what each
+  service sees, the opt-in crash flow, deletion), THIRD-PARTY-NOTICES.md,
+  the non-affiliation statement in README + notices. MIT licence existed.
+- **Phase E DONE** (`1316c578`) — hover storyboard previews, the researched
+  design (sprite, not stream; see the research findings in the phase
+  body). One serde bug (a missing camelCase rename silently emptying the
+  levels) was caught by the committed-fixture test; the level-choice
+  mutation red; the unplug switch is a TESTED assertion.
+- **Phase F DONE** (`06f9ee1b`, `313e5905`) — 8 deterministic screenshots
+  from the mock world, README gallery, static landing page (Pages
+  enablement = owner toggle). A capture utility running inside the plain
+  suite overwrote committed artifacts — it is now opt-in
+  (CAPTURE_SCREENSHOTS=1) and the artifacts restored.
+- **Live-test pass 3 DONE** (`53bef2cd`) — the owner's history finding,
+  one layer deeper than the missing writer: rows rendered raw uuids. The
+  list command hydrates titles/thumbnails; rows link to the player; F07-H1
+  proves play → History end to end.
+- **Phase G DONE** — the full sweep green: cargo 0 warnings, 84/84 + 6/6
+  live smokes, tsc clean, vitest 204/204, Playwright 39/39 (all flows
+  incl. the new history e2e; the flow-matrix gap it exposed was fixed
+  first). Freeze held: the only post-green change was the screenshot
+  utility's opt-in fix (a test-found defect, with its own receipt).
+- **Phase H DONE** — `gh repo create haiggoh/echoprism --public --source .
+  --remote origin --push`; verified: remote HEAD == local (313e5905),
+  release.yml present on the remote, ZERO tags (the owner's first `v*`
+  tag is the release trigger), visibility PUBLIC. **The run's authorized
+  boundary — reached and stopped at.**
+- **Phase I (owner)** — the verification checklist stands; the Homebrew
+  cask fill-in and the Pages toggle are the two remaining owner actions
+  after the first tagged release.
+
 ## Phase G — the proper final test run (gates the delivery)
 
 - **Flow matrix first:** enumerate EVERY user flow (onboarding, feed,
