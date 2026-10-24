@@ -10,6 +10,11 @@ import path from 'node:path';
 // Playwright runs from the repo root (its own webServer cwd).
 const outDir = path.resolve(process.cwd(), 'docs', 'screenshots');
 
+// A capture UTILITY, not a gate: it must not run uninvited (a plain suite
+// pass would overwrite the committed screenshots with binary-differing
+// re-renders). Opt in explicitly: CAPTURE_SCREENSHOTS=1 npx playwright test e2e/screenshots.spec.ts
+test.skip(process.env.CAPTURE_SCREENSHOTS !== '1', 'capture utility — run with CAPTURE_SCREENSHOTS=1');
+
 async function settle(page: import('@playwright/test').Page) {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(400);
