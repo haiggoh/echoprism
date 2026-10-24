@@ -14,3 +14,4 @@ pub mod shortcuts;
 pub mod downloads;
 pub mod crash;
 pub mod preview;
+pub mod notifications;

@@ -338,3 +338,13 @@ CREATE TABLE IF NOT EXISTS keyboard_shortcuts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_keyboard_shortcuts_user ON keyboard_shortcuts(user_id);
+
+-- Live-test feature: episode notifications. One row per user — the moment
+-- episodes were last marked seen; new = published AFTER this instant
+-- (compared via SQLite datetime(), which normalizes the RFC 3339 formats
+-- feeds and the app write). No row yet = first run: the app initializes it
+-- to NOW, so episodes that existed before you started never notify.
+CREATE TABLE IF NOT EXISTS episode_seen_state (
+    user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    last_seen_at TEXT NOT NULL
+);

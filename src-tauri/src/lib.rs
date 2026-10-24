@@ -209,6 +209,10 @@ pub fn run() {
             // Hover preview (Phase E)
             commands::preview::preview_frames,
 
+            // Episode notifications (the real bell)
+            commands::notifications::episode_notifications,
+            commands::notifications::mark_episodes_seen,
+
             // Keyboard shortcuts
             commands::shortcuts::list_shortcuts,
             commands::shortcuts::update_shortcut_cmd,

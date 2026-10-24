@@ -3,7 +3,7 @@ import {
   Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
-  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, StoryboardSpec
+  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, NotificationSummary, StoryboardSpec
 } from '../types';
 
 // Command names and payloads are derived from the Rust commands registered in
@@ -53,6 +53,13 @@ export const podcastCommands = {
   search: (term: string) => invoke<PodcastSearchResult[]>('search_podcasts', { term }),
   subscribe: (feedUrl: string, title?: string) =>
     invoke<SubscribedPodcast>('subscribe_podcast', { feedUrl, title }),
+};
+
+// Episode notifications (notifications.rs) — the real bell: new episodes
+// across subscribed channels since the last seen instant.
+export const notificationCommands = {
+  summary: () => invoke<NotificationSummary>('episode_notifications'),
+  markSeen: () => invoke<void>('mark_episodes_seen'),
 };
 
 // Hover preview (Phase E) — one call per NEW hovered video id; null keeps

@@ -4,17 +4,25 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { CrashRecord, Download, Episode, Instance, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
+import type { CrashRecord, Download, Episode, Instance, NewEpisodeItem, NotificationSummary, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
 let queueItems: QueueItem[];
 let crashRecords: CrashRecord[];
+let notificationState: NotificationSummary;
 
 /** Deep-clone the fixture db so tests (and dev reloads) start identical. */
 export function resetMockState(): void {
   db = JSON.parse(JSON.stringify(mockDb)) as MockDb;
   queueItems = [];
+  notificationState = {
+    new_count: 2,
+    episodes: [
+      { id: 'ep-101', title: 'Episode 101: The notification bell is real', channel_title: 'The Weekly Signal', published_at: '2026-10-24T00:00:00Z', kind: 'video' },
+      { id: 'ep-102', title: 'Episode 102: A second story worth hearing', channel_title: 'Compiler Hours', published_at: '2026-10-23T00:00:00Z', kind: 'video' },
+    ] as NewEpisodeItem[],
+  };
   crashRecords = [
     {
       kind: 'panic',
@@ -392,6 +400,14 @@ const handlers: Record<string, Handler> = {
     return null;
   },
   open_external_url: (args) => `mock: would open ${String(args?.url ?? '')}`,
+
+  // Episode notifications: the fixture has two "new" episodes; marking
+  // seen clears them (mirrors the Rust seen-state).
+  episode_notifications: (): NotificationSummary => notificationState,
+  mark_episodes_seen: (): null => {
+    notificationState = { new_count: 0, episodes: [] };
+    return null;
+  },
 
   // Queue (local mirror; the frontend store is authoritative in the slice)
   get_queue: () => ({

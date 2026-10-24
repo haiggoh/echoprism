@@ -16,7 +16,7 @@
  * the single-transport assertion; unwiring the search fails the navigation
  * assertion.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -24,6 +24,7 @@ import { Header } from '../components/Header';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { PlayerProvider } from '../components/PlayerProvider';
 import { ConvergenceProvider } from '../hooks/useConvergence';
+import { notificationCommands } from '../hooks/useTauriCommands';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { resetMockState } from '../mocks/router';
 import type { Episode } from '../types';
@@ -108,11 +109,14 @@ describe('header honesty (live-test pass)', () => {
     expect(loc.search).toContain('q=vergecast');
   });
 
-  it('the placeholder bell and the account-style avatar are gone', () => {
+  it('the account-style avatar is gone, and no bell badge shows a hardcoded count', () => {
+    // SUPERSEDED (episode notifications phase): the placeholder bell was
+    // removed, then returned REAL — its count is data-driven (see the bell
+    // tests below). Still true: no avatar, and the old hardcoded "3" badge
+    // never comes back (the fixture count is 2).
     renderApp(<Header />);
-    expect(screen.queryByRole('button', { name: /notifications/i })).toBeNull();
-    expect(screen.queryByText('3')).toBeNull();
     expect(screen.queryByLabelText(/user|account|avatar/i)).toBeNull();
+    expect(screen.queryByText('3')).toBeNull();
   });
 
   it('the wide center brand badge is gone (two brand marks were enough)', () => {
@@ -120,6 +124,36 @@ describe('header honesty (live-test pass)', () => {
     // The header badge was PrismBadge width={64} — an inline-styled
     // 64px-wide box. Nothing in the header may carry that wide mark.
     expect(document.querySelector('header div[style*="width: 64px"]')).toBeNull();
+  });
+
+  it('the bell is REAL: the count reflects actual new episodes, and opening marks them seen', async () => {
+    const markSpy = vi.spyOn(notificationCommands, 'markSeen').mockResolvedValue();
+    renderApp(<Header />);
+    await waitFor(() => {
+      expect(screen.getByTestId('notification-count').textContent).toBe('2');
+    });
+
+    // Opening the panel lists the episodes AND marks them seen.
+    fireEvent.click(screen.getByRole('button', { name: /episode notifications/i }));
+    await waitFor(() => expect(markSpy).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Episode 101: The notification bell is real')).toBeTruthy();
+    expect(screen.getByText(/new episodes since your last visit/i)).toBeTruthy();
+
+    // The badge cleared (seen), the panel still shows the list.
+    await waitFor(() => {
+      expect(screen.queryByTestId('notification-count')).toBeNull();
+    });
+    expect(screen.getByText('Episode 102: A second story worth hearing')).toBeTruthy();
+  });
+
+  it('at zero new episodes there is no badge and the panel says so', async () => {
+    vi.spyOn(notificationCommands, 'summary').mockResolvedValue({ new_count: 0, episodes: [] });
+    renderApp(<Header />);
+    await waitFor(() => {
+      expect(screen.queryByTestId('notification-count')).toBeNull();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /episode notifications/i }));
+    expect(await screen.findByText(/all caught up/i)).toBeTruthy();
   });
 });
 

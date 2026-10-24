@@ -18,6 +18,12 @@ impl Database {
     /// owns the data-dir file and runs migrations); the test caller runs
     /// migrations itself.
     #[cfg(test)]
+    /// Read access to the pool for commands that compose their own queries
+    /// (notifications, history hydration).
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     pub fn from_pool(pool: SqlitePool) -> Self {
         Self { pool }
     }

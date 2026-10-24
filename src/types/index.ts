@@ -373,6 +373,21 @@ export interface StreamInfo {
   format: string;
 }
 
+/** Live-test feature: the bell's payload — new episodes across subscribed
+ *  channels since the last seen instant. */
+export interface NewEpisodeItem {
+  id: string;
+  title: string;
+  channel_title: string;
+  published_at?: string;
+  kind: string;
+}
+
+export interface NotificationSummary {
+  new_count: number;
+  episodes: NewEpisodeItem[];
+}
+
 /** Phase E: a hover-preview storyboard (sprite-sheet pages + timing),
  *  served from Piped's previewFrames; null = keep the static thumbnail. */
 export interface StoryboardSpec {
