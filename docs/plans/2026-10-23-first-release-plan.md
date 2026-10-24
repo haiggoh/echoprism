@@ -305,6 +305,34 @@ pass: the header search input was decoration; it now routes to
   cask fill-in and the Pages toggle are the two remaining owner actions
   after the first tagged release.
 
+## Post-run feature stretch (owner: "keep working on the new features", 2026-10-24)
+
+Three recorded features pulled forward, each full TDD with gates and the
+Gemini-style mutation discipline:
+
+- **Episode notifications** (`1a478add`) — the real bell: per-user seen
+  instant (`episode_seen_state`, new table; IF NOT EXISTS migrates existing
+  installs on open), new = published after it across SUBSCRIBED channels
+  (datetime() comparison normalizes the RFC 3339 zoo), first run
+  initializes to NOW so backfills never flood. Panel lists and routes;
+  opening marks seen.
+- **History hydration + channels homes** (`53bef2cd`) — the owner's
+  follow-ups: History names what was played (hydrated titles/thumbnails,
+  rows link to the player) and Channels rows carry avatars + derived home
+  links.
+- **OPML import/export** (`6769954c`) — the 1c unwired contract: import
+  REGISTERS feeds (no N-fetch; the refresh's due check brings episodes),
+  export builds escaped OPML/JSON; the dead stubs superseded and deleted;
+  the Podcasts settings tab is real.
+- **yt-dlp storyboard fallback** (`d44ad42c`) — previews survive instance
+  outages (the seeded instance's /streams is bot-blocked today): the local
+  yt-dlp sb formats take over when no instance serves previewFrames. The
+  parser is tested against a DOC-DERIVED fixture (live capture was
+  impossible today — re-verify when the block lifts).
+
+Gates at each feature: cargo 86→90/90 (0 build warnings), vitest
+206→211/211, tsc clean, Playwright 31/31. Pushed through d44ad42c.
+
 ## Phase G — the proper final test run (gates the delivery)
 
 - **Flow matrix first:** enumerate EVERY user flow (onboarding, feed,
