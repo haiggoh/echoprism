@@ -12,7 +12,9 @@ test('F07-H1: playing media lands in History', async ({ page }) => {
   await expect(page).toHaveURL(/\/player\//, { timeout: 10_000 });
   await page.waitForTimeout(1000); // the resolve completes → history row
 
-  await page.goto('/history');
+  // Navigate IN-APP (a page.goto would reload and reset the mock world's
+  // in-memory state, losing the row this test exists to prove).
+  await page.getByRole('link', { name: 'History' }).click();
   await expect(page.getByRole('heading', { name: /^History$/ })).toBeVisible();
   await expect(page.getByText(/How Invidious pools actually work/)).toBeVisible({ timeout: 10_000 });
 });

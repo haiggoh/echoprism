@@ -114,7 +114,7 @@ describe('live-test feature: the Podcasts tab', () => {
     const refreshSpy = vi.spyOn(podcastCommands, 'refresh').mockResolvedValue(2);
     renderSettings();
     await openPodcastsTab();
-    fireEvent.click(screen.getByRole('button', { name: /refresh podcast feeds now/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^refresh now$/i }));
     await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/refreshed 2 feeds/i)).toBeTruthy();
   });

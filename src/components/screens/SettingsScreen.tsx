@@ -531,7 +531,6 @@ function PodcastsTab() {
             variant="ghost"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            aria-label="Refresh podcast feeds now"
           >
             Refresh now
           </Button>
