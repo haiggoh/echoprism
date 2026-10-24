@@ -270,6 +270,10 @@ export interface HistoryEntry {
   duration_seconds?: number;
   completed: boolean;
   played_at: string;
+  /** Live-test pass 2: hydrated by the list command (episode may have been
+   *  deleted since — the row then renders without a title, not broken). */
+  episode_title?: string;
+  episode_thumbnail?: string;
 }
 
 // ============================

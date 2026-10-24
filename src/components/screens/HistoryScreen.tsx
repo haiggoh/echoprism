@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { historyCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
+import { Thumbnail } from '../ui/Thumbnail';
 
 /**
  * 2c: was a static stub while historyCommands.list/clear were live. Lists
@@ -62,12 +64,31 @@ export function HistoryScreen() {
                 data-testid="history-row"
                 className="flex items-center justify-between gap-4 bg-surface border border-border rounded-lg px-4 py-3"
               >
-                <div className="min-w-0">
-                  <p className="font-mono text-sm text-text truncate">{entry.episode_id}</p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {formatDate(entry.played_at)} · {Math.floor(entry.position_seconds / 60)}m
-                    {entry.completed ? ' · finished' : ''}
-                  </p>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Thumbnail
+                    src={entry.episode_thumbnail}
+                    alt=""
+                    className="w-10 h-10 rounded-md object-cover flex-shrink-0"
+                  />
+                  <div className="min-w-0">
+                    {/* A usable history names the media: the hydrated title
+                        links back to the player; a deleted episode renders
+                        its id, honestly untitled. */}
+                    {entry.episode_title ? (
+                      <Link
+                        to={`/player/${entry.episode_id}`}
+                        className="text-sm text-text truncate hover:text-accent"
+                      >
+                        {entry.episode_title}
+                      </Link>
+                    ) : (
+                      <p className="font-mono text-sm text-text-muted truncate">{entry.episode_id}</p>
+                    )}
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {formatDate(entry.played_at)} · {Math.floor(entry.position_seconds / 60)}m
+                      {entry.completed ? ' · finished' : ''}
+                    </p>
+                  </div>
                 </div>
               </li>
             ))}

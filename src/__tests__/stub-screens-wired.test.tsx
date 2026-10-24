@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { ChannelsScreen } from '../components/screens/ChannelsScreen';
 import { HistoryScreen } from '../components/screens/HistoryScreen';
 import { DownloadsScreen } from '../components/screens/DownloadsScreen';
@@ -20,7 +21,12 @@ import { mockDb } from '../mocks/data';
 
 function renderScreen(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  // MemoryRouter: history rows link back to the player (live-test pass 2).
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => resetMockState());

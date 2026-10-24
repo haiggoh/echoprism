@@ -2,15 +2,47 @@
 
 use crate::db::Database;
 use crate::types::*;
+use serde::Serialize;
 use tauri::{command, State};
+
+/// The list response: the entry plus the episode's title/thumbnail, so the
+/// History screen shows WHAT was played (a raw uuid list is unusable — the
+/// live-test finding behind the hydration).
+#[derive(Serialize)]
+pub struct HistoryEntryWithEpisode {
+    #[serde(flatten)]
+    pub entry: HistoryEntry,
+    pub episode_title: Option<String>,
+    pub episode_thumbnail: Option<String>,
+}
+
+/// Pure mapping (test target): entries + episode details → hydrated rows.
+pub fn hydrate_history(
+    entries: Vec<HistoryEntry>,
+    details: &std::collections::HashMap<String, (String, Option<String>)>,
+) -> Vec<HistoryEntryWithEpisode> {
+    entries
+        .into_iter()
+        .map(|entry| {
+            let (episode_title, episode_thumbnail) = match details.get(&entry.episode_id) {
+                Some((title, thumb)) => (Some(title.clone()), thumb.clone()),
+                None => (None, None),
+            };
+            HistoryEntryWithEpisode { entry, episode_title, episode_thumbnail }
+        })
+        .collect()
+}
 
 #[command]
 pub async fn list_history(
     db: State<'_,  Database>,
     limit: Option<u32>,
     offset: Option<u32>,
-) -> std::result::Result<Vec<HistoryEntry>, String> {
-    db.list_history(limit, offset).await
+) -> std::result::Result<Vec<HistoryEntryWithEpisode>, String> {
+    let entries = db.list_history(limit, offset).await?;
+    let ids: Vec<String> = entries.iter().map(|e| e.episode_id.clone()).collect();
+    let details = db.episode_details(&ids).await?;
+    Ok(hydrate_history(entries, &details))
 }
 
 #[command]
@@ -34,6 +66,33 @@ pub async fn record_history(
 #[cfg(test)]
 mod history_tests {
     use sqlx::sqlite::SqlitePoolOptions;
+
+    /// The hydration mapping: entries + details → rows with titles, and an
+    /// entry whose episode vanished (deleted) still renders, honestly
+    /// without a title.
+    #[test]
+    fn hydrate_history_maps_details_and_survives_missing_episodes() {
+        use super::*;
+
+        let entry = HistoryEntry {
+            id: "h1".into(),
+            user_id: "current-user".into(),
+            episode_id: "ep-1".into(),
+            position_seconds: 12.0,
+            duration_seconds: None,
+            completed: false,
+            played_at: chrono::Utc::now().into(),
+        };
+        let gone = HistoryEntry { episode_id: "ep-deleted".into(), ..entry.clone() };
+        let mut details = std::collections::HashMap::new();
+        details.insert("ep-1".to_string(), ("A played video".to_string(), Some("https://img.example/1.jpg".to_string())));
+
+        let rows = hydrate_history(vec![entry, gone], &details);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].episode_title.as_deref(), Some("A played video"));
+        assert_eq!(rows[0].episode_thumbnail.as_deref(), Some("https://img.example/1.jpg"));
+        assert_eq!(rows[1].episode_title, None, "a deleted episode renders untitled, not broken");
+    }
 
     /// Live-test finding: history had NO writer — the surface could only
     /// show seed data. The recording path is proven against the production
@@ -86,6 +145,12 @@ mod history_tests {
             .expect("list");
         assert_eq!(listed.len(), 1, "exactly the play that happened");
         assert_eq!(listed[0].episode_id, episode_id);
+
+        // The hydration path resolves the title for the recorded row.
+        let details = crate::db::queries::episode_details(&pool, &[episode_id.clone()])
+            .await
+            .expect("details");
+        assert_eq!(details.get(&episode_id).map(|(t, _)| t.as_str()), Some("A played video"));
     }
 
     /// An unknown episode must FAIL (FK), not write an orphan row.

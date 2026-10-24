@@ -210,7 +210,15 @@ const handlers: Record<string, Handler> = {
     return instance;
   },
   list_smart_links: () => db.smartLinks,
-  list_history: () => db.history,
+  list_history: () =>
+    db.history.map((h) => {
+      const ep = db.episodes.find((e) => e.id === h.episode_id);
+      return {
+        ...h,
+        episode_title: ep?.title,
+        episode_thumbnail: ep?.thumbnail_url,
+      };
+    }),
 
   // Smart-link review (2c wiring; mirrors the Rust commands from 1d):
   // confirm flips user_confirmed, unlink deletes, both ERROR on an unknown

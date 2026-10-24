@@ -1332,6 +1332,30 @@ pub async fn record_history_entry(pool: &SqlitePool, episode_id: &str) -> DbResu
     Ok(entry)
 }
 
+/// Live-test pass 2: history rows carry only episode ids — the screen needs
+/// titles (and thumbnails) to be a usable history. One bounded lookup for
+/// the ids on a page.
+pub async fn episode_details(
+    pool: &SqlitePool,
+    ids: &[String],
+) -> DbResult<std::collections::HashMap<String, (String, Option<String>)>> {
+    if ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let mut qb = sqlx::QueryBuilder::new(
+        "SELECT id, title, thumbnail_url FROM episodes WHERE id IN (",
+    );
+    let mut sep = "";
+    for id in ids {
+        qb.push(sep).push_bind(id);
+        sep = ", ";
+    }
+    qb.push(")");
+    let rows: Vec<(String, String, Option<String>)> =
+        qb.build_query_as().fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(i, t, th)| (i, (t, th))).collect())
+}
+
 pub async fn list_downloads(pool: &SqlitePool, status: Option<String>) -> DbResult<Vec<Download>> {
     #[derive(sqlx::FromRow)]
     struct DownloadRow {

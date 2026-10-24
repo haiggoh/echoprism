@@ -248,6 +248,14 @@ impl Database {
         queries::podcast_feed_links(&self.pool).await
     }
 
+    /// Live-test pass 2: episode titles/thumbnails for history hydration.
+    pub async fn episode_details(
+        &self,
+        ids: &[String],
+    ) -> DbResult<std::collections::HashMap<String, (String, Option<String>)>> {
+        queries::episode_details(&self.pool, ids).await
+    }
+
     pub async fn clear_history(&self) -> DbResult<()> {
         queries::clear_history(&self.pool).await
     }
