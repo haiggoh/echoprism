@@ -99,11 +99,13 @@ impl Extractor {
         self.get_stream_with_yt_dlp(video_id, format, quality).await
     }
 
-    /// Phase E: the hover-preview storyboard for one video, from the first
-    /// candidate whose /streams response carries previewFrames. NO fallback
-    /// to yt-dlp here — a missing storyboard means the caller keeps the
-    /// static thumbnail (the unplug-safe degradation), never a stream
-    /// resolution churn.
+    /// Phase E: the hover-preview storyboard for one video. Piped instances
+    /// first (the /streams response the app already understands); when none
+    /// serves previewFrames — TODAY's reality: the seeded instance's
+    /// /streams is bot-blocked by YouTube — the local yt-dlp binary's own
+    /// storyboard extraction takes over (sb formats, one invocation per id,
+    /// LRU-cached by the caller). Both miss → None: the static thumbnail
+    /// stays, never a stream-resolution churn.
     pub async fn preview_frames(&self, video_id: &str, candidates: &[Instance]) -> Option<StoryboardSpec> {
         for instance in candidates {
             let url = format!("{}/streams/{}", instance.url.trim_end_matches('/'), video_id);
@@ -121,7 +123,28 @@ impl Extractor {
                 return Some(spec);
             }
         }
-        None
+        self.storyboard_with_yt_dlp(video_id).await
+    }
+
+    /// The guaranteed fallback: `yt-dlp -J --skip-download` and parse the sb
+    /// formats. One invocation per call site miss (the caller's LRU bounds
+    /// it to once per hovered id).
+    async fn storyboard_with_yt_dlp(&self, video_id: &str) -> Option<StoryboardSpec> {
+        let yt_dlp = self.find_yt_dlp().await.ok()?;
+        let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            tokio::process::Command::new(&yt_dlp)
+                .args(["-J", "--skip-download", "--no-warnings", &watch_url])
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        parse_yt_dlp_storyboard(&String::from_utf8_lossy(&output.stdout))
     }
     
     /// Resolve a stream from one instance. The instance TYPE decides the
@@ -337,6 +360,81 @@ pub(crate) fn parse_storyboard(body: &str) -> Option<StoryboardSpec> {
         frames_per_page_y: level.frames_per_page_y.unwrap_or(1).max(1),
         duration_per_frame_ms: level.duration_per_frame.unwrap_or(300),
         total_count: level.total_count.unwrap_or(0),
+    })
+}
+
+/// Phase E (the yt-dlp fallback, slipped from v1): parse a `yt-dlp -J`
+/// dump's STORYBOARD formats into a StoryboardSpec. The sb formats carry
+/// width/height = FRAME size, columns/rows = the sheet grid, and one
+/// fragment per sheet page. The largest frame at or below 480px wins (sb0
+/// is the largest YouTube level; sbN grows as frames shrink). DOC-DERIVED
+/// fixture: YouTube is bot-blocking watch-page extraction on this machine
+/// today (2026-10-24, live); the shape is yt-dlp's stable sb contract —
+/// re-verify against a live capture when the block lifts.
+pub(crate) fn parse_yt_dlp_storyboard(body: &str) -> Option<StoryboardSpec> {
+    #[derive(Deserialize)]
+    struct SbFormat {
+        #[serde(default)]
+        format_id: Option<String>,
+        #[serde(default)]
+        width: Option<u32>,
+        #[serde(default)]
+        height: Option<u32>,
+        #[serde(default)]
+        columns: Option<u32>,
+        #[serde(default)]
+        rows: Option<u32>,
+        #[serde(default)]
+        fps: Option<f64>,
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        fragments: Vec<SbFragment>,
+    }
+    #[derive(Deserialize)]
+    struct SbFragment {
+        #[serde(default)]
+        url: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Body {
+        #[serde(default)]
+        formats: Vec<SbFormat>,
+    }
+
+    let parsed: Body = serde_json::from_str(body).ok()?;
+    let sbs: Vec<&SbFormat> = parsed
+        .formats
+        .iter()
+        .filter(|f| f.format_id.as_deref().map(|id| id.starts_with("sb")).unwrap_or(false))
+        .collect();
+    let level = sbs
+        .iter()
+        .filter(|f| f.width.unwrap_or(0) > 0 && f.width.unwrap_or(0) <= 480)
+        .max_by_key(|f| f.width.unwrap_or(0))
+        .or_else(|| sbs.iter().min_by_key(|f| f.width.unwrap_or(0)))?;
+
+    let urls: Vec<String> = if level.fragments.is_empty() {
+        level.url.clone().into_iter().collect()
+    } else {
+        level.fragments.iter().filter_map(|f| f.url.clone()).collect()
+    };
+    if urls.is_empty() {
+        return None;
+    }
+    Some(StoryboardSpec {
+        urls,
+        frame_width: level.width.unwrap_or(160),
+        frame_height: level.height.unwrap_or(90),
+        frames_per_page_x: level.columns.unwrap_or(1).max(1),
+        frames_per_page_y: level.rows.unwrap_or(1).max(1),
+        duration_per_frame_ms: level
+            .fps
+            .filter(|f| *f > 0.0)
+            .map(|f| (1000.0 / f) as u64)
+            .unwrap_or(1000),
+        total_count: (level.columns.unwrap_or(1) * level.rows.unwrap_or(1))
+            * level.fragments.len().max(1) as u32,
     })
 }
 
@@ -971,6 +1069,30 @@ mod tests {
         assert!(parse_storyboard(r#"{"title":"x"}"#).is_none());
         assert!(parse_storyboard(r#"{"previewFrames":[]}"#).is_none());
         assert!(parse_storyboard("not json").is_none());
+    }
+
+    /// Phase E (the yt-dlp fallback): a -J dump's sb formats parse into the
+    /// spec — the largest frame ≤480px (sb0, 320×180) with its pages as
+    /// urls. DOC-DERIVED fixture (see the parser doc comment): the live
+    /// capture was bot-blocked today; re-verify when it lifts.
+    #[test]
+    fn yt_dlp_storyboard_parse_prefers_the_largest_small_frame() {
+        const FIXTURE: &str = include_str!("fixtures/yt_dlp_storyboard_docderived.json");
+        let spec = parse_yt_dlp_storyboard(FIXTURE).expect("storyboard from the doc-derived fixture");
+        assert_eq!(spec.frame_width, 320);
+        assert_eq!(spec.frame_height, 180);
+        assert_eq!(spec.frames_per_page_x, 5);
+        assert_eq!(spec.frames_per_page_y, 5);
+        assert_eq!(spec.urls.len(), 3, "one url per sheet page");
+        assert!(spec.urls[0].starts_with("https://i.ytimg.com/sb/"));
+        // fps 0.5 → 2000ms per frame.
+        assert_eq!(spec.duration_per_frame_ms, 2000);
+    }
+
+    #[test]
+    fn yt_dlp_storyboard_parse_returns_none_without_sb_formats() {
+        assert!(parse_yt_dlp_storyboard(r#"{"formats":[{"format_id":"22","width":1280}]}"#).is_none());
+        assert!(parse_yt_dlp_storyboard("not json").is_none());
     }
 
     /// The recorded real body must deserialize permissively and select the
