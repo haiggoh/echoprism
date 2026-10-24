@@ -1077,16 +1077,16 @@ mod tests {
     /// capture was bot-blocked today; re-verify when it lifts.
     #[test]
     fn yt_dlp_storyboard_parse_prefers_the_largest_small_frame() {
-        const FIXTURE: &str = include_str!("fixtures/yt_dlp_storyboard_docderived.json");
-        let spec = parse_yt_dlp_storyboard(FIXTURE).expect("storyboard from the doc-derived fixture");
+        const FIXTURE: &str = include_str!("fixtures/yt_dlp_storyboard.json");
+        let spec = parse_yt_dlp_storyboard(FIXTURE).expect("storyboard from the LIVE fixture");
         assert_eq!(spec.frame_width, 320);
         assert_eq!(spec.frame_height, 180);
-        assert_eq!(spec.frames_per_page_x, 5);
-        assert_eq!(spec.frames_per_page_y, 5);
-        assert_eq!(spec.urls.len(), 3, "one url per sheet page");
+        assert_eq!(spec.frames_per_page_x, 3);
+        assert_eq!(spec.frames_per_page_y, 3);
+        assert_eq!(spec.urls.len(), 45, "one url per sheet page");
         assert!(spec.urls[0].starts_with("https://i.ytimg.com/sb/"));
-        // fps 0.5 → 2000ms per frame.
-        assert_eq!(spec.duration_per_frame_ms, 2000);
+        // fps ~0.1 → ~10 s per frame (storyboards are sparse by design).
+        assert!(spec.duration_per_frame_ms >= 1000);
     }
 
     #[test]

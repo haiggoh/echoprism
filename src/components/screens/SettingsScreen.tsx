@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, settingsCommands } from '../../hooks/useTauriCommands';
+import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, podcastCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { crashIssueUrl } from '../../lib/crashIssue';
 import { Button } from '../ui/Button';
 import { Thumbnail } from '../ui/Thumbnail';
@@ -470,6 +470,25 @@ function PodcastsTab() {
     },
   });
 
+  // Imported feeds register with last_fetched_at NULL, so the background
+  // refresh (30-min cycle) picks them up on its own — this is the "now"
+  // button for when you don't want to wait.
+  const refreshMutation = useMutation({
+    mutationFn: () => podcastCommands.refresh(),
+    onSuccess: (count: number) => {
+      addToast({
+        title: `Refreshed ${count} feed${count === 1 ? '' : 's'}`,
+        description: count > 0 ? 'New episodes land in your feed.' : 'Nothing was due.',
+        variant: 'success',
+      });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      queryClient.invalidateQueries({ queryKey: ['episode-notifications'] });
+    },
+    onError: (err) => {
+      addToast({ title: 'Refresh failed', description: String(err), variant: 'danger' });
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -504,9 +523,19 @@ function PodcastsTab() {
 
       <div>
         <h3 className="font-semibold text-text mb-2">Backup & portability (OPML)</h3>
-        <Button variant="ghost" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
-          Export subscriptions (OPML)
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
+            Export subscriptions (OPML)
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            aria-label="Refresh podcast feeds now"
+          >
+            Refresh now
+          </Button>
+        </div>
         <textarea
           aria-label="OPML to import"
           value={opml}

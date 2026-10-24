@@ -456,6 +456,7 @@ const handlers: Record<string, Handler> = {
 
   // Episode notifications: the fixture has two "new" episodes; marking
   // seen clears them (mirrors the Rust seen-state).
+  refresh_podcasts: (): number => 0, // the mock world has no due feeds
   episode_notifications: (): NotificationSummary => notificationState,
   mark_episodes_seen: (): null => {
     notificationState = { new_count: 0, episodes: [] };

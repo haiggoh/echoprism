@@ -8,7 +8,7 @@
  * Discriminants: an import that duplicates fails the no-duplicate
  * assertion; an unescaped export fails the entity assertion.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -16,6 +16,7 @@ import { SettingsScreen } from '../components/screens/SettingsScreen';
 import { ThemeProvider } from '../hooks/useTheme';
 import { ConvergenceProvider } from '../hooks/useConvergence';
 import { Toaster } from '../components/ui/Toaster';
+import { podcastCommands } from '../hooks/useTauriCommands';
 import { mockInvoke, resetMockState } from '../mocks/router';
 
 function renderSettings() {
@@ -107,6 +108,15 @@ describe('live-test feature: the Podcasts tab', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('podcast-feed-row')).toHaveLength(3); // 2 seeded + 1 imported
     });
+  });
+
+  it('Refresh now calls the refresh command and reports the count', async () => {
+    const refreshSpy = vi.spyOn(podcastCommands, 'refresh').mockResolvedValue(2);
+    renderSettings();
+    await openPodcastsTab();
+    fireEvent.click(screen.getByRole('button', { name: /refresh podcast feeds now/i }));
+    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/refreshed 2 feeds/i)).toBeTruthy();
   });
 
   it('the import command rejects a non-opml source (mirrors the Rust guard)', async () => {

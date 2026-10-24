@@ -53,6 +53,9 @@ export const podcastCommands = {
   search: (term: string) => invoke<PodcastSearchResult[]>('search_podcasts', { term }),
   subscribe: (feedUrl: string, title?: string) =>
     invoke<SubscribedPodcast>('subscribe_podcast', { feedUrl, title }),
+  // Live-test feature: the manual trigger for the background refresh's
+  // logic — imported feeds (last_fetched_at NULL) are due immediately.
+  refresh: () => invoke<number>('refresh_podcasts'),
 };
 
 // Episode notifications (notifications.rs) — the real bell: new episodes
