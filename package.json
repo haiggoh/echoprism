@@ -14,7 +14,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,json,css,md}\"",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "db:seed": "node scripts/seed.mjs"
+    "db:seed": "node scripts/seed.mjs",
+    "test:e2e": "playwright test",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.28.0",

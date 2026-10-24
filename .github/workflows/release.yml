@@ -66,13 +66,33 @@ jobs:
           [ -n "$path" ] || { echo "no dmg produced" >&2; exit 1; }
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
+      - name: Extract this version's changelog section (the release notes)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The CHANGELOG is the release notes' single source: take the
+          # section for this version, verbatim (Keep a Changelog headings),
+          # and append the unsigned-build note.
+          awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { capture = 1; next }
+            capture && index($0, "## [") == 1 { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::warning::no CHANGELOG section for $version — publishing the fallback note only"
+          fi
+          {
+            echo ""
+            echo "---"
+            echo "Unsigned macOS build (aarch64/Apple Silicon). Gatekeeper blocks"
+            echo "first launch: right-click EchoPrism.app → Open, or run"
+            echo "\`xattr -cr /Applications/EchoPrism.app\`."
+            echo "Prefer building from source? See the README."
+          } >> release-notes.md
+          head -5 release-notes.md
+
       - name: Create the release with the dmg
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.dmg.outputs.path }}
-          body: |
-            Unsigned macOS build (aarch64/Apple Silicon). Gatekeeper blocks
-            first launch: right-click EchoPrism.app → Open, or run
-            `xattr -cr /Applications/EchoPrism.app`.
-            Prefer building from source? See the README.
+          body_path: release-notes.md
           fail_on_unmatched_files: true

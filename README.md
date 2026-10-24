@@ -53,22 +53,36 @@ Unsigned builds cannot self-update. Compare your build against the latest
 release and rebuild when behind:
 
 ```sh
-ECHOPIRM_REPO=<owner>/echoprism scripts/check-updates.sh
+ECHOPIRM_REPO=haiggoh/echoprism scripts/check-updates.sh
 scripts/build-from-source.sh
 ```
+
+## Features
+
+- One library for YouTube videos and podcast episodes, one queue, one player
+- Smart links pairing the same story across the two streams
+- Podcast directory search, subscriptions, background refresh, and OPML
+  import/export
+- Episode notifications (new episodes since your last visit), play history
+- Hover storyboard previews on video cards
+- Per-title-family play modes, chapters, SponsorBlock, downloads
+- Light and dark themes, both contrast-measured; native macOS menu, Now
+  Playing and media keys
+- Opt-in, local-first crash reports — nothing uploads without you
 
 ## Development
 
 ```sh
 npm install
 npm run tauri:dev     # app with hot reload
-npm test              # vitest
+npm run test:run      # vitest, one shot (npm test is watch mode)
 npm run test:e2e      # Playwright (mock world, no backend needed)
 cargo test --lib      # Rust unit tests (in src-tauri)
 ```
 
 Docs and milestone plans live in `docs/plans/`; the delivery routes are
-described in `docs/plans/2026-10-23-4-prep-delivery-routes.md`.
+described in `docs/plans/2026-10-23-4-prep-delivery-routes.md`. Release
+notes come from [CHANGELOG.md](CHANGELOG.md).
 
 ## Status
 
