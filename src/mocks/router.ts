@@ -189,14 +189,18 @@ const handlers: Record<string, Handler> = {
   },
 
   // Channels / instances / smart links / history
-  list: () =>
-    db.channels.map((c) => ({
-      ...c,
-      // Mirrors home_url_for: video channels link to their YouTube id;
-      // podcast channels get a link only when a site link exists (the
-      // fixtures carry none, so they honestly have none).
-      home_url: c.type === 'podcast' ? undefined : `https://www.youtube.com/channel/${c.external_id}`,
-    })),
+  list: (args) => {
+    const channelType = (args?.params as { type?: string } | undefined)?.type;
+    return db.channels
+      .filter((c) => !channelType || c.type === channelType)
+      .map((c) => ({
+        ...c,
+        // Mirrors home_url_for: video channels link to their YouTube id;
+        // podcast channels get a link only when a site link exists (the
+        // fixtures carry none, so they honestly have none).
+        home_url: c.type === 'podcast' ? undefined : `https://www.youtube.com/channel/${c.external_id}`,
+      }));
+  },
   list_instances: () => db.instances,
   add_instance: (args): Instance => {
     const url = String(args?.url ?? '').trim();
@@ -400,6 +404,55 @@ const handlers: Record<string, Handler> = {
     return null;
   },
   open_external_url: (args) => `mock: would open ${String(args?.url ?? '')}`,
+
+  // OPML import/export (mirrors commands/channels.rs): import REGISTERS
+  // feeds without fetching; export builds OPML from the subscribed
+  // podcast channels.
+  import: (args) => {
+    const source = String(args?.source ?? '');
+    if (source !== 'opml') {
+      throw new Error(`unsupported import source: ${source} (opml is the supported format)`);
+    }
+    const data = String(args?.data ?? '');
+    const outlineTags = [...data.matchAll(/<outline\b[^>]*>/g)].map((m) => m[0]);
+    let imported = 0;
+    for (const tag of outlineTags) {
+      const feedUrl = tag.match(/xmlUrl="([^"]+)"/)?.[1];
+      if (!feedUrl || db.channels.some((c) => c.podcast_feed_url === feedUrl)) continue;
+      const title = tag.match(/text="([^"]*)"/)?.[1] ?? tag.match(/title="([^"]*)"/)?.[1] ?? 'Unknown';
+      const nowIso = new Date().toISOString();
+      db.channels = [
+        ...db.channels,
+        {
+          id: `pod-${crypto.randomUUID().slice(0, 8)}`,
+          user_id: 'current-user',
+          external_id: feedUrl,
+          title,
+          is_subscribed: true,
+          subscribed_at: nowIso,
+          notifications_enabled: false,
+          format_preference: 'both',
+          type: 'podcast',
+          podcast_feed_url: feedUrl,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      ];
+      imported += 1;
+    }
+    return { imported, errors: [] as string[] };
+  },
+  export: (args) => {
+    const format = String(args?.format ?? 'opml');
+    const pods = db.channels.filter((c) => c.type === 'podcast' && c.podcast_feed_url);
+    if (format === 'json') {
+      return JSON.stringify(pods.map((c) => ({ title: c.title, feed_url: c.podcast_feed_url })));
+    }
+    const outlines = pods
+      .map((c) => `    <outline type="rss" text="${c.title}" xmlUrl="${c.podcast_feed_url}"/>`)
+      .join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head><title>EchoPrism Subscriptions</title></head>\n  <body>\n${outlines}\n  </body>\n</opml>`;
+  },
 
   // Episode notifications: the fixture has two "new" episodes; marking
   // seen clears them (mirrors the Rust seen-state).

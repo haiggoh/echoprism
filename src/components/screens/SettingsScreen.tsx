@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { crashIssueUrl } from '../../lib/crashIssue';
 import { Button } from '../ui/Button';
+import { Thumbnail } from '../ui/Thumbnail';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
 import { useToasts } from '../ui/Toaster';
@@ -420,14 +421,110 @@ function CrashReportsSection() {
   );
 }
 
+/**
+ * Live-test feature: the Podcasts tab is REAL — the subscribed podcast
+ * feeds with their artwork and the OPML portability pair (the 1c unwired
+ * contract). Import registers feeds WITHOUT fetching: the background
+ * refresh (due immediately for a newly registered feed) brings the
+ * episodes, so importing never makes N network calls.
+ */
 function PodcastsTab() {
+  const queryClient = useQueryClient();
+  const { addToast } = useToasts();
+  const { data: channels, isLoading } = useQuery({
+    queryKey: ['channels', 'podcasts'],
+    queryFn: () => channelCommands.list({ type: 'podcast' }),
+  });
+  const [opml, setOpml] = useState('');
+
+  const importMutation = useMutation({
+    mutationFn: () => channelCommands.import('opml', opml),
+    onSuccess: (result) => {
+      addToast({
+        title: `Imported ${result.imported} feed${result.imported === 1 ? '' : 's'}`,
+        description:
+          result.errors.length > 0
+            ? `${result.errors.length} could not be imported`
+            : 'Episodes arrive when the background refresh runs.',
+        variant: result.errors.length > 0 ? 'warning' : 'success',
+      });
+      if (result.imported > 0) {
+        setOpml('');
+        queryClient.invalidateQueries({ queryKey: ['channels'] });
+      }
+    },
+    onError: (err) => {
+      addToast({ title: 'Import failed', description: String(err), variant: 'danger' });
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () => channelCommands.export('opml'),
+    onSuccess: (opmlOut) => {
+      setOpml(opmlOut);
+      void navigator.clipboard?.writeText(opmlOut).catch(() => {});
+      addToast({ title: 'OPML exported — also copied to your clipboard', variant: 'success' });
+    },
+    onError: (err) => {
+      addToast({ title: 'Export failed', description: String(err), variant: 'danger' });
+    },
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-text">Podcast Feeds</h2>
-        <Button variant="unified">Add Feed</Button>
+      <div>
+        <h2 className="text-lg font-semibold text-text mb-4">Podcast Feeds</h2>
+        {isLoading && <p className="text-text-muted">Loading feeds…</p>}
+        {channels && channels.length === 0 && (
+          <p className="text-text-muted">
+            No podcast subscriptions yet — find shows on the Search screen's
+            Podcast tab, or import an OPML file below.
+          </p>
+        )}
+        <ul className="space-y-2" aria-label="Podcast feeds">
+          {(channels ?? []).map((channel) => (
+            <li
+              key={channel.id}
+              data-testid="podcast-feed-row"
+              className="flex items-center gap-3 bg-surface border border-border rounded-lg px-4 py-3"
+            >
+              <Thumbnail
+                src={channel.thumbnail_url}
+                alt=""
+                className="w-10 h-10 rounded-md object-cover flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-sm text-text truncate">{channel.title}</p>
+                <p className="text-xs text-text-muted truncate">{channel.podcast_feed_url}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
-      <EmptyState variant="feed" />
+
+      <div>
+        <h3 className="font-semibold text-text mb-2">Backup & portability (OPML)</h3>
+        <Button variant="ghost" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
+          Export subscriptions (OPML)
+        </Button>
+        <textarea
+          aria-label="OPML to import"
+          value={opml}
+          onChange={(e) => setOpml(e.target.value)}
+          rows={6}
+          placeholder="Paste OPML here to import, or export above and take the text with you…"
+          className="mt-3 w-full bg-surface border border-border rounded-lg text-text text-xs p-3 font-mono focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+        />
+        <div className="mt-3">
+          <Button
+            variant="unified"
+            onClick={() => importMutation.mutate()}
+            disabled={!opml.trim() || importMutation.isPending}
+          >
+            Import subscriptions
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

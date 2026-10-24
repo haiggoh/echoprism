@@ -1,9 +1,11 @@
 //! Channel/Subscription commands
 
 use crate::db::Database;
+use crate::podcast::{ImportResult, PodcastManager};
 use crate::types::*;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tauri::{command, State};
 
 /// Live-test finding: the subscriptions overview must link to each
@@ -59,6 +61,65 @@ pub async fn list(db: State<'_, Database>, params: Option<ChannelListParams>) ->
 pub struct ChannelListParams {
     #[serde(rename = "type")]
     pub channel_type: Option<ChannelType>,
+}
+
+#[cfg(test)]
+mod opml_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    /// The export: valid OPML 2.0, one rss outline per feed, entities
+    /// escaped (a title with an ampersand must not break the XML).
+    #[test]
+    fn build_opml_export_escapes_and_shapes() {
+        let out = build_opml_export(&[
+            ("Echo & Prism".into(), "https://feeds.example/show.xml".into()),
+            ("Quotes \"and\" <angles>".into(), "https://feeds.example/q.xml".into()),
+        ]);
+        assert!(out.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(out.contains("<opml version=\"2.0\">"));
+        assert!(out.contains("text=\"Echo \u{26}amp; Prism\""), "the ampersand is XML-escaped: {out}");
+        assert!(out.contains("xmlUrl=\"https://feeds.example/show.xml\""));
+        assert!(out.contains("text=\"Quotes \u{26}quot;and\u{26}quot; \u{26}lt;angles\u{26}gt;\""));
+        // The raw ampersand must not survive unescaped anywhere.
+        assert!(!out.contains(" & "));
+    }
+
+    /// The import's registration half: idempotent on the feed URL, one
+    /// channel + one podcast_feeds row, last_fetched_at NULL (the refresh's
+    /// due check fires immediately — that is HOW imported feeds get their
+    /// episodes).
+    #[tokio::test]
+    async fn register_podcast_feed_is_idempotent_and_due() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect");
+        crate::db::migrations::run(&pool).await.expect("migrations");
+
+        let first = crate::db::queries::register_podcast_feed(&pool, "https://feeds.example/show.xml", "The Show")
+            .await
+            .expect("register");
+        let again = crate::db::queries::register_podcast_feed(&pool, "https://feeds.example/show.xml", "The Show")
+            .await
+            .expect("re-register");
+        assert_eq!((first, again), (true, false), "idempotent on the feed URL");
+
+        let channel_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels WHERE external_id = 'https://feeds.example/show.xml'")
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+        let feed_rows: (i64, Option<String>) = sqlx::query_as(
+            "SELECT COUNT(*), MIN(last_fetched_at) FROM podcast_feeds WHERE feed_url = 'https://feeds.example/show.xml'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("count feeds");
+        assert_eq!(channel_rows, 1, "no duplicate channels");
+        assert_eq!(feed_rows.0, 1, "no duplicate podcast_feeds rows");
+        assert!(feed_rows.1.is_none(), "last_fetched_at NULL = due immediately");
+    }
 }
 
 #[cfg(test)]
@@ -157,27 +218,76 @@ pub async fn unsubscribe(_db: State<'_, Database>, _channel_id: String) -> std::
     Ok(())
 }
 
+/// Live-test feature (the 1c unwired contract): OPML import — registration
+/// without fetching (the background refresh fetches). Only `opml` is
+/// accepted; the error says so otherwise.
 #[command]
 pub async fn import(
-    _db: State<'_, Database>,
-    _source: String,
-    _data: String,
+    podcast: State<'_, Arc<PodcastManager>>,
+    source: String,
+    data: String,
 ) -> std::result::Result<ImportResult, String> {
-    // TODO: Parse YouTube export or OPML
-    Ok(ImportResult { imported: 0, errors: vec![] })
+    if source != "opml" {
+        return Err(format!(
+            "unsupported import source: {source} (opml is the supported format)"
+        ));
+    }
+    podcast.import_opml(&data).await
 }
 
-#[derive(serde::Serialize)]
-pub struct ImportResult {
-    pub imported: u32,
-    pub errors: Vec<String>,
+/// Pure builder (test target): OPML 2.0, one rss outline per subscribed
+/// podcast feed, entities escaped.
+pub fn build_opml_export(title_feeds: &[(String, String)]) -> String {
+    let mut out = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n  <head><title>EchoPrism Subscriptions</title></head>\n  <body>\n",
+    );
+    for (title, feed_url) in title_feeds {
+        out.push_str(&format!(
+            "    <outline type=\"rss\" text=\"{}\" xmlUrl=\"{}\"/>\n",
+            escape_xml(title),
+            escape_xml(feed_url)
+        ));
+    }
+    out.push_str("  </body>\n</opml>\n");
+    out
 }
 
+fn escape_xml(s: &str) -> String {
+    // & first, then the bracketing entities - the standard order.
+    s.replace("&", "\u{26}amp;")
+        .replace("<", "\u{26}lt;")
+        .replace(">", "\u{26}gt;")
+        .replace("\"", "\u{26}quot;")
+        .replace("'", "\u{26}apos;")
+}
+
+
+
+/// Live-test feature: export the subscribed podcast feeds as OPML (the
+/// podcast-portability format) or JSON.
 #[command]
-pub async fn export(
-    _db: State<'_, Database>,
-    _format: String,
-) -> std::result::Result<String, String> {
-    // TODO: Export subscriptions as JSON or OPML
-    Ok("".to_string())
+pub async fn export(db: State<'_, Database>, format: String) -> std::result::Result<String, String> {
+    let params = ChannelListParams {
+        channel_type: Some(ChannelType::Podcast),
+    };
+    let channels = db.list_channels(Some(params)).await?;
+    let feeds: Vec<(String, String)> = channels
+        .into_iter()
+        .filter_map(|c| c.podcast_feed_url.map(|u| (c.title, u)))
+        .collect();
+    match format.as_str() {
+        "opml" => Ok(build_opml_export(&feeds)),
+        "json" => serde_json::to_string(
+            &feeds
+                .iter()
+                .map(|(title, feed_url)| {
+                    serde_json::json!({ "title": title, "feed_url": feed_url })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| e.to_string()),
+        other => Err(format!(
+            "unsupported export format: {other} (opml or json)"
+        )),
+    }
 }

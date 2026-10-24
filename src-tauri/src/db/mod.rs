@@ -14,16 +14,16 @@ pub struct Database {
 }
 
 impl Database {
-    /// Seam constructor: wrap an existing pool. The app path is `new` (it
-    /// owns the data-dir file and runs migrations); the test caller runs
-    /// migrations itself.
-    #[cfg(test)]
     /// Read access to the pool for commands that compose their own queries
     /// (notifications, history hydration).
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
 
+    /// Seam constructor: wrap an existing pool. The app path is `new` (it
+    /// owns the data-dir file and runs migrations); the test caller runs
+    /// migrations itself.
+    #[cfg(test)]
     pub fn from_pool(pool: SqlitePool) -> Self {
         Self { pool }
     }
@@ -252,6 +252,12 @@ impl Database {
     /// Live-test pass: feed site links for the Channels screen's home links.
     pub async fn podcast_feed_links(&self) -> DbResult<std::collections::HashMap<String, String>> {
         queries::podcast_feed_links(&self.pool).await
+    }
+
+    /// The OPML import's registration half (wire the unwired-future
+    /// contract): channel + podcast_feeds rows, no fetch.
+    pub async fn register_podcast_feed(&self, feed_url: &str, title: &str) -> DbResult<bool> {
+        queries::register_podcast_feed(&self.pool, feed_url, title).await
     }
 
     /// Live-test pass 2: episode titles/thumbnails for history hydration.

@@ -163,92 +163,40 @@ impl PodcastManager {
         })
     }
     
-    /// Import subscriptions from OPML.
-    ///
-    /// Unwired future feature: the roadmap names OPML import/export as
-    /// existing-but-unused (step 1c delivered the iTunes directory instead),
-    /// and channels::import/export are its registered stub entry points.
-    /// Its persistence half, save_podcast_feed, must call the 1c
-    /// upsert_podcast_subscription when this gets wired.
-    #[allow(dead_code)]
+    /// Import subscriptions from OPML — WIRED (the 1c unwired-future
+    /// contract): registration WITHOUT fetching. Importing must not make N
+    /// network fetches (bot-block-prone, slow); registering the channel +
+    /// podcast_feeds rows (last_fetched_at NULL) hands the work to the
+    /// background refresh, whose due check fires immediately. Idempotent on
+    /// the feed URL; duplicates are skipped, not errors.
     pub async fn import_opml(&self, opml_content: &str) -> Result<ImportResult, String> {
         let doc = roxmltree::Document::parse(opml_content)
             .map_err(|e| format!("Failed to parse OPML: {}", e))?;
-        
+
         let mut imported = 0;
-        let mut errors = Vec::new();
-        
+        let mut errors: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
         for node in doc.descendants().filter(|n| n.tag_name().name() == "outline") {
             if let Some(xml_url) = node.attribute("xmlUrl") {
-                let feed_url = xml_url.to_string();
+                let feed_url = xml_url.trim().to_string();
+                if feed_url.is_empty() || !seen.insert(feed_url.clone()) {
+                    continue;
+                }
                 let title = node.attribute("title").or(node.attribute("text")).unwrap_or("Unknown").to_string();
-                
-                match self.fetch_feed(&feed_url).await {
-                    Ok(feed_data) => {
-                        // Save feed to database
-                        if let Err(e) = self.save_podcast_feed(&feed_url, title, feed_data).await {
-                            errors.push(format!("Failed to save {}: {}", feed_url, e));
-                        } else {
-                            imported += 1;
-                        }
-                    }
-                    Err(e) => {
-                        errors.push(format!("Failed to fetch {}: {}", feed_url, e));
-                    }
+                match self.db.register_podcast_feed(&feed_url, &title).await {
+                    Ok(true) => imported += 1,
+                    Ok(false) => {}
+                    Err(e) => errors.push(format!("Failed to register {feed_url}: {e}")),
                 }
             }
         }
-        
+
         Ok(ImportResult { imported, errors })
     }
     
     /// Persistence half of import_opml (kept with it, see import_opml); its
     /// inserts are still commented out and must become a call to the 1c
-    /// upsert_podcast_subscription when OPML import gets wired.
-    #[allow(dead_code)]
-    async fn save_podcast_feed(&self, feed_url: &str, title: String, feed_data: PodcastFeedData) -> Result<(), String> {
-        // Save podcast feed to database
-        let _feed = PodcastFeed {
-            id: uuid::Uuid::new_v4().to_string(),
-            user_id: "current-user".to_string(),
-            feed_url: feed_url.to_string(),
-            title: Some(title),
-            description: feed_data.description,
-            thumbnail_url: feed_data.thumbnail_url,
-            link: feed_data.link,
-            language: feed_data.language,
-            author: feed_data.author,
-            categories: Some(feed_data.categories),
-            last_fetched_at: Some(DateTimeUtc::from(chrono::Utc::now())),
-            last_episode_published_at: None,
-            fetch_interval_minutes: 60,
-            auto_download: false,
-            is_active: true,
-            created_at: DateTimeUtc::from(chrono::Utc::now()),
-            updated_at: DateTimeUtc::from(chrono::Utc::now()),
-        };
-        
-        // Insert into database
-        // self.db.insert_podcast_feed(&feed).await?;
-        
-        // Insert episodes
-        for _episode in feed_data.episodes {
-            // self.db.insert_episode(&episode).await?;
-        }
-        
-        Ok(())
-    }
-    
-    /// Export subscriptions to OPML.
-    ///
-    /// Unwired future feature, kept with import_opml — see the roadmap note
-    /// there. `channels::export` is its registered stub entry point.
-    #[allow(dead_code)]
-    pub async fn export_opml(&self) -> Result<String, String> {
-        // Generate OPML from database
-        Ok("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n  <head><title>EchoPrism Subscriptions</title></head>\n  <body></body>\n</opml>".to_string())
-    }
-    
     /// Search the iTunes podcast directory (no key or account required;
     /// Podcast Index is deferred). Each result's feedUrl is the subscribe
     /// target.

@@ -1279,6 +1279,51 @@ pub async fn list_history(pool: &SqlitePool, limit: Option<u32>, offset: Option<
     }).collect())
 }
 
+/// Wire the OPML import (the unwired-future contract in podcast/mod.rs):
+/// register a feed WITHOUT fetching — the background refresh's due check
+/// keys on last_fetched_at being NULL, so episodes arrive on its next
+/// cycle. Idempotent on the feed URL; Ok(false) = already registered.
+pub async fn register_podcast_feed(pool: &SqlitePool, feed_url: &str, title: &str) -> DbResult<bool> {
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT id FROM channels WHERE external_id = ? LIMIT 1")
+            .bind(feed_url)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    if existing.is_some() {
+        return Ok(false);
+    }
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    sqlx::query(
+        "INSERT INTO channels (user_id, external_id, title, is_subscribed, notifications_enabled, type, podcast_feed_url) \
+         VALUES ('current-user', ?, ?, 1, 0, 'podcast', ?)",
+    )
+    .bind(feed_url)
+    .bind(title)
+    .bind(feed_url)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    let channel_id: String =
+        sqlx::query_scalar("SELECT id FROM channels WHERE external_id = ? LIMIT 1")
+            .bind(feed_url)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO podcast_feeds (user_id, feed_url, title, last_fetched_at) \
+         VALUES ('current-user', ?, ?, NULL)",
+    )
+    .bind(feed_url)
+    .bind(title)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    let _ = channel_id;
+    Ok(true)
+}
+
 pub async fn clear_history(pool: &SqlitePool) -> DbResult<()> {
     query!("DELETE FROM history WHERE user_id = 'current-user'").execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
