@@ -3,7 +3,7 @@ import {
   Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
-  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord
+  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, StoryboardSpec
 } from '../types';
 
 // Command names and payloads are derived from the Rust commands registered in
@@ -53,6 +53,12 @@ export const podcastCommands = {
   search: (term: string) => invoke<PodcastSearchResult[]>('search_podcasts', { term }),
   subscribe: (feedUrl: string, title?: string) =>
     invoke<SubscribedPodcast>('subscribe_podcast', { feedUrl, title }),
+};
+
+// Hover preview (Phase E) — one call per NEW hovered video id; null keeps
+// the static thumbnail.
+export const previewCommands = {
+  frames: (videoId: string) => invoke<StoryboardSpec | null>('preview_frames', { videoId }),
 };
 
 // Crash reporting (crash.rs, 4f) — capture is local-only; the only egress

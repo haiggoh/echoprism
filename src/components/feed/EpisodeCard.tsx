@@ -1,5 +1,7 @@
 import { Episode } from '../../types';
 import { Thumbnail } from '../ui/Thumbnail';
+import { useHoverPreview } from '../../hooks/useHoverPreview';
+import { EpisodePreview } from '../ui/EpisodePreview';
 
 interface EpisodeCardProps {
   episode: Episode;
@@ -9,6 +11,11 @@ interface EpisodeCardProps {
 }
 
 export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
+  // Phase E: the hover preview hooks onto the thumbnail container — the
+  // feature's ONLY call site (useHoverPreview.ts is the unplug boundary).
+  // Podcast-shaped episodes carry no video_id, so the hook stays idle for
+  // them by construction.
+  const { spec, frameIndex, onPointerEnter, onPointerLeave } = useHoverPreview(episode.video_id);
   const formatTime = (seconds?: number) => {
     if (!seconds) return '';
     const mins = Math.floor(seconds / 60);
@@ -28,7 +35,11 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); }}}
     >
       {/* Thumbnail */}
-      <div className="relative aspect-video overflow-hidden bg-bg-elevated">
+      <div
+        className="relative aspect-video overflow-hidden bg-bg-elevated"
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+      >
         {episode.thumbnail_url ? (
           <Thumbnail
             src={episode.thumbnail_url}
@@ -47,6 +58,8 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
             </svg>
           </div>
         )}
+
+        {spec && <EpisodePreview spec={spec} frameIndex={frameIndex} />}
 
         {/* Duration badge */}
         {episode.duration_seconds && (

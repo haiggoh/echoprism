@@ -347,6 +347,28 @@ const handlers: Record<string, Handler> = {
   // Crash reporting (4f): capture is local-only; one fixture record so the
   // Settings section is exercisable in the mock world.
   get_crash_reports: (): CrashRecord[] => crashRecords,
+  // Hover preview (Phase E): a 2×2 sprite (SVG data URL, four quadrants) so
+  // the overlay's frame animation is observable in the browser/e2e world.
+  preview_frames: (args) => {
+    const videoId = String(args?.videoId ?? '');
+    if (!videoId) return null;
+    const sprite =
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'>" +
+      "<rect width='160' height='90' fill='%2310F0A8'/>" +
+      "<rect x='160' width='160' height='90' fill='%2300D4C8'/>" +
+      "<rect y='90' width='160' height='90' fill='%23FF8C42'/>" +
+      "<rect x='160' y='90' width='160' height='90' fill='%235B4CFF'/>" +
+      '</svg>';
+    return {
+      urls: [sprite],
+      frame_width: 160,
+      frame_height: 90,
+      frames_per_page_x: 2,
+      frames_per_page_y: 2,
+      duration_per_frame_ms: 300,
+      total_count: 4,
+    };
+  },
   clear_crash_reports: (): null => {
     crashRecords = [];
     return null;

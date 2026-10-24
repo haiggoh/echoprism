@@ -206,6 +206,9 @@ pub fn run() {
             commands::crash::log_frontend_error,
             commands::crash::open_external_url,
 
+            // Hover preview (Phase E)
+            commands::preview::preview_frames,
+
             // Keyboard shortcuts
             commands::shortcuts::list_shortcuts,
             commands::shortcuts::update_shortcut_cmd,

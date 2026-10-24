@@ -369,6 +369,18 @@ export interface StreamInfo {
   format: string;
 }
 
+/** Phase E: a hover-preview storyboard (sprite-sheet pages + timing),
+ *  served from Piped's previewFrames; null = keep the static thumbnail. */
+export interface StoryboardSpec {
+  urls: string[];
+  frame_width: number;
+  frame_height: number;
+  frames_per_page_x: number;
+  frames_per_page_y: number;
+  duration_per_frame_ms: number;
+  total_count: number;
+}
+
 /** 4f: one locally captured crash record (sanitized backend-side). */
 export interface CrashRecord {
   /** "panic" | "js-error" | "js-rejection" */

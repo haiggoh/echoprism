@@ -28,3 +28,24 @@ test('F03-H1 (subset): clicking a video card plays it in the player', async ({ p
     .poll(async () => await video.evaluate((el) => (el as HTMLVideoElement).paused), { timeout: 10_000 })
     .toBe(false);
 });
+
+/**
+ * Phase E: the hover preview — hovering a card's thumbnail for the delay
+ * shows the storyboard sprite overlay (the mock serves a 2×2 sprite), and
+ * leaving destroys it. The unplug switch and cost bounds are asserted in
+ * vitest (hover-preview.test.tsx); this is the rendered end.
+ */
+test('F03-E1 (Phase E): hovering a card shows the storyboard preview, leaving hides it', async ({ page }) => {
+  await page.goto('/feed');
+  await expect(page.getByRole('heading', { name: 'Feed', exact: true })).toBeVisible();
+
+  const thumb = page.locator('article .aspect-video').first();
+  await thumb.hover();
+  const preview = page.getByTestId('episode-preview');
+  await expect(preview).toBeVisible({ timeout: 3_000 });
+  // aria-hidden: the preview is an enhancement, invisible to the a11y tree.
+  await expect(preview).toHaveAttribute('aria-hidden', 'true');
+
+  await page.mouse.move(0, 0);
+  await expect(preview).toBeHidden();
+});

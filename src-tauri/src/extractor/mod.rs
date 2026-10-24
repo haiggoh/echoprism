@@ -98,6 +98,31 @@ impl Extractor {
         }
         self.get_stream_with_yt_dlp(video_id, format, quality).await
     }
+
+    /// Phase E: the hover-preview storyboard for one video, from the first
+    /// candidate whose /streams response carries previewFrames. NO fallback
+    /// to yt-dlp here — a missing storyboard means the caller keeps the
+    /// static thumbnail (the unplug-safe degradation), never a stream
+    /// resolution churn.
+    pub async fn preview_frames(&self, video_id: &str, candidates: &[Instance]) -> Option<StoryboardSpec> {
+        for instance in candidates {
+            let url = format!("{}/streams/{}", instance.url.trim_end_matches('/'), video_id);
+            let attempt = tokio::time::timeout(
+                std::time::Duration::from_secs(6),
+                self.client.get(&url).send(),
+            )
+            .await;
+            let Ok(Ok(response)) = attempt else { continue };
+            if !response.status().is_success() {
+                continue;
+            }
+            let Ok(body) = response.text().await else { continue };
+            if let Some(spec) = parse_storyboard(&body) {
+                return Some(spec);
+            }
+        }
+        None
+    }
     
     /// Resolve a stream from one instance. The instance TYPE decides the
     /// endpoint and parser — this is the 1e fix: the code used the Invidious
@@ -243,6 +268,76 @@ struct PipedStreamEntry {
     quality: Option<String>,
     itag: Option<i64>,
     mime_type: Option<String>,
+}
+
+/// Phase E: a hover-preview storyboard — sprite-sheet pages + per-frame
+/// timing, the same mechanism YouTube's own hover preview uses. Sourced
+/// from Piped's `previewFrames` (the /streams response the app already
+/// parses for playback); absent when no instance serves it, in which case
+/// the UI degrades to the static thumbnail (the unplug-safe degradation).
+#[derive(Debug, Clone, Serialize)]
+pub struct StoryboardSpec {
+    pub urls: Vec<String>,
+    pub frame_width: u32,
+    pub frame_height: u32,
+    pub frames_per_page_x: u32,
+    pub frames_per_page_y: u32,
+    pub duration_per_frame_ms: u64,
+    pub total_count: u32,
+}
+
+/// Pick the most detailed level at or below 480px wide (the 160×90 level
+/// beats 80×45; a hypothetical 480 would win over both), falling back to
+/// the smallest level when everything is larger.
+pub(crate) fn parse_storyboard(body: &str) -> Option<StoryboardSpec> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PfLevel {
+        #[serde(default)]
+        urls: Vec<String>,
+        #[serde(default)]
+        frame_width: Option<u32>,
+        #[serde(default)]
+        frame_height: Option<u32>,
+        #[serde(default)]
+        frames_per_page_x: Option<u32>,
+        #[serde(default)]
+        frames_per_page_y: Option<u32>,
+        #[serde(default)]
+        duration_per_frame: Option<u64>,
+        #[serde(default)]
+        total_count: Option<u32>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PfBody {
+        #[serde(default)]
+        preview_frames: Vec<PfLevel>,
+    }
+
+    let parsed: PfBody = serde_json::from_str(body).ok()?;
+    let usable: Vec<&PfLevel> = parsed
+        .preview_frames
+        .iter()
+        .filter(|l| !l.urls.is_empty() && l.frame_width.unwrap_or(0) > 0)
+        .collect();
+    if usable.is_empty() {
+        return None;
+    }
+    let level = usable
+        .iter()
+        .filter(|l| l.frame_width.unwrap_or(0) <= 480)
+        .max_by_key(|l| l.frame_width.unwrap_or(0))
+        .or_else(|| usable.iter().min_by_key(|l| l.frame_width.unwrap_or(0)))?;
+    Some(StoryboardSpec {
+        urls: level.urls.clone(),
+        frame_width: level.frame_width.unwrap_or(160),
+        frame_height: level.frame_height.unwrap_or(90),
+        frames_per_page_x: level.frames_per_page_x.unwrap_or(1).max(1),
+        frames_per_page_y: level.frames_per_page_y.unwrap_or(1).max(1),
+        duration_per_frame_ms: level.duration_per_frame.unwrap_or(300),
+        total_count: level.total_count.unwrap_or(0),
+    })
 }
 
 fn parse_piped_streams(body: &str) -> Result<PipedStreams, String> {
@@ -853,6 +948,30 @@ mod tests {
     // fell through to yt-dlp (measured against the live instance).
 
     const PIPED_STREAMS_FIXTURE: &str = include_str!("fixtures/piped_streams.json");
+
+    /// Phase E: the storyboard parser picks the most detailed level at or
+    /// below 480px — the committed fixture (live capture) carries 80×45 and
+    /// 160×90; the parser must take 160×90 with its 5 pages.
+    #[test]
+    fn storyboard_parse_prefers_the_detailed_level() {
+        let spec = parse_storyboard(PIPED_STREAMS_FIXTURE).expect("storyboard from the fixture");
+        assert_eq!(spec.frame_width, 160);
+        assert_eq!(spec.frame_height, 90);
+        assert_eq!(spec.urls.len(), 5);
+        assert_eq!(spec.frames_per_page_x, 5);
+        assert_eq!(spec.frames_per_page_y, 5);
+        assert!(spec.total_count > 0);
+        assert!(spec.duration_per_frame_ms > 0);
+    }
+
+    /// No previewFrames (an instance without them, or a bot-blocked
+    /// response) → None: the caller keeps the static thumbnail.
+    #[test]
+    fn storyboard_parse_returns_none_without_frames() {
+        assert!(parse_storyboard(r#"{"title":"x"}"#).is_none());
+        assert!(parse_storyboard(r#"{"previewFrames":[]}"#).is_none());
+        assert!(parse_storyboard("not json").is_none());
+    }
 
     /// The recorded real body must deserialize permissively and select the
     /// highest-ranked video stream.
