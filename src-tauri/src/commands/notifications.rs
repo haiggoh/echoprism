@@ -189,20 +189,4 @@ mod notifications_tests {
         let items = new_episode_items(&pool, &seen_at).await.expect("query");
         assert!(items.is_empty(), "marking seen clears the bell");
     }
-
-    async fn mark_seen_instant(pool: &sqlx::SqlitePool) -> Result<(), String> {
-        sqlx::query("UPDATE episode_seen_state SET last_seen_at = ? WHERE user_id = 'current-user'")
-            .bind(chrono::Utc::now().to_rfc3339())
-            .execute(pool)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-
-    async fn mark_seen_instant_read(pool: &sqlx::SqlitePool) -> String {
-        sqlx::query_scalar("SELECT last_seen_at FROM episode_seen_state WHERE user_id = 'current-user'")
-            .fetch_one(pool)
-            .await
-            .expect("read")
-    }
 }
