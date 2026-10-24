@@ -12,6 +12,17 @@ any podcast publisher. See [docs/PRIVACY.md](docs/PRIVACY.md) for what the
 app stores locally and what third-party services see, and
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for attribution.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Feed](docs/screenshots/feed.png) | ![Search with the podcast directory](docs/screenshots/search-directory.png) |
+| ![Player](docs/screenshots/player.png) | ![Settings](docs/screenshots/settings.png) |
+
+More views in [docs/screenshots](docs/screenshots/); a landing page lives at
+[docs/landing/index.html](docs/landing/index.html) (enable GitHub Pages to
+publish it — a repo-settings toggle).
+
 ## Build from source
 
 Requirements: Node 20+, npm, Rust (stable), and optionally `yt-dlp`

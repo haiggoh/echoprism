@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EchoPrism — two streams become one</title>
+<meta name="description" content="A unified video and podcast player. YouTube watching and podcast listening converge in one library, one queue — with smart links pairing the two streams of the same show. Free, open source, local-first." />
+<style>
+  :root {
+    --bg: #0a0e1a; --surface: #1a2332; --text: #e8edf5; --muted: #8fa3be;
+    --accent: #10f0a8; --audio: #00d4c8; --video: #ff8c42; --border: #2a3648;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, sans-serif; line-height: 1.6; }
+  .wrap { max-width: 64rem; margin: 0 auto; padding: 0 1.5rem; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 0; }
+  .brand { display: flex; align-items: center; gap: .6rem; font-weight: 600; font-size: 1.05rem; }
+  .brand img { height: 32px; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 1.25rem; font-size: .95rem; }
+  nav a:hover { color: var(--text); }
+  .hero { padding: 4rem 0 3rem; max-width: 46rem; }
+  h1 { font-family: "Space Grotesk", Inter, sans-serif; font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.15; letter-spacing: -0.01em; }
+  .hero p { color: var(--muted); font-size: 1.15rem; margin-top: 1.25rem; max-width: 40rem; }
+  .converge { color: var(--accent); }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 2.5rem 0 0; }
+  .shots img { width: 100%; border: 1px solid var(--border); border-radius: .75rem; display: block; }
+  @media (max-width: 720px) { .shots { grid-template-columns: 1fr; } }
+  section { padding: 2.5rem 0; border-top: 1px solid var(--border); }
+  h2 { font-family: "Space Grotesk", Inter, sans-serif; font-size: 1.4rem; margin-bottom: 1rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.25rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: 1.25rem; }
+  .card h3 { font-size: 1rem; margin-bottom: .5rem; }
+  .card p { color: var(--muted); font-size: .95rem; }
+  code { background: var(--surface); border: 1px solid var(--border); border-radius: .4rem; padding: .15rem .45rem; font-size: .9em; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: .6rem; padding: 1rem; overflow-x: auto; font-size: .9rem; }
+  footer { border-top: 1px solid var(--border); padding: 1.5rem 0 3rem; color: var(--muted); font-size: .9rem; }
+  footer a { color: var(--muted); }
+  a.cta { display: inline-block; margin-top: 1.5rem; background: var(--accent); color: #06281c; font-weight: 600; text-decoration: none; padding: .7rem 1.4rem; border-radius: .6rem; }
+  a.cta:hover { filter: brightness(1.1); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">◆ EchoPrism</div>
+    <nav>
+      <a href="#install">Install</a>
+      <a href="#privacy">Privacy</a>
+      <a href="https://github.com/haiggoh/echoprism">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Two streams become <span class="converge">one</span>.</h1>
+    <p>EchoPrism puts YouTube videos and podcast episodes in one library, one
+    queue, one player — and its smart links pair the two streams of the same
+    show, so a story you started on video continues as audio on your walk.</p>
+    <a class="cta" href="#install">Build it from source</a>
+  </div>
+
+  <div class="shots">
+    <img src="../screenshots/feed.png" alt="The EchoPrism feed: video and podcast episodes side by side" />
+    <img src="../screenshots/search-directory.png" alt="Search with results and the podcast directory" />
+  </div>
+
+  <section id="features">
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><h3>One library, two streams</h3><p>Videos and podcast episodes live side by side with their type visible — watch or listen, your choice per show.</p></div>
+      <div class="card"><h3>Smart links</h3><p>Episodes of the same story on both streams are paired automatically and reviewed by you, so switching streams keeps your place in the story.</p></div>
+      <div class="card"><h3>Podcast directory built in</h3><p>Search Apple's podcast directory, subscribe, and every new episode lands in your feed.</p></div>
+      <div class="card"><h3>Fails gracefully</h3><p>Search runs through the instances you configure with the local yt-dlp binary as a guaranteed fallback.</p></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p>The app is free, open source (MIT) and built from source — no signing
+    identity, no installer wizard:</p>
+    <pre>git clone https://github.com/haiggoh/echoprism
+cd echoprism
+scripts/build-from-source.sh</pre>
+    <p>The script checks prerequisites, builds the app bundle and a dmg, and
+    prints where everything landed. Unsigned build: right-click the app and
+    choose <strong>Open</strong> on first launch, or run
+    <code>xattr -cr /Applications/EchoPrism.app</code>.</p>
+    <p>A Homebrew cask and GitHub Releases binaries follow the first tagged
+    release — the build workflow is already in the repository.</p>
+  </section>
+
+  <section id="privacy">
+    <h2>Privacy</h2>
+    <p>No account, no telemetry, no analytics. Your library lives in a local
+    SQLite database; crash captures are local-only and filing one is your
+    own, opt-in browser action with a stripped report. Full details:
+    <a href="https://github.com/haiggoh/echoprism/blob/master/docs/PRIVACY.md" style="color: var(--accent)">docs/PRIVACY.md</a>.</p>
+  </section>
+
+  <footer>
+    EchoPrism is an independent client — not affiliated with YouTube, Apple,
+    or any podcast publisher. <a href="https://github.com/haiggoh/echoprism/blob/master/THIRD-PARTY-NOTICES.md">Attribution</a>
+    · MIT licensed.
+  </footer>
+</div>
+</body>
+</html>
