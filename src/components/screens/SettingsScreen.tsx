@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { Thumbnail } from '../ui/Thumbnail';
 import { EmptyState } from '../ui/EmptyState';
 import { InstanceCard } from '../settings/InstanceCard';
+import { SmartLinksPanel } from '../smartlinks/SmartLinksPanel';
 import { useToasts } from '../ui/Toaster';
 import { useTheme } from '../../hooks/useTheme';
 import type { Channel, PlayModeRule } from '../../types';
@@ -557,16 +558,17 @@ function PodcastsTab() {
   );
 }
 
+/**
+ * Phase 6: this tab was a heading + a dead `onClick={() => {}}` "Run Matching"
+ * button + a permanent EmptyState, while the /smart-links route beside it was
+ * fully wired — the 2c static-stub defect surviving in the one surface nobody
+ * re-checked after 2c. It now renders the SAME panel that route does, so there
+ * is one implementation and neither copy can drift.
+ */
 function SmartLinksTab() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-text">Smart Episode Links</h2>
-        <Button variant="unified" onClick={() => {}}>
-          Run Matching
-        </Button>
-      </div>
-      <EmptyState variant="feed" />
+      <SmartLinksPanel showHeading={false} headingLevel={2} />
     </div>
   );
 }
