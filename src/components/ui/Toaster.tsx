@@ -47,6 +47,19 @@ export function useToasts() {
   return { toasts, addToast, removeToast };
 }
 
+/**
+ * Drop every pending toast. The store is module-level and survives React
+ * unmount, so without this a toast rendered in one render tree is still
+ * visible to the next one — which lets a test assert on (or vacuously pass
+ * against) a toast it did not cause. Exported for test setup and for callers
+ * that need a clean slate (e.g. a route change that should not carry stale
+ * notifications across).
+ */
+export function clearToasts(): void {
+  toastStore.toasts = [];
+  notify();
+}
+
 export function Toaster() {
   const { toasts, removeToast } = useToasts();
   

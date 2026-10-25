@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
-import { instanceCommands } from '../../hooks/useTauriCommands';
+import { useToasts } from '../ui/Toaster';
+import { channelCommands, instanceCommands } from '../../hooks/useTauriCommands';
 
 export function OnboardingScreen() {
   const [step, setStep] = useState(1);
   const navigate = useNavigate();
   const [instanceUrl, setInstanceUrl] = useState('');
   const [instanceType, setInstanceType] = useState<'invidious' | 'piped'>('invidious');
+  const [opml, setOpml] = useState('');
+  const [importing, setImporting] = useState(false);
+  const { addToast } = useToasts();
 
   const handleNext = async () => {
     if (step === 2 && instanceUrl.trim()) {
@@ -27,6 +31,38 @@ export function OnboardingScreen() {
 
   const handleBack = () => {
     if (step > 1) setStep(step - 1);
+  };
+
+  /**
+   * Phase 2: OPML import — the same command Settings' Podcasts tab uses
+   * (channels.rs `import`), so registration is one code path, not two. This
+   * handler was `onClick={() => {}}` before, on the screen no other surface
+   * reports errors on — hence the explicit error toast rather than the
+   * console.error this component uses elsewhere.
+   *
+   * OPML import REGISTERS feeds without fetching; episodes arrive on the
+   * background refresh, which is what the success description says.
+   */
+  const handleOpmlImport = async () => {
+    const content = opml.trim();
+    if (!content || importing) return;
+    setImporting(true);
+    try {
+      const result = await channelCommands.import('opml', content);
+      addToast({
+        title: `Imported ${result.imported} feed${result.imported === 1 ? '' : 's'}`,
+        description:
+          result.errors.length > 0
+            ? `${result.errors.length} could not be imported`
+            : 'Episodes arrive when the background refresh runs.',
+        variant: result.errors.length > 0 ? 'warning' : 'success',
+      });
+      if (result.imported > 0) setOpml('');
+    } catch (error) {
+      addToast({ title: 'Import failed', description: String(error), variant: 'danger' });
+    } finally {
+      setImporting(false);
+    }
   };
 
   const steps = [
@@ -159,9 +195,27 @@ export function OnboardingScreen() {
         <Button variant="unified" className="w-full" onClick={() => {}}>
           Import from YouTube
         </Button>
-        <Button variant="ghost" className="w-full" onClick={() => {}}>
-          Import from OPML file
-        </Button>
+        <div>
+          <label htmlFor="onboarding-opml" className="block text-sm font-medium text-text mb-1">
+            Import from OPML
+          </label>
+          <textarea
+            id="onboarding-opml"
+            aria-label="OPML to import"
+            value={opml}
+            onChange={(e) => setOpml(e.target.value)}
+            rows={5}
+            placeholder="Paste the contents of your .opml file here…"
+            className="w-full bg-surface border border-border rounded-lg text-text placeholder-text-muted text-xs p-3 font-mono focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+          />
+          <Button
+            className="w-full mt-2"
+            onClick={handleOpmlImport}
+            disabled={!opml.trim() || importing}
+          >
+            {importing ? 'Importing…' : 'Import'}
+          </Button>
+        </div>
         <Button variant="ghost" className="w-full" onClick={() => handleNext()}>
           Skip for now
         </Button>
