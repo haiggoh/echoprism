@@ -131,27 +131,45 @@ and `e2e/`; a hit anywhere stops this phase.
 
 **🧪 Receipt 1:** grep count 0 for the symbol; tsc exit 0; vitest 212/212.
 
-## 🔌 Phase 2 — wire Onboarding's OPML import
+## 🔌 Phase 2 — wire Onboarding's OPML import ✅ DONE (2026-10-25, `8893c1a2`)
 
 **Objective:** the onboarding import button calls the command Settings already
 uses.
 
-**Tasks:** in `src/components/screens/OnboardingScreen.tsx`, replace the dead
-onClick on the "Import from OPML file" button with a handler that opens the
-file through `@tauri-apps/plugin-dialog` (already a dependency) and calls
-`channelCommands.import('opml', contents)`. Disable the button while pending,
-show the imported-count toast, and keep the existing `handleNext()` on
-"Skip for now".
+**Deviation from the original task text, recorded deliberately:** the plan said
+"opens the file through `@tauri-apps/plugin-dialog`". Preflight found the repo
+ships **no `capabilities` array and no `capabilities/` directory**, with
+`tauri.conf.json` `"plugins": {}` — so a file picker would have required new
+platform permissions (`dialog:allow-open`, `fs:read-text-file`) on a screen
+whose error handling was `console.error`. Implemented instead with the exact
+pattern Settings' Podcasts tab already proves (a paste field + the same
+`channelCommands.import` command): zero new Tauri surface, identical behaviour
+in the mock world and the real shell, and fully testable in jsdom. If a real
+file picker is wanted, it is its own task with a capability change.
 
-**Tests:** RED first — a vitest case asserting the mock router's `import` is
-called with the file's contents and that the success toast names the count.
-Mirror `SettingsScreen.tsx:440-455`'s existing behaviour; the mock router
-(`src/mocks/`) already rejects unknown feeds, so a mock harness exists.
+**As implemented:** a labelled OPML textarea + "Import" button,
+`disabled={!opml.trim() || importing}`, with success/warning/danger toasts
+mirroring Settings; "Import from YouTube" is left dead for Phase 3 and
+"Skip for now" unchanged (e2e F01 depends on it).
 
-**Discriminant:** point the handler at a file whose contents the mock router
-rejects, and assert the error path surfaces rather than reporting success.
+**Extra defect found and fixed in this phase:** the toast store
+(`Toaster.tsx:11`) is a **module-level singleton that survives React
+unmount**, so a toast from one render tree stayed visible to the next — which
+let a test assert on, or vacuously pass against, a toast it did not cause.
+Added `clearToasts()` and call it in the new test's `beforeEach`.
 
-**🧪 Receipt 2:** new test red → green; full vitest unchanged elsewhere.
+**Tests:** `src/__tests__/onboarding-import.test.tsx` (4 cases), RED for the
+right reason (the control did not exist) → green.
+
+**Discriminant:** rejected import surfaces `Import failed` and reports **no**
+success toast. The first mutation run caught a defect **in the test**: the
+negative assertion used `/imported \d+ feeds/i`, plural only, while the
+implementation's own toast is "Imported N feed{s}" — so an injected *singular*
+success toast passed the gate. Fixed to `feeds?`; three mutations (drop the
+disabled guard; error+success toast; success-only toast) each now fail it.
+
+**Receipt:** vitest 216/216 (+4), tsc exit 0, e2e `f01-onboarding.spec.ts`
+passed, mutations caught and the file restored byte-identical (`cmp`-verified).
 
 ## 📺 Phase 3 — complete `import_from_youtube`
 
@@ -283,7 +301,18 @@ playlists and YouTube import; correct the roadmap's stale gap list
 remains; record the new waypoints' resolution.
 
 **Tests:** `npx vitest run`, `cargo test`, `npx tsc --noEmit`,
-`npx eslint .`, `npx playwright test`. Run the full set, not samples.
+`npx playwright test`. Run the full set, not samples.
+
+**⚠️ `npm run lint` CANNOT RUN — exclude it from the gate list.** `package.json`
+ships `"lint": "eslint . --ext ts,tsx --report-unused-disable-directives
+--max-warnings 0"`, ESLint 8.57.1 and the two react plugins are in
+devDependencies, but **no ESLint configuration file exists anywhere in the
+repo** (`ls -a | grep -i eslint` → nothing), so `eslint` exits 2 with
+"couldn't find a configuration file". This gate has therefore never run.
+Tracked as a waypoint; writing a config is deliberately NOT part of this plan
+because new lint rules would flag existing code and change the gate's meaning.
+Two traps it already produced in this session: piping eslint into `tail` made
+exit 2 read as exit 0 (`$?` was `tail`'s status).
 
 **🧪 Receipt 7:** each command's tail output with pass counts and exit 0.
 

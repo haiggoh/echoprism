@@ -333,9 +333,25 @@ attribution) and 4g/4h (beta + launch materials), and the owner-verify
 list below. Blocker-quality gap before release: podcast episodes cannot
 play in the real backend (waypoint `podcast-episodes-cannot-play`) — fix
 before or with the release, since the new subscribe flow surfaces those
-episodes. Known gaps carried forward: a light theme does not exist (2a),
-the Cross-device sync toggle writes a field nothing reads, the Search
-screen's Retry button is dead (`onClick={() => {}}` — more visible now that
-2f makes real errors reach it). Future feature (owner, 2026-10-22, after
+episodes. Future feature (owner, 2026-10-22, after
 the first release unless reprioritised): play preview on hover for
 thumbnails.
+
+**RECONCILED 2026-10-25 — this paragraph's "known gaps carried forward" list
+was stale.** All three items it named were fixed in Phase B of the first-release
+run (commit `3283f02c`, with tests asserting each fix), but only the run's
+*step* list was updated; this gap list kept asserting them:
+
+- ~~"a light theme does not exist (2a)"~~ — the light palette shipped
+  (`src/index.css:83`), contrast-measured by `light-theme-contrast.test.ts`
+  and asserted by `theme-truthfulness.test.tsx:83,118,136`.
+- ~~"the Cross-device sync toggle writes a field nothing reads"~~ — the toggle
+  was removed; `theme-truthfulness.test.tsx:154` asserts its absence.
+- ~~"the Search screen's Retry button is dead"~~ — Retry invalidates the failed
+  query (`SearchScreen.tsx:17`, asserted by `podcast-directory-screen.test.tsx:101`).
+
+The step list being reconciled while the gap list is not is how a plan keeps
+sending a future session to re-fix work that already landed. What genuinely
+remains is in `docs/plans/2026-10-25-dead-controls-and-playlists.md`, whose
+finding sweep grepped for `onClick={() => {}}` rather than trusting this
+paragraph: five live dead controls existed that no plan had inventoried.

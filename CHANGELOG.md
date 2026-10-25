@@ -24,6 +24,10 @@ this file is the release notes' single source.
   OPML 2.0 or JSON.
 - **Episode notifications.** A real bell: the count is episodes published
   since you last looked, across subscribed channels.
+- **OPML import during first-run setup.** The onboarding "Import
+  Subscriptions" step's import control is wired to the same command the
+  Settings → Podcasts tab uses: paste your OPML, and the feeds are registered
+  (episodes arrive on the background refresh).
 - **Hover previews.** Storyboard previews on video cards (Piped
   `previewFrames`, with the local yt-dlp storyboard as the fallback).
 - **Play history** recording every playback, with titles, artwork and a
