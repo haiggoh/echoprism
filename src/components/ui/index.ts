@@ -33,9 +33,6 @@ export type { EpisodeCardProps } from './EpisodeCard';
 export { ChannelCard } from './ChannelCard';
 export type { ChannelCardProps } from './ChannelCard';
 
-export { QueueItem } from './QueueItem';
-export type { QueueItemProps } from './QueueItem';
-
 export { SmartLinkBadge } from './SmartLinkBadge';
 export type { SmartLinkBadgeProps } from './SmartLinkBadge';
 
