@@ -21,15 +21,17 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
 import { Toaster } from '../components/ui/Toaster';
-import { useEpisodePlay, resolveDefaultPlayMode } from '../hooks/useEpisodePlay';
+import { useEpisodePlay, resolveDefaultPlayMode, queueItemFromEpisode } from '../hooks/useEpisodePlay';
 import { usePlayerStore } from '../store/slices/playerSlice';
+import { useQueueStore } from '../store/slices/queueSlice';
 import {
   episodeCommands,
+  historyCommands,
   settingsCommands,
   playModeRuleCommands,
   channelCommands,
 } from '../hooks/useTauriCommands';
-import type { Channel, Episode, PlayModeRule, UserPreferences } from '../types';
+import type { Channel, Episode, HistoryEntry, PlayModeRule, UserPreferences } from '../types';
 
 const basePrefs: UserPreferences = {
   user_id: 'current-user',
@@ -46,14 +48,23 @@ const basePrefs: UserPreferences = {
   updated_at: '2026-10-18T00:00:00Z',
 };
 
+// historyCommands is REQUIRED here: PlayerProvider records history inside the
+// stream resolve's .then(). Without it that callback throws, the .catch fires,
+// and setPlaying(false) silently kills every playback after the first — which
+// looks exactly like a broken feature rather than a missing mock entry.
 vi.mock('../hooks/useTauriCommands', () => ({
   episodeCommands: { stream: vi.fn() },
+  historyCommands: { record: vi.fn() },
   settingsCommands: { get: vi.fn() },
   playModeRuleCommands: { list: vi.fn() },
   channelCommands: { list: vi.fn() },
 }));
 
 const streamMock = vi.mocked(episodeCommands.stream);
+// Must return a PROMISE: PlayerProvider calls .catch() on it. A bare vi.fn()
+// returns undefined, which throws inside the resolve .then() and looks exactly
+// like a playback failure.
+const historyMock = vi.mocked(historyCommands.record);
 const rulesMock = vi.mocked(playModeRuleCommands.list);
 const channelsMock = vi.mocked(channelCommands.list);
 const settingsMock = vi.mocked(settingsCommands.get);
@@ -152,6 +163,20 @@ describe('resolveDefaultPlayMode (D7 chain, pure)', () => {
     ).toBe('video');
   });
 
+  it('a matching RULE beats a conflicting channel format_preference', () => {
+    // Precedence is the whole point of the chain, and this is the only case
+    // that exercises it: a channel default alone cannot distinguish rules-first
+    // from channel-first, so an inverted implementation passes every other test
+    // here. Found by mutation (permuting the two branches survived 12/12).
+    expect(
+      resolveDefaultPlayMode(
+        makeEpisode({ title: 'Some More News: X' }),
+        [rule({ play_mode: 'video' })],
+        [channel({ format_preference: 'audio' })]
+      )
+    ).toBe('video');
+  });
+
   it("format_preference 'both' is no override; no channel row at all is no override", () => {
     expect(
       resolveDefaultPlayMode(makeEpisode({ title: 'Unrelated special' }), [rule({})], [
@@ -172,6 +197,8 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
   beforeEach(() => {
     streamMock.mockReset();
     streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    historyMock.mockReset();
+    historyMock.mockResolvedValue({} as HistoryEntry);
     rulesMock.mockReset();
     channelsMock.mockReset();
     settingsMock.mockReset();
@@ -325,5 +352,126 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
     fireEvent.click(screen.getByText('toggle-play'));
     await act(async () => {});
     expect(streamMock).toHaveBeenLastCalledWith('ep-emn-vid', 'audio');
+  });
+});
+
+/**
+ * Phase 5: the D7 chain on QUEUE ADVANCE, not only on card-click.
+ *
+ * Auto-advance used to call play()(ep, isAudioModeRef ? 'audio' : 'video') —
+ * consulting ONLY the standing toggle, never resolveDefaultPlayMode. So a
+ * rule you set for a show governed the card click and then stopped applying
+ * the moment the episode sat in the queue and auto-advanced. Owner decision
+ * 2026-10-25: resolve at PLAY time (lazily), so queueItemFromEpisode keeps
+ * play_mode: 'unified' and a rule edited AFTER queueing still takes effect.
+ *
+ * Discriminant: the audio-rule-on-a-video-capable-episode case — its correct
+ * outcome ('audio') contradicts the engine default, so a chain-free advance
+ * cannot pass it by coincidence.
+ */
+describe('queue advance consults the D7 chain (Phase 5)', () => {
+  // The queue store is module-global and survives cleanup(), so earlier tests
+  // in this file leave items behind. Without this reset the probe's advance()
+  // lands on a STALE item and the assertion passes/fails for the wrong reason.
+  beforeEach(() => {
+    useQueueStore.setState({ items: [], currentIndex: 0, repeatMode: 'off', shuffle: false });
+  });
+
+  beforeAll(() => {
+    window.HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve()) as unknown as HTMLMediaElement['play'];
+    window.HTMLMediaElement.prototype.pause = vi.fn() as unknown as HTMLMediaElement['pause'];
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  beforeEach(() => {
+    streamMock.mockReset();
+    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    historyMock.mockReset();
+    historyMock.mockResolvedValue({} as HistoryEntry);
+    usePlayerStore.setState({
+      playbackState: null,
+      isPlaying: false,
+      isAudioMode: false,
+      isPip: false,
+      volume: 1.0,
+      playbackRate: 1.0,
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function QueueProbe() {
+    const { addItem } = useQueueStore();
+    const advance = useQueueStore((st) => st.nextTrack); /* MUTATION */;
+    const { play } = usePlayer();
+    return (
+      <>
+        <button onClick={() => addItem(queueItemFromEpisode(makeEpisode({ id: 'ep-adv-smn', title: 'Some More News: advance probe' })))}>
+          enqueue-first
+        </button>
+        <button
+          onClick={() =>
+            addItem(
+              queueItemFromEpisode(
+                makeEpisode({ id: 'ep-adv-emn', channel_id: 'ch-4', title: 'Even More News: Video Edition', video_id: 'emn-vid-001' })
+              )
+            )
+          }
+        >
+          enqueue-emn
+        </button>
+        <button onClick={() => play(makeEpisode({ id: 'ep-adv-smn', title: 'Some More News: advance probe' }))}>start-first</button>
+        <button onClick={() => advance()}>advance</button>
+      </>
+    );
+  }
+
+  /**
+   * The provider READS the D7 inputs from the react-query cache (it must render
+   * without a QueryClientProvider of its own making), so a queue-advance test
+   * seeds that cache rather than waiting on a fetch — exactly what a real
+   * screen leaves behind via useEpisodePlay's queries.
+   */
+  function renderQueue(cache: { rules?: PlayModeRule[]; channels?: Channel[] }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['play-mode-rules'], cache.rules ?? []);
+    client.setQueryData(['channels', 'for-play-mode'], cache.channels ?? []);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PlayerProvider>
+            <QueueProbe />
+            <Toaster />
+          </PlayerProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    return client;
+  }
+
+  it('advancing to an audio-family episode resolves the RULE, not the toggle', async () => {
+    renderQueue({
+      rules: [rule({ id: 'r2', channel_id: 'ch-4', title_pattern: 'Even More News', play_mode: 'audio' })],
+      channels: [],
+    });
+
+    // Start playback of the first item so the engine is genuinely playing (a
+    // real advance always happens mid-playback): this also flips isPlaying
+    // false->true, which is what drives the resolve effect.
+    fireEvent.click(screen.getByText('start-first'));
+    await act(async () => {});
+    expect(streamMock).toHaveBeenLastCalledWith('ep-adv-smn', 'video');
+
+    fireEvent.click(screen.getByText('enqueue-first'));
+    await act(async () => {});
+    fireEvent.click(screen.getByText('enqueue-emn'));
+    await act(async () => {});
+
+    fireEvent.click(screen.getByText('advance'));
+    await act(async () => {});
+
+    expect(streamMock).toHaveBeenLastCalledWith('ep-adv-emn', 'audio');
   });
 });

@@ -4,7 +4,14 @@ import { usePlayer } from '../components/PlayerProvider';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { useToasts } from '../components/ui/Toaster';
 import { channelCommands, playModeRuleCommands, settingsCommands } from './useTauriCommands';
-import type { Channel, Episode, PlayMode, PlayModeRule, QueueItem } from '../types';
+import { resolveDefaultPlayMode } from '../lib/playModeChain';
+import type { Episode, QueueItem } from '../types';
+
+// Re-exported so existing consumers (and the D7 test) keep importing it from
+// here; the implementation lives in lib/playModeChain, which is what breaks the
+// PlayerProvider <-> useEpisodePlay cycle — the engine needs the same chain for
+// queue advance (Phase 5) and could not import it from a hook that imports it.
+export { resolveDefaultPlayMode };
 
 export function queueItemFromEpisode(episode: Episode): Omit<QueueItem, 'id' | 'position'> {
   return {
@@ -15,32 +22,6 @@ export function queueItemFromEpisode(episode: Episode): Omit<QueueItem, 'id' | '
     play_mode: 'unified',
     episode,
   };
-}
-
-/**
- * D7 (design-decisions.md) consultation chain — the default play mode for an
- * episode chosen on a card surface, in precedence order:
- *   1. the first matching per-channel play-mode rule (rules arrive
- *      priority-ordered from the backend; list order = evaluation order)
- *   2. the channel's format_preference ('both' = no override)
- *   3. undefined — no override; the engine then applies its own defaults
- *      (global audio toggle, capability fallback)
- * Pure and exported for direct testing (d7-play-mode-chain.test.tsx).
- */
-export function resolveDefaultPlayMode(
-  episode: Episode,
-  rules: PlayModeRule[],
-  channels: Channel[]
-): PlayMode | undefined {
-  // Pattern semantics v1 (plan, binding): case-insensitive substring.
-  const title = episode.title.toLowerCase();
-  const matched = rules.find(
-    (r) => r.channel_id === episode.channel_id && title.includes(r.title_pattern.toLowerCase())
-  );
-  if (matched) return matched.play_mode;
-  const channel = channels.find((c) => c.id === episode.channel_id);
-  if (channel && channel.format_preference !== 'both') return channel.format_preference;
-  return undefined;
 }
 
 /**

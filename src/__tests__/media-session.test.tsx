@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, render, cleanup } from '@testing-library/react';
 import { useMediaSession, type MediaSessionPlayer } from '../hooks/useMediaSession';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import type { Episode } from '../types';
 
@@ -205,10 +206,15 @@ describe('PlayerProvider publishes to the media session', () => {
       api = usePlayer();
       return null;
     }
+    // PlayerProvider reads the D7 play-mode chain from the shared react-query
+    // cache on queue advance, so it needs the provider the real app has.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <PlayerProvider>
-        <Probe />
-      </PlayerProvider>
+      <QueryClientProvider client={client}>
+        <PlayerProvider>
+          <Probe />
+        </PlayerProvider>
+      </QueryClientProvider>
     );
     act(() => api.play(episode));
     expect((session.metadata as unknown as FakeMediaMetadata).title).toBe('RSS is winning again');

@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { episodeCommands, historyCommands } from '../hooks/useTauriCommands';
+import { resolveDefaultPlayMode } from '../lib/playModeChain';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
 import { useToasts } from './ui/Toaster';
-import { Episode, PlayMode } from '../types';
+import { Channel, Episode, PlayMode, PlayModeRule } from '../types';
 
 interface PlayerContextType {
   currentEpisode: Episode | null;
@@ -61,6 +63,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   } = usePlayerStore();
   const { items, currentIndex, nextTrack: queueNext, previousTrack: queuePrev } = useQueueStore();
   const { addToast } = useToasts();
+  // D7 (Phase 5): the engine resolves the play-mode chain on QUEUE ADVANCE too,
+  // not just on the card-click path in useEpisodePlay. It READS the shared
+  // react-query cache rather than subscribing, because three existing test
+  // files render PlayerProvider without a QueryClientProvider ancestor and the
+  // media engine has no business requiring one; useEpisodePlay still owns the
+  // actual fetch under the same keys, so no second round-trip is created.
+  const queryClient = useQueryClient();
 
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -325,11 +334,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     lastItemIdRef.current = item?.id;
     const ep = item?.episode;
     if (isPlaying && ep) {
-      playRef.current(ep, isAudioModeRef.current ? 'audio' : 'video');
+      // Phase 5: resolve the D7 chain HERE, at play time, so a rule the owner
+      // set for this title family applies to the queue too — and a rule edited
+      // AFTER this item was queued still takes effect (owner decision
+      // 2026-10-25: lazy resolution, not a mode stamped at queue time).
+      // A cache miss resolves to [] — no override — exactly like having no
+      // rules. undefined falls through to the engine default as before.
+      const rules = (queryClient.getQueryData<PlayModeRule[]>(['play-mode-rules']) ??
+        []) as PlayModeRule[];
+      const channels = (queryClient.getQueryData<Channel[]>(['channels', 'for-play-mode']) ??
+        []) as Channel[];
+      const mode: PlayMode | undefined = resolveDefaultPlayMode(ep, rules, channels);
+      playRef.current(ep, mode);
     } else if (isPlaying && !ep) {
       setPlaying(false);
     }
-  }, [currentIndex, items, isPlaying, setPlaying]);
+  }, [currentIndex, items, isPlaying, setPlaying, queryClient]);
 
   const position = playbackState?.position_seconds ?? 0;
   const duration = playbackState?.duration_seconds ?? 0;

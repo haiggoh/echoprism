@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '../components/ui/Toaster';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
@@ -70,11 +71,17 @@ function renderEngine() {
     api = ctx;
     return <video data-testid="probe-video" ref={ctx.registerVideoElement} />;
   }
+  // PlayerProvider reads the play-mode chain out of the shared react-query
+  // cache on queue advance (D7/Phase 5), so it needs the same provider the real
+  // app tree has (main.tsx). A fresh client per render keeps the cache cold.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const result = render(
-    <PlayerProvider>
-      <Probe />
-      <Toaster />
-    </PlayerProvider>
+    <QueryClientProvider client={client}>
+      <PlayerProvider>
+        <Probe />
+        <Toaster />
+      </PlayerProvider>
+    </QueryClientProvider>
   );
   container = result.container;
   probeVideo = screen.getByTestId('probe-video') as HTMLVideoElement;

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, render, cleanup } from '@testing-library/react';
 import type { MediaSessionPlayer } from '../hooks/useMediaSession';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import type { Episode } from '../types';
 
@@ -132,10 +133,15 @@ describe('PlayerProvider listens to the Playback menu', () => {
       api = usePlayer();
       return null;
     }
+    // PlayerProvider reads the D7 play-mode chain from the shared react-query
+    // cache on queue advance, so it needs the provider the real app has.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <PlayerProvider>
-        <Probe />
-      </PlayerProvider>
+      <QueryClientProvider client={client}>
+        <PlayerProvider>
+          <Probe />
+        </PlayerProvider>
+      </QueryClientProvider>
     );
     await act(flush);
     const ep = { id: 'ep-1', channel_id: 'c', external_id: 'x', title: 't', video_id: 'v', is_downloaded: false, progress_seconds: 0 } as Episode;
