@@ -354,6 +354,7 @@ mod stream_tests {
             updated_at: "2026-10-20T00:00:00Z".into(),
             smart_link_id: None,
             linked_episode_id: None,
+            channel: None,
         }
     }
 

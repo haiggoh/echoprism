@@ -450,6 +450,24 @@ pub struct Episode {
     /// D6: the cross-stream twin's episode id, derived from the link.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_episode_id: Option<String>,
+    /// Resolved at READ time (like the smart-link fields): the channel this
+    /// episode belongs to, so every surface can name it. Live-test
+    /// 2026-10-27: only the mock layer attached it, so the real app showed
+    /// "Unknown channel" everywhere. Absent (not null) when the channel row
+    /// is gone, matching the mock's shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[sqlx(skip)]
+    pub channel: Option<EpisodeChannel>,
+}
+
+/// The slice of a channel an episode carries for display.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EpisodeChannel {
+    pub id: String,
+    pub title: String,
+    pub thumbnail_url: Option<String>,
+    #[serde(rename = "type")]
+    pub channel_type: ChannelType,
 }
 
 impl Episode {

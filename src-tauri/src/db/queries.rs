@@ -699,6 +699,7 @@ pub async fn get_feed(
         updated_at: r.updated_at,
         smart_link_id: None,
         linked_episode_id: None,
+        channel: None,
     }).collect())
 }
 
@@ -793,6 +794,7 @@ pub async fn get_episode(pool: &SqlitePool, episode_id: &str) -> DbResult<Episod
         updated_at: row.updated_at,
         smart_link_id: None,
         linked_episode_id: None,
+        channel: None,
     })
 }
 
@@ -887,6 +889,7 @@ pub async fn search_episodes(
         updated_at: r.updated_at,
         smart_link_id: None,
         linked_episode_id: None,
+        channel: None,
     }).collect())
 }
 
@@ -1710,6 +1713,40 @@ pub async fn delete_episode_link(pool: &SqlitePool, link_id: &str) -> DbResult<(
 /// query_as::<_, T>), deliberately NOT `query_as!` macros — new or changed
 /// macro SQL would demand regenerating the .sqlx offline cache (plan
 /// adversarial note), which runtime queries avoid entirely.
+/// Attach each episode's channel (one batched query, no N+1). An episode
+/// whose channel row is gone keeps `channel: None` — it still renders.
+pub async fn resolve_channels(pool: &SqlitePool, episodes: &mut [Episode]) -> DbResult<()> {
+    let mut ids: Vec<&str> = episodes.iter().map(|e| e.channel_id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    #[derive(sqlx::FromRow)]
+    struct ChannelRow {
+        id: String,
+        title: String,
+        thumbnail_url: Option<String>,
+        #[sqlx(rename = "type")]
+        channel_type: ChannelType,
+    }
+    let mut qb = sqlx::QueryBuilder::new("SELECT id, title, thumbnail_url, type FROM channels WHERE id IN (");
+    let mut sep = qb.separated(", ");
+    for id in &ids {
+        sep.push_bind(*id);
+    }
+    sep.push_unseparated(")");
+    let rows: Vec<ChannelRow> = qb.build_query_as().fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let by_id: std::collections::HashMap<String, EpisodeChannel> = rows
+        .into_iter()
+        .map(|r| (r.id.clone(), EpisodeChannel { id: r.id, title: r.title, thumbnail_url: r.thumbnail_url, channel_type: r.channel_type }))
+        .collect();
+    for e in episodes.iter_mut() {
+        e.channel = by_id.get(&e.channel_id).cloned();
+    }
+    Ok(())
+}
+
 pub async fn resolve_smart_links(pool: &SqlitePool, episodes: &mut [Episode]) -> DbResult<()> {
     let guids: Vec<&str> = episodes
         .iter()
@@ -2519,6 +2556,43 @@ mod d6_d7_tests {
 
         let hits = search_episodes(&pool, "housing".into(), None).await.expect("search");
         assert_eq!(hits.len(), 2, "no filter returns both streams");
+    }
+
+    /// Live-test 2026-10-27: every episode in the real app showed "Unknown
+    /// channel" — the Rust Episode had no `channel`, only the mock attached
+    /// one. The read surfaces the player uses now carry it.
+    #[tokio::test]
+    async fn feed_and_episode_reads_carry_their_channel() {
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+        let db = crate::db::Database::from_pool(pool);
+
+        let feed = db.get_feed(None).await.expect("feed");
+        let smn = feed.iter().find(|e| e.id == "ep-smn-1").expect("ep-smn-1 in feed");
+        let ch = smn.channel.as_ref().expect("feed episode carries its channel");
+        assert_eq!(ch.id, "ch-3");
+        assert_eq!(ch.title, "Some More News");
+        assert_eq!(ch.channel_type, ChannelType::Video);
+
+        let one = db.get_episode("ep-emn-1").await.expect("episode");
+        let ch = one.channel.as_ref().expect("single episode carries its channel");
+        assert_eq!(ch.title, "Even More News");
+        assert_eq!(ch.channel_type, ChannelType::Podcast);
+
+        let found = db.search_episodes("more news".into(), None).await.expect("search");
+        assert!(!found.is_empty() && found.iter().all(|e| e.channel.is_some()), "search results carry channels too");
+    }
+
+    #[tokio::test]
+    async fn episode_whose_channel_is_gone_resolves_to_none_not_an_error() {
+        let pool = fresh_pool().await;
+        seed_two_stream_show(&pool).await;
+        let mut eps = get_feed(&pool, None).await.expect("feed");
+        assert!(eps.len() >= 2);
+        eps[0].channel_id = "ch-deleted".into();
+        resolve_channels(&pool, &mut eps).await.expect("resolve must not fail");
+        assert!(eps[0].channel.is_none());
+        assert!(eps[1..].iter().all(|e| e.channel.is_some()));
     }
 }
 

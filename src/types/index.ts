@@ -138,10 +138,13 @@ export interface Episode {
   /** Derived at read time (D6): the cross-stream twin's episode id, resolved
    *  from the episode_links join — present only when a link exists. */
   linked_episode_id?: string;
+  /** Resolved at read time by get_feed / get_episode / search_episodes (the
+   *  Rust EpisodeChannel). Absent when the channel row is gone. */
   channel?: {
     id: string;
     title: string;
     thumbnail_url?: string;
+    type?: 'video' | 'podcast' | 'both';
   };
   created_at: string;
   updated_at: string;

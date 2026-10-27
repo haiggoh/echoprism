@@ -122,12 +122,14 @@ impl Database {
     pub async fn get_feed(&self, params: Option<crate::commands::episodes::FeedParams>) -> DbResult<Vec<Episode>> {
         let mut episodes = queries::get_feed(&self.pool, params).await?;
         queries::resolve_smart_links(&self.pool, &mut episodes).await?;
+        queries::resolve_channels(&self.pool, &mut episodes).await?;
         Ok(episodes)
     }
 
     pub async fn get_episode(&self, episode_id: &str) -> DbResult<Episode> {
         let mut episode = queries::get_episode(&self.pool, episode_id).await?;
         queries::resolve_smart_links(&self.pool, std::slice::from_mut(&mut episode)).await?;
+        queries::resolve_channels(&self.pool, std::slice::from_mut(&mut episode)).await?;
         Ok(episode)
     }
 
@@ -138,6 +140,7 @@ impl Database {
     ) -> DbResult<Vec<Episode>> {
         let mut episodes = queries::search_episodes(&self.pool, query, params).await?;
         queries::resolve_smart_links(&self.pool, &mut episodes).await?;
+        queries::resolve_channels(&self.pool, &mut episodes).await?;
         Ok(episodes)
     }
 
