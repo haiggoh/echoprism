@@ -11,6 +11,7 @@ mod logging;
 mod db;
 mod instance_pool;
 mod extractor;
+mod netpath;
 mod matcher;
 mod podcast;
 mod sponsorblock;
@@ -97,7 +98,14 @@ pub fn run() {
             app.manage(pool_shared.clone());
 
             // Initialize extractor
-            let extractor = extractor::Extractor::new(app.handle().clone());
+            // The IPv6 verdict is read from disk (no wait) and re-measured in
+            // the background; playback never blocks on the probe (netpath.rs).
+            let netpath = Arc::new(match app.path().app_data_dir() {
+                Ok(dir) => netpath::NetPath::load(dir.join("net-state.json")),
+                Err(_) => netpath::NetPath::in_memory(),
+            });
+            netpath.spawn_probe();
+            let extractor = extractor::Extractor::new(app.handle().clone(), netpath);
             app.manage(Arc::new(extractor));
 
             // Initialize matcher

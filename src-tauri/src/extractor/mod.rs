@@ -9,6 +9,9 @@ pub struct Extractor {
     /// Resolved once on first use; the extractor lives in `Arc` managed state,
     /// so memoization uses `OnceLock` rather than `&mut`.
     yt_dlp_path: std::sync::OnceLock<String>,
+    /// Which IP family reaches YouTube (crate::netpath): every yt-dlp call
+    /// reads it, so a known-broken IPv6 network never costs a wait.
+    netpath: std::sync::Arc<crate::netpath::NetPath>,
 }
 
 impl Extractor {
@@ -16,7 +19,11 @@ impl Extractor {
     /// call sites (search/stream commands pass ordered candidates), so the
     /// extractor no longer reads any managed state. Kept in the signature to
     /// avoid touching the managed-state construction order in lib.rs.
-    pub fn new(_app_handle: AppHandle) -> Self {
+    pub fn new(_app_handle: AppHandle, netpath: std::sync::Arc<crate::netpath::NetPath>) -> Self {
+        Self::from_parts(netpath)
+    }
+
+    pub(crate) fn from_parts(netpath: std::sync::Arc<crate::netpath::NetPath>) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
@@ -24,7 +31,34 @@ impl Extractor {
                 .build()
                 .expect("Failed to create HTTP client"),
             yt_dlp_path: std::sync::OnceLock::new(),
+            netpath,
         }
+    }
+
+    /// Run yt-dlp with `args` under the current IPv6 verdict: IPv4 at once
+    /// when the network is known-broken, otherwise dual-stack with a
+    /// mid-flight switch to IPv4 the moment the background probe says so.
+    async fn yt_dlp_output(&self, args: &[String]) -> Result<std::process::Output, String> {
+        let yt_dlp = self.find_yt_dlp().await?;
+        let netpath = self.netpath.clone();
+        crate::netpath::run_with_netpath(
+            &self.netpath,
+            |v4| {
+                let mut full = crate::netpath::yt_dlp_net_args(v4);
+                full.extend(args.iter().cloned());
+                let yt_dlp = yt_dlp.clone();
+                async move {
+                    tokio::process::Command::new(&yt_dlp)
+                        .args(&full)
+                        .kill_on_drop(true)
+                        .output()
+                        .await
+                        .map_err(|e| format!("Failed to execute yt-dlp: {}", e))
+                }
+            },
+            move || netpath.request_probe(),
+        )
+        .await
     }
 
     /// Search YouTube through one instance's API. The instance type decides
@@ -67,23 +101,15 @@ impl Extractor {
     /// Search YouTube via a local yt-dlp binary (ytsearch20). The guaranteed
     /// fallback when no instance answers.
     pub async fn search_with_yt_dlp(&self, query: &str) -> Result<Vec<VideoInfo>, String> {
-        let yt_dlp = self.find_yt_dlp().await?;
         let target = format!("ytsearch20:{}", query);
-        let output = tokio::process::Command::new(&yt_dlp)
-            .args([
-                "--dump-json",
-                "--flat-playlist",
-                "--no-warnings",
-                &target,
-            ])
-            .output()
+        let args: Vec<String> = ["--dump-json", "--flat-playlist", "--no-warnings", &target]
+            .iter()
+            .map(|a| a.to_string())
+            .collect();
+        let output = self
+            .yt_dlp_output(&args)
             .await
-            .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("yt-dlp search failed: {}", stderr));
-        }
+            .map_err(|e| format!("yt-dlp search failed: {}", e))?;
         parse_yt_dlp_search(&String::from_utf8_lossy(&output.stdout))
     }
 
@@ -130,20 +156,16 @@ impl Extractor {
     /// formats. One invocation per call site miss (the caller's LRU bounds
     /// it to once per hovered id).
     async fn storyboard_with_yt_dlp(&self, video_id: &str) -> Option<StoryboardSpec> {
-        let yt_dlp = self.find_yt_dlp().await.ok()?;
         let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            tokio::process::Command::new(&yt_dlp)
-                .args(["-J", "--skip-download", "--no-warnings", &watch_url])
-                .output(),
-        )
-        .await
-        .ok()?
-        .ok()?;
-        if !output.status.success() {
-            return None;
-        }
+        let args: Vec<String> = ["-J", "--skip-download", "--no-warnings", &watch_url]
+            .iter()
+            .map(|a| a.to_string())
+            .collect();
+        // A preview is decoration: keep its old 30 s bound on top of the policy.
+        let output = tokio::time::timeout(std::time::Duration::from_secs(30), self.yt_dlp_output(&args))
+            .await
+            .ok()?
+            .ok()?;
         parse_yt_dlp_storyboard(&String::from_utf8_lossy(&output.stdout))
     }
     
@@ -222,19 +244,8 @@ impl Extractor {
     }
     
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
-        let yt_dlp = self.find_yt_dlp().await?;
         let args = yt_dlp_stream_args(video_id, format);
-
-        let output = tokio::process::Command::new(&yt_dlp)
-            .args(&args)
-            .output()
-            .await
-            .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("yt-dlp failed: {}", stderr));
-        }
+        let output = self.yt_dlp_output(&args).await?;
 
         let url = first_url_line(&String::from_utf8_lossy(&output.stdout))
             .ok_or_else(|| "yt-dlp returned no stream URL".to_string())?;
@@ -808,6 +819,49 @@ fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
 mod tests {
     use super::*;
 
+    /// An extractor whose "yt-dlp" is a script echoing its argv back as the
+    /// URL line, so a test can read exactly what the real call site passed.
+    fn extractor_with_echo_ytdlp(v: crate::netpath::Ipv6Verdict) -> (Extractor, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("yt-dlp");
+        std::fs::write(&bin, "#!/bin/sh\necho \"https://echo.invalid/?$*\"\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(v);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set(bin.display().to_string()).unwrap();
+        (ex, dir)
+    }
+
+    #[tokio::test]
+    async fn stream_resolution_uses_ipv4_when_the_verdict_says_broken() {
+        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken);
+        let s = ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await.unwrap();
+        assert!(s.url.contains("--force-ipv4"), "{}", s.url);
+        assert!(s.url.contains("--socket-timeout 15"), "{}", s.url);
+        assert!(s.url.contains("watch?v=vid123"), "{}", s.url);
+    }
+
+    #[tokio::test]
+    async fn stream_resolution_stays_dual_stack_when_ipv6_works() {
+        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works);
+        let s = ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await.unwrap();
+        assert!(!s.url.contains("--force-ipv4"), "{}", s.url);
+    }
+
+    #[tokio::test]
+    async fn search_uses_ipv4_when_the_verdict_says_broken() {
+        use std::os::unix::fs::PermissionsExt;
+        // Search parses JSON lines, so this fake prints one entry carrying argv.
+        let (ex, d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken);
+        let bin = d.path().join("yt-dlp");
+        std::fs::write(&bin, "#!/bin/sh\nprintf '{\"id\":\"x\",\"title\":\"%s\"}\\n' \"$*\"\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let found = ex.search_with_yt_dlp("q").await.unwrap();
+        assert!(found[0].title.contains("--force-ipv4"), "{}", found[0].title);
+    }
+
     const PIPED_FIXTURE: &str = include_str!("fixtures/piped_search.json");
     const INVIDIOUS_FIXTURE: &str = include_str!("fixtures/invidious_search.json");
     const YTDLP_FIXTURE: &str = include_str!("fixtures/yt_dlp_search.json");
@@ -1168,6 +1222,7 @@ mod tests {
                 .build()
                 .expect("http client"),
             yt_dlp_path: std::sync::OnceLock::new(),
+            netpath: std::sync::Arc::new(crate::netpath::NetPath::in_memory()),
         };
         let now = Utc::now().to_rfc3339();
         let piped = Instance {
