@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# echoprism — launch EchoPrism from this checkout, for hands-on testing.
+#
+# Symlink it onto PATH (ln -s "$PWD/bin/echoprism" ~/.local/bin/echoprism);
+# it resolves the checkout through the symlink, so it always runs the code
+# that is checked out right now.
+#
+# Usage: see usage() below, or run `echoprism --help`.
+# Exit codes: 0 = ok, 1 = missing prerequisite or launch failure, 2 = usage.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+echoprism — launch EchoPrism from its source checkout (for testing)
+
+Usage:
+  echoprism [dev]     the desktop app via `tauri dev` (real Rust backend; hot reload)
+  echoprism web       the frontend only, in the browser via Vite (mock backend)
+  echoprism build     an unsigned release build (delegates to scripts/build-from-source.sh)
+  echoprism open      open the last release build (warns if older than the latest commit)
+  echoprism where     print the checkout this command runs
+  echoprism --help    this message
+
+Installs JS dependencies first if node_modules is missing.
+
+Environment:
+  ECHOPRISM_HOME   run a different checkout (must contain package.json);
+                   an invalid value is an error, never silently ignored
+EOF
+}
+
+die() { echo "echoprism: $*" >&2; exit 1; }
+
+cmd="${1:-dev}"
+case "$cmd" in
+  -h|--help|help) usage; exit 0 ;;
+  dev|web|build|open|where) ;;
+  *) echo "echoprism: unknown command '$cmd'" >&2
+     echo "usage: echoprism [dev|web|build|open|where|--help]" >&2
+     exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "echoprism: unexpected argument '$2'" >&2
+  echo "usage: echoprism [dev|web|build|open|where|--help]" >&2
+  exit 2
+fi
+
+# Resolve the checkout: ECHOPRISM_HOME, else this script's own repo (through
+# any chain of symlinks — macOS readlink has no -f).
+if [ -n "${ECHOPRISM_HOME:-}" ]; then
+  [ -f "$ECHOPRISM_HOME/package.json" ] \
+    || die "ECHOPRISM_HOME=$ECHOPRISM_HOME has no package.json"
+  root="$ECHOPRISM_HOME"
+else
+  src="${BASH_SOURCE[0]}"
+  while [ -L "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  root="$(cd -P "$(dirname "$src")/.." && pwd)"
+  [ -f "$root/package.json" ] || die "cannot find the checkout (looked in $root)"
+fi
+cd "$root"
+
+if [ "$cmd" = where ]; then echo "$root"; exit 0; fi
+
+if [ "$cmd" = open ]; then
+  app="src-tauri/target/release/bundle/macos/EchoPrism.app"
+  [ -d "$app" ] || die "no release build at $root/$app — run 'echoprism build' first"
+  # A release bundle is a snapshot: warn when the checkout has moved past it,
+  # or you test yesterday's code while the screen looks current.
+  built="$(stat -f %m "$app/Contents/MacOS/echoprism" 2>/dev/null || echo 0)"
+  head="$(git log -1 --format=%ct 2>/dev/null || echo 0)"
+  if [ "$built" -lt "$head" ]; then
+    echo "echoprism: warning — this build predates the latest commit; 'echoprism dev' runs current code" >&2
+  fi
+  exec open "$app"
+fi
+
+if [ "$cmd" = build ]; then exec scripts/build-from-source.sh; fi
+
+command -v npm >/dev/null 2>&1 || die "npm not found on PATH"
+if [ ! -d node_modules ]; then
+  echo "echoprism: node_modules missing — running npm ci" >&2
+  npm ci
+fi
+
+case "$cmd" in
+  dev) command -v cargo >/dev/null 2>&1 || die "cargo not found on PATH (needed by tauri dev)"
+       exec npm run tauri:dev ;;
+  web) exec npm run dev ;;
+esac
