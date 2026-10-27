@@ -104,8 +104,8 @@
 ### Task 8: Queue next / previous
 
 **Files:** `src/components/PlayerProvider.tsx` (reuse the D7 auto-advance path, `src/lib/playModeChain.ts`), player controls; test `src/__tests__/queue-navigation.test.tsx`.
-- **Interfaces:** context `next(): void`, `previous(): void`, `hasNext: boolean`, `hasPrevious: boolean`. `previous()` restarts the current item when position > 3 s, else plays the prior item. Next/previous go through the same resolve path as auto-advance (D7 play mode applies). Buttons disabled when `!hasNext` / `!hasPrevious` (Review Focus 4).
-- [ ] Tests: next plays item 2; previous at 10 s restarts item 2; previous at 1 s plays item 1; both disabled at the ends. Fail → implement → pass → commit + push.
+- **Interfaces:** context `next(): void`, `previous(): void`, `restart(): void`, `hasNext: boolean`, `hasPrevious: boolean`. **Owner decision (2026-10-27 11:20): `previous()` ALWAYS plays the prior item, at any position — deliberately NOT the common "restart if past 3 s" behaviour. Restarting is its own button, `restart()` (seek to 0, keep playing).** Next/previous go through the same resolve path as auto-advance (D7 play mode applies). Next/Previous disabled when `!hasNext` / `!hasPrevious` (Review Focus 4); Restart enabled whenever something is loaded.
+- [ ] Tests: next plays item 2; **previous at 10 s into item 2 plays item 1 (not a restart)** — the discriminant for the owner decision; restart at 10 s seeks to 0 on the same item; Next/Previous disabled at the ends. Fail → implement → pass → commit + push.
 
 ### Task 9: Podcast cover art
 
