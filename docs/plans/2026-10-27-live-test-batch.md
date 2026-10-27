@@ -21,26 +21,32 @@
 
 ## Review Focus
 
-1. **Video on a healthy dual-stack network** must not get slower: the IPv4 retry fires only after the first attempt fails or times out. (Task 1 test: first attempt succeeds ⇒ exactly one invocation.)
-2. **A stream that never resolves** must end in a visible error toast, never an endless spinner. (Task 1: timeout ⇒ Err.)
+1. **A network whose IPv6 is permanently broken** must not cost a wait on every launch: the remembered verdict starts playback on IPv4 immediately, and the background probe never blocks a play. (Task 1: `persisted_broken_starts_on_ipv4`, `unknown_then_probe_flips_broken_restarts_inflight`.)
+2. **A stream that never resolves** (wedged binary, both paths dead) must end in a visible error toast, never an endless spinner. (Task 1: the 60 s safety ceiling ⇒ Err.)
 3. **Episodes whose channel row is gone** (deleted) must still render, with the old "Unknown channel" fallback, not crash. (Task 2 test.)
 4. **Previous at the first queue item / Next at the last** must be no-ops (buttons disabled), not wrap or throw. (Task 8 test.)
 5. **A podcast item without its own `itunes:image`** gets the channel image; a feed with neither keeps the headphones fallback. (Task 9 test.)
 
 ---
 
-### Task 1: Video resolution — timeout + IPv4 retry
+### Task 1: Video resolution — remembered IPv6 verdict, background probe, no gating timeout
 
 **Cause (measured):** on the owner's network IPv6 to youtube.com/googlevideo never connects; Happy-Eyeballs clients fall back in 0.5 s, yt-dlp does not, and `get_stream_with_yt_dlp` (`src-tauri/src/extractor/mod.rs:224`) has no timeout ⇒ endless "loading".
 
-**Files:** Modify `src-tauri/src/extractor/mod.rs` (`yt_dlp_stream_args`, `get_stream_with_yt_dlp`, `search_with_yt_dlp`, `storyboard_with_yt_dlp`). Tests in the same file's test module.
+**Owner correction (2026-10-27 11:19):** a timeout must never gate playback. On a network where IPv6 is permanently broken, a "try v6, wait, retry v4" design costs the full wait on every launch. The verdict is LEARNED once, REMEMBERED across launches, and kept current by a BACKGROUND probe; playback reads the current verdict and never waits for the probe.
+
+**Files:** Create `src-tauri/src/netpath.rs` (verdict + probe); modify `src-tauri/src/extractor/mod.rs` (all yt-dlp call sites), `src-tauri/src/lib.rs` (spawn the probe at setup, manage state), no DB change: the verdict is a cached MEASUREMENT, not a user preference, so it lives in `<app_data_dir>/net-state.json` (`{"ipv6_youtube":"works|broken","measured_at":"<rfc3339>"}`) — `user_preferences` is a typed-column table. Tests in `netpath.rs` and `extractor/mod.rs`.
 
 **Interfaces:**
-- Produces: `fn yt_dlp_stream_args(video_id: &str, format: Option<&str>, force_ipv4: bool) -> Vec<String>` (adds `--force-ipv4` and `--socket-timeout 15` when `force_ipv4`); `const YT_DLP_ATTEMPT_SECS: u64 = 25;`
-- Policy: `run_yt_dlp_with_ipv4_retry(args_for: impl Fn(bool) -> Vec<String>) -> Result<Output, String>` — attempt 1 without `--force-ipv4` under `tokio::time::timeout(YT_DLP_ATTEMPT_SECS)`; on timeout OR non-success, attempt 2 with it; both fail ⇒ `Err("yt-dlp could not resolve the stream (tried IPv6/IPv4): …")`. Child is killed on timeout (`kill_on_drop(true)`).
+- `pub enum Ipv6Verdict { Unknown, Works, Broken }`; `pub struct NetPath { tx: tokio::sync::watch::Sender<Ipv6Verdict> }` with `fn current(&self) -> Ipv6Verdict`, `fn subscribe(&self) -> watch::Receiver<Ipv6Verdict>`, `fn set(&self, v: Ipv6Verdict)` (also persists to `net-state.json`; write via temp file + rename; a missing or unparseable file loads as `Unknown`, never an error).
+- Startup: `NetPath::load(state_path: PathBuf)` seeds from the persisted value (absent ⇒ `Unknown`), then `tokio::spawn(probe_loop)` — non-blocking.
+- `async fn probe_ipv6(host: &str, timeout: Duration) -> Ipv6Verdict`: resolve AAAA for `www.youtube.com`, `TcpStream::connect` to the first v6 address within **3 s**; connect ⇒ `Works`, no AAAA / error / timeout ⇒ `Broken`. Runs at launch and again after any yt-dlp failure (debounced: at most once per 60 s).
+- `fn force_ipv4(v: Ipv6Verdict) -> bool` = `v == Broken`. `Unknown` uses the default path (dual-stack).
+- `fn yt_dlp_net_args(force_ipv4: bool) -> Vec<String>`: `["--socket-timeout","15"]` always, plus `"--force-ipv4"` when true. Every yt-dlp invocation (stream, search, storyboard) prepends these.
+- Policy `run_yt_dlp(netpath, args) -> Result<Output, String>`: start with `force_ipv4(current)`. If running WITHOUT `-4`, `tokio::select!` the child against `rx.changed()`: a flip to `Broken` mid-flight kills the child and restarts immediately with `-4` (no waiting out a timeout). A non-success exit without `-4` ⇒ trigger a probe and retry once with `-4`. Children `kill_on_drop(true)`; a hard ceiling of 60 s per attempt exists only so a wedged binary cannot hang forever — it is a safety net, never the path a broken network takes.
 
-- [ ] Step 1: tests `stream_args_force_ipv4_adds_flag` (flag present only when true) and `ipv4_retry_runs_second_attempt_only_after_failure` — drive the policy with a stub runner closure counting calls: success-first ⇒ 1 call; fail-first ⇒ 2 calls, 2nd args contain `--force-ipv4`; both fail ⇒ Err.
-- [ ] Step 2: run, expect FAIL. Step 3: implement; route the stream, search and storyboard yt-dlp calls through the policy. Step 4: `cargo test` green, `cargo build` zero warnings.
+- [ ] Step 1: tests — `net_args_add_force_ipv4_only_when_broken`; `persisted_broken_starts_on_ipv4` (seeded Broken ⇒ first invocation has `-4`, exactly one invocation); `unknown_then_probe_flips_broken_restarts_inflight` (stub runner that blocks; flip the watch ⇒ the blocked attempt is dropped and a `-4` attempt starts, total elapsed ≪ ceiling); `failure_without_v4_retries_once_with_v4`; `probe_unreachable_v6_is_broken` (connect to a non-routable v6 address e.g. `[100::1]:443` with a 300 ms timeout ⇒ Broken); `set_persists_and_reloads`.
+- [ ] Step 2: run, expect FAIL. Step 3: implement; route stream, search and storyboard yt-dlp calls through `run_yt_dlp`. Step 4: `cargo test` green, `cargo build` zero warnings.
 - [ ] Step 5: manual probe: `yt-dlp -4 -g <vergecast id>` resolves (already measured: 206 over v4).
 - [ ] Step 6: commit + push. Tell the owner the router note (FritzBox IPv6 to Google is black-holed; every non-Happy-Eyeballs tool on the Mac hangs the same way).
 
