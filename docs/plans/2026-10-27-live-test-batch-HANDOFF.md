@@ -101,7 +101,7 @@ final summary into §7.
 - [x] Task 1 — `03609678`
 - [x] Task 2 — `5a5be3fd`
 - [x] Task 3 — `3aa547a4`
-- [ ] Task 4 — channels subscribed-only + real unsubscribe
+- [x] Task 4 — channels subscribed-only + real unsubscribe
 - [ ] Task 5 — Smart Links titles
 - [ ] Task 6 — Tauri capabilities (owner-verify step: note it as pending for the owner)
 - [ ] Task 7 — playback speed

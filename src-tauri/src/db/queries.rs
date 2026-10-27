@@ -416,7 +416,18 @@ pub async fn list_channels(
     pool: &SqlitePool,
     params: Option<crate::commands::channels::ChannelListParams>,
 ) -> DbResult<Vec<Channel>> {
-    let channel_type = params.and_then(|p| p.channel_type);
+    let (channel_type, subscribed_only) = match params {
+        Some(p) => (p.channel_type, p.subscribed_only.unwrap_or(true)),
+        None => (None, true),
+    };
+    let channel_type_str = channel_type.as_ref().map(|ct| ct.to_string());
+    // `is_subscribed >= ?` carries the whole subscription filter: 0 matches
+    // every row, 1 only subscribed ones — so the typed/untyped and
+    // subscribed/everything combinations collapse into ONE statement the sqlx
+    // macro can still verify at compile time. Four hand-written copies would
+    // drift, and the previous two already did (the second one was missing the
+    // type filter's counterpart in every later edit).
+    let min_subscribed: i64 = if subscribed_only { 1 } else { 0 };
 
     #[derive(sqlx::FromRow)]
     struct ChannelRow {
@@ -441,40 +452,42 @@ pub async fn list_channels(
         updated_at: String,
     }
 
-    if let Some(ct) = channel_type {
-        let ct_str = ct.to_string();
-        let rows = sqlx::query_as!(
-            ChannelRow,
-            r#"SELECT
-                id,
-                user_id,
-                external_id,
-                title,
-                handle,
-                thumbnail_url,
-                description,
-                subscriber_count,
-                is_subscribed,
-                subscribed_at,
-                notifications_enabled,
-                format_preference,
-                instance_id,
-                type as "channel_type: _",
-                podcast_feed_url,
-                podcast_guid,
-                last_fetched_at,
-                created_at,
-                updated_at
-             FROM channels
-             WHERE type = ?
-             ORDER BY subscribed_at DESC"#,
-            ct_str
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query_as!(
+        ChannelRow,
+        r#"SELECT
+            id,
+            user_id,
+            external_id,
+            title,
+            handle,
+            thumbnail_url,
+            description,
+            subscriber_count,
+            is_subscribed,
+            subscribed_at,
+            notifications_enabled,
+            format_preference,
+            instance_id,
+            type as "channel_type: _",
+            podcast_feed_url,
+            podcast_guid,
+            last_fetched_at,
+            created_at,
+            updated_at
+         FROM channels
+         WHERE type = COALESCE(?, type)
+           AND is_subscribed >= ?
+         ORDER BY subscribed_at DESC"#,
+        channel_type_str,
+        min_subscribed
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-        Ok(rows.into_iter().map(|r| Channel {
+    Ok(rows
+        .into_iter()
+        .map(|r| Channel {
             id: r.id,
             user_id: r.user_id,
             external_id: r.external_id,
@@ -494,59 +507,26 @@ pub async fn list_channels(
             last_fetched_at: r.last_fetched_at,
             created_at: r.created_at,
             updated_at: r.updated_at,
-        }).collect())
-    } else {
-        let rows = sqlx::query_as!(
-            ChannelRow,
-            r#"SELECT
-                id,
-                user_id,
-                external_id,
-                title,
-                handle,
-                thumbnail_url,
-                description,
-                subscriber_count,
-                is_subscribed,
-                subscribed_at,
-                notifications_enabled,
-                format_preference,
-                instance_id,
-                type as "channel_type: _",
-                podcast_feed_url,
-                podcast_guid,
-                last_fetched_at,
-                created_at,
-                updated_at
-             FROM channels
-             ORDER BY subscribed_at DESC"#
-        )
-        .fetch_all(pool)
+        })
+        .collect())
+}
+
+/// Task 4 (live-test 2026-10-27): a REAL unsubscribe. The channel ROW SURVIVES
+/// — the owner's decision is that an unsubscribed channel is hidden, never
+/// deleted — so only `is_subscribed` clears and the subscription timestamp is
+/// reset to '' (the column is NOT NULL, and '' is this codebase's established
+/// "no subscription time" representation, see the ch-5 fixture). A later
+/// re-subscribe re-dates it. An unknown id is an Err, never a silent success.
+pub async fn unsubscribe_channel(pool: &SqlitePool, channel_id: &str) -> DbResult<()> {
+    let result = query("UPDATE channels SET is_subscribed = 0, subscribed_at = '' WHERE id = ?")
+        .bind(channel_id)
+        .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
-
-        Ok(rows.into_iter().map(|r| Channel {
-            id: r.id,
-            user_id: r.user_id,
-            external_id: r.external_id,
-            title: r.title,
-            handle: r.handle,
-            thumbnail_url: r.thumbnail_url,
-            description: r.description,
-            subscriber_count: r.subscriber_count,
-            is_subscribed: r.is_subscribed != 0,
-            subscribed_at: r.subscribed_at,
-            notifications_enabled: r.notifications_enabled != 0,
-            format_preference: r.format_preference,
-            instance_id: r.instance_id,
-            channel_type: r.channel_type,
-            podcast_feed_url: r.podcast_feed_url,
-            podcast_guid: r.podcast_guid,
-            last_fetched_at: r.last_fetched_at,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-        }).collect())
+    if result.rows_affected() == 0 {
+        return Err(format!("channel not found: {channel_id}"));
     }
+    Ok(())
 }
 
 /// Unwired until the video-channel subscribe step (see Database::insert_channel).
@@ -3099,6 +3079,154 @@ mod podcast_subscription_tests {
         assert!(
             unknown.is_empty(),
             "unknown channel_id must not leak all episodes"
+        );
+    }
+}
+
+#[cfg(test)]
+mod subscription_tests {
+    //! Task 4 (live-test 2026-10-27): the Channels screen showed 103 channels
+    //! the owner never subscribed to (search saves rows with
+    //! `is_subscribed=0`), and `unsubscribe` was a no-op stub. The list must
+    //! default to SUBSCRIPTIONS only, and unsubscribing must be real — while
+    //! the owner's "hidden, never deleted" decision keeps the row.
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn fresh_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        pool
+    }
+
+    /// `subscribed=false` mirrors a search-saved channel: the flag is off and
+    /// there is no subscription timestamp (the NOT NULL column carries '').
+    async fn seed_channel(pool: &SqlitePool, id: &str, external_id: &str, subscribed: bool) {
+        let when = if subscribed { "2026-10-01T00:00:00Z" } else { "" };
+        query(
+            "INSERT OR IGNORE INTO channels \
+             (id, user_id, external_id, title, is_subscribed, subscribed_at, \
+              notifications_enabled, type) \
+             VALUES (?, 'current-user', ?, ?, ?, ?, 0, 'video')",
+        )
+        .bind(id)
+        .bind(external_id)
+        .bind(id) // title == id keeps the assertions below readable
+        .bind(if subscribed { 1_i64 } else { 0_i64 })
+        .bind(when)
+        .execute(pool)
+        .await
+        .expect("seed channel");
+    }
+
+    fn params(
+        channel_type: Option<ChannelType>,
+        subscribed_only: Option<bool>,
+    ) -> crate::commands::channels::ChannelListParams {
+        crate::commands::channels::ChannelListParams {
+            channel_type,
+            subscribed_only,
+        }
+    }
+
+    fn ids(channels: &[Channel]) -> Vec<String> {
+        channels.iter().map(|c| c.id.clone()).collect()
+    }
+
+    #[tokio::test]
+    async fn list_channels_defaults_to_subscribed() {
+        let pool = fresh_pool().await;
+        seed_channel(&pool, "ch-sub", "UC-sub", true).await;
+        seed_channel(&pool, "ch-search-saved", "UC-search-saved", false).await;
+
+        // The Channels screen calls list() with no params at all.
+        let bare = list_channels(&pool, None).await.expect("list");
+        assert_eq!(
+            ids(&bare),
+            vec!["ch-sub"],
+            "an unsubscribed channel must not appear by default"
+        );
+
+        // Explicit true must behave exactly like absent.
+        let explicit = list_channels(&pool, Some(params(None, Some(true))))
+            .await
+            .expect("list");
+        assert_eq!(ids(&explicit), vec!["ch-sub"], "subscribed_only: true == default");
+
+        // A params object that is PRESENT but carries no subscribedOnly field
+        // (e.g. the app's `list({ type: 'video' })`) must also default to
+        // subscriptions only. This is the path a bare `unwrap_or(false)` broke
+        // while `None` params stayed correct — caught only by mutation-testing
+        // the default above.
+        let no_field = list_channels(&pool, Some(params(None, None)))
+            .await
+            .expect("list");
+        assert_eq!(
+            ids(&no_field),
+            vec!["ch-sub"],
+            "a params object without subscribedOnly still defaults to subscriptions only"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_channels_can_ask_for_everything() {
+        let pool = fresh_pool().await;
+        seed_channel(&pool, "ch-sub", "UC-sub", true).await;
+        seed_channel(&pool, "ch-hidden", "UC-hidden", false).await;
+
+        let all = list_channels(&pool, Some(params(None, Some(false))))
+            .await
+            .expect("list");
+        assert_eq!(
+            ids(&all),
+            vec!["ch-sub", "ch-hidden"],
+            "subscribed_only: false lists every channel (the rule editor needs it)"
+        );
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_keeps_the_row_and_clears_the_flag() {
+        let pool = fresh_pool().await;
+        seed_channel(&pool, "ch-sub", "UC-sub", true).await;
+
+        unsubscribe_channel(&pool, "ch-sub")
+            .await
+            .expect("unsubscribe a subscribed channel");
+
+        // The row SURVIVES (owner: hidden, never deleted) — only the flag moves.
+        let all = list_channels(&pool, Some(params(None, Some(false))))
+            .await
+            .expect("list");
+        let row = all
+            .iter()
+            .find(|c| c.id == "ch-sub")
+            .expect("the channel row survives an unsubscribe");
+        assert!(!row.is_subscribed, "the subscription flag is cleared");
+        assert_eq!(
+            row.subscribed_at, "",
+            "the stale ordering timestamp is cleared, so a re-subscribe re-dates it"
+        );
+
+        // And it is gone from the default (subscriptions-only) view.
+        let default = list_channels(&pool, None).await.expect("list");
+        assert!(default.is_empty(), "unsubscribed channels leave the default list");
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_unknown_id_is_an_error() {
+        let pool = fresh_pool().await;
+        seed_channel(&pool, "ch-sub", "UC-sub", true).await;
+
+        let err = unsubscribe_channel(&pool, "ch-does-not-exist")
+            .await
+            .expect_err("an unknown channel id must not silently succeed");
+        assert!(
+            err.contains("ch-does-not-exist"),
+            "the error names the id it could not find: {err}"
         );
     }
 }

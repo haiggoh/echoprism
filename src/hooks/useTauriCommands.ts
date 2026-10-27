@@ -28,7 +28,7 @@ export const instanceCommands = {
 
 // Channel commands (channels.rs)
 export const channelCommands = {
-  list: (params?: { type?: string; filter?: string }) => invoke<Channel[]>('list', { params }),
+  list: (params?: { type?: string; filter?: string; subscribedOnly?: boolean }) => invoke<Channel[]>('list', { params }),
   subscribe: (externalId: string, channelType: 'video' | 'podcast' | 'both', instanceId?: string) =>
     invoke<Channel>('subscribe', { externalId, channelType, instanceId }),
   unsubscribe: (channelId: string) => invoke<void>('unsubscribe', { channelId }),

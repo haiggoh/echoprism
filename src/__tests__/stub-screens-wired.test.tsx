@@ -33,11 +33,21 @@ beforeEach(() => resetMockState());
 afterEach(() => cleanup());
 
 describe('2c: previously-static screens now load real content', () => {
+  // Live-test Task 4 (2026-10-27): the Channels list is SUBSCRIPTIONS only.
+  // The fixture deliberately carries one search-saved channel (ch-5,
+  // is_subscribed: false) that must never appear, so the expected row count is
+  // derived from the fixture's subscribed rows — not the whole table, which is
+  // what these two tests asserted before the owner reported the bug.
+  const subscribedCount = mockDb.channels.filter((c) => c.is_subscribed).length;
+
   it('Channels lists the mock subscriptions and unsubscribes', async () => {
     renderScreen(<ChannelsScreen />);
     await waitFor(() => {
-      expect(screen.getAllByTestId('channel-row').length).toBe(mockDb.channels.length);
+      expect(screen.getAllByTestId('channel-row').length).toBe(subscribedCount);
     });
+    expect(mockDb.channels.length).toBeGreaterThan(subscribedCount);
+    expect(screen.queryByText('Archive Bonus Content')).toBeNull();
+
     const before = screen.getAllByTestId('channel-row').length;
     fireEvent.click(screen.getAllByRole('button', { name: /unsubscribe from/i })[0]);
     await waitFor(() => {
@@ -48,13 +58,13 @@ describe('2c: previously-static screens now load real content', () => {
   it('live-test pass: channel rows carry an avatar and a home link where one exists', async () => {
     renderScreen(<ChannelsScreen />);
     await waitFor(() => {
-      expect(screen.getAllByTestId('channel-row').length).toBe(mockDb.channels.length);
+      expect(screen.getAllByTestId('channel-row').length).toBe(subscribedCount);
     });
 
     // Every row renders the avatar surface (real image or the shared
     // Thumbnail fallback) — "profile picture matching each channel".
     expect(document.querySelectorAll('[data-testid="channel-row"] img, [data-testid="channel-row"] [data-testid="thumbnail-fallback"]').length)
-      .toBe(mockDb.channels.length);
+      .toBe(subscribedCount);
 
     // Home links derive per type (mirrors home_url_for): video channels
     // link to their YouTube id; the fixture podcast feeds carry no site

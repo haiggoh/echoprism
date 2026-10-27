@@ -231,9 +231,14 @@ const handlers: Record<string, Handler> = {
 
   // Channels / instances / smart links / history
   list: (args) => {
-    const channelType = (args?.params as { type?: string } | undefined)?.type;
+    const params = args?.params as { type?: string; subscribedOnly?: boolean } | undefined;
+    const channelType = params?.type;
+    // Mirrors ChannelListParams.subscribed_only: the Rust default is true, so
+    // an OMITTED field must behave like `true` — this is what hid the owner's
+    // 103 search-saved channels from the Channels screen.
+    const subscribedOnly = params?.subscribedOnly !== false;
     return db.channels
-      .filter((c) => !channelType || c.type === channelType)
+      .filter((c) => (!channelType || c.type === channelType) && (!subscribedOnly || c.is_subscribed))
       .map((c) => ({
         ...c,
         // Mirrors home_url_for: video channels link to their YouTube id;
@@ -303,11 +308,17 @@ const handlers: Record<string, Handler> = {
   // list/cancel/delete. Same semantics as the Rust commands.
   unsubscribe: (args): null => {
     const channelId = args?.channelId as string | undefined;
-    const before = db.channels.length;
-    db.channels = db.channels.filter((c) => c.id !== channelId);
-    if (db.channels.length === before) {
+    const channel = db.channels.find((c) => c.id === channelId);
+    // Owner decision 2026-10-27: an unsubscribed channel is HIDDEN, never
+    // DELETED — so this flips the flag and clears the subscription timestamp
+    // (mirroring queries::unsubscribe_channel) instead of filtering the row
+    // out. The Rust stub used to do nothing at all, and this mock used to
+    // delete: neither matched the decision.
+    if (!channel) {
       throw new Error(`mock: channel not found: ${channelId}`);
     }
+    channel.is_subscribed = false;
+    channel.subscribed_at = '';
     return null;
   },
   clear_history: (): null => {

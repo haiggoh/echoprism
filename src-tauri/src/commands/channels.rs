@@ -61,6 +61,11 @@ pub async fn list(db: State<'_, Database>, params: Option<ChannelListParams>) ->
 pub struct ChannelListParams {
     #[serde(rename = "type")]
     pub channel_type: Option<ChannelType>,
+    /// Subscriptions only. OMITTED means true: the Channels screen calls
+    /// `list()` bare and must not see the search-saved channels the owner
+    /// never subscribed to (103 of them on the live DB, 2026-10-27).
+    #[serde(rename = "subscribedOnly", default)]
+    pub subscribed_only: Option<bool>,
 }
 
 #[cfg(test)]
@@ -212,10 +217,14 @@ pub async fn subscribe(
     Ok(channel)
 }
 
+/// Live-test Task 4: a REAL unsubscribe. Was a no-op stub that returned Ok(())
+/// without touching the database, so the button appeared to work and did
+/// nothing. The channel ROW is kept (owner decision 2026-10-27: hidden, never
+/// deleted) — only the subscription flag clears — and an unknown id is an Err,
+/// never a silent success.
 #[command]
-pub async fn unsubscribe(_db: State<'_, Database>, _channel_id: String) -> std::result::Result<(), String> {
-    // db.delete_channel(&channel_id).await?;
-    Ok(())
+pub async fn unsubscribe(db: State<'_, Database>, channel_id: String) -> std::result::Result<(), String> {
+    db.unsubscribe_channel(&channel_id).await
 }
 
 /// Live-test feature (the 1c unwired contract): OPML import — registration
@@ -269,6 +278,9 @@ fn escape_xml(s: &str) -> String {
 pub async fn export(db: State<'_, Database>, format: String) -> std::result::Result<String, String> {
     let params = ChannelListParams {
         channel_type: Some(ChannelType::Podcast),
+        // None resolves to "subscriptions only", which is what an OPML export
+        // of MY feeds means — an unsubscribed channel is nobody's subscription.
+        subscribed_only: None,
     };
     let channels = db.list_channels(Some(params)).await?;
     let feeds: Vec<(String, String)> = channels

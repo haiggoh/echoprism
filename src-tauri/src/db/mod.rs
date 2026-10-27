@@ -101,6 +101,12 @@ impl Database {
         queries::list_channels(&self.pool, params).await
     }
 
+    /// Task 4 (live-test 2026-10-27): hide, never delete — the owner's decision
+    /// for an unsubscribed channel. The row survives; only the flag clears.
+    pub async fn unsubscribe_channel(&self, channel_id: &str) -> DbResult<()> {
+        queries::unsubscribe_channel(&self.pool, channel_id).await
+    }
+
     /// Unwired until the video-channel subscribe step (1c deferral): the
     /// subscribe/unsubscribe commands keep their calls commented at
     /// commands/channels.rs:51/58 pending channel-metadata fetching.
