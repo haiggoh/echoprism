@@ -4,7 +4,7 @@
 # re-run scripts/build-from-source.sh instead).
 #
 # Usage:
-#   ECHOPIRM_REPO=<owner/repo> scripts/check-updates.sh
+#   ECHOPRISM_REPO=<owner/repo> scripts/check-updates.sh
 #   scripts/check-updates.sh --repo <owner/repo>
 #   scripts/check-updates.sh --help
 #
@@ -26,7 +26,8 @@ Arguments:
   --help                show this message and exit
 
 Environment:
-  ECHOPIRM_REPO         the same value as --repo; --repo wins if both given
+  ECHOPRISM_REPO        the same value as --repo; --repo wins if both given
+  ECHOPIRM_REPO         deprecated misspelling of ECHOPRISM_REPO, still read (with a warning)
 EOF
 }
 
@@ -40,9 +41,15 @@ while [ $# -gt 0 ]; do
     *) echo "check-updates.sh: unknown argument '$1'" >&2; usage >&2; exit 2 ;;
   esac
 done
-# --repo wins; the documented ECHOPIRM_REPO env var is the fallback.
-repo="${repo:-${ECHOPIRM_REPO:-}}"
-[ -n "$repo" ] || { echo "check-updates.sh: no repo given (set ECHOPIRM_REPO or pass --repo)" >&2; usage >&2; exit 1; }
+# --repo wins; ECHOPRISM_REPO is the fallback. ECHOPIRM_REPO was the documented
+# (misspelled) name until 2026-10-27, so it is still read rather than silently
+# ignored — a set-but-ignored override would query nothing and look like a bug.
+if [ -z "$repo" ] && [ -z "${ECHOPRISM_REPO:-}" ] && [ -n "${ECHOPIRM_REPO:-}" ]; then
+  echo "check-updates.sh: ECHOPIRM_REPO is a deprecated misspelling — use ECHOPRISM_REPO" >&2
+  repo="$ECHOPIRM_REPO"
+fi
+repo="${repo:-${ECHOPRISM_REPO:-}}"
+[ -n "$repo" ] || { echo "check-updates.sh: no repo given (set ECHOPRISM_REPO or pass --repo)" >&2; usage >&2; exit 1; }
 
 conf_dir="$(cd "$(dirname "$0")/.." && pwd)"
 local_version=$(python3 -c "

@@ -2,7 +2,7 @@ import type { CrashRecord } from '../types';
 
 /** The repo crash issues are filed against (owner-approved remote,
  *  Phase H). One constant; the triage Action matches the `crash:` prefix. */
-export const ECHOPIRM_REPO = 'haiggoh/echoprism';
+export const ECHOPRISM_REPO = 'haiggoh/echoprism';
 
 /**
  * The prefilled GitHub issue for one crash capture (4f): the signature in
@@ -22,5 +22,5 @@ export function crashIssueUrl(record: CrashRecord): string {
     record.message,
     '```',
   ].join('\n');
-  return `https://github.com/${ECHOPIRM_REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  return `https://github.com/${ECHOPRISM_REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }

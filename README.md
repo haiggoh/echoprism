@@ -53,7 +53,7 @@ Unsigned builds cannot self-update. Compare your build against the latest
 release and rebuild when behind:
 
 ```sh
-ECHOPIRM_REPO=haiggoh/echoprism scripts/check-updates.sh
+ECHOPRISM_REPO=haiggoh/echoprism scripts/check-updates.sh
 scripts/build-from-source.sh
 ```
 
