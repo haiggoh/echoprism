@@ -193,9 +193,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           // Live-test finding: history had no writer. One row per actual
           // playback start — here, where the resolve SUCCEEDED (media that
           // fails to resolve never played, so it never enters history).
-          historyCommands.record(ep.id).catch(() => {
-            /* a history failure must never break playback */
-          });
+          // Live-test 2026-10-27: recording worked but the History screen
+          // kept its cached list (5-minute staleTime) — tell the cache.
+          // A failure is logged, never thrown: history must not break playback.
+          historyCommands
+            .record(ep.id)
+            .then(() => queryClient.invalidateQueries({ queryKey: ['history'] }))
+            .catch((err) => console.warn('history: recording a play failed', err));
         }
       })
       .catch(() => {
