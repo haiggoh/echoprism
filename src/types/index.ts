@@ -361,8 +361,7 @@ export interface PodcastSearchResult {
   genres: string[];
 }
 
-export interface SubscribedPodcast {
-  channel_id: string;
+export interface SubscribedPodcast {  channel_id: string;
   title: string;
   new_episodes: number;
 }
@@ -435,3 +434,11 @@ export interface UIState {
 }
 
 export type ViewMode = 'feed' | 'queue' | 'player' | 'search' | 'settings' | 'history' | 'downloads' | 'channels' | 'smart-links';
+
+/** Shared import contract (Rust `podcast::ImportResult`): what OPML import and
+ *  the YouTube-subscription import both return. `imported` counts rows ACTUALLY
+ *  written — duplicates are skipped, not counted — so a re-run reports 0. */
+export interface ImportResult {
+  imported: number;
+  errors: string[];
+}

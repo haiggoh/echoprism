@@ -64,3 +64,22 @@ pub async fn refresh_podcasts(
 ) -> std::result::Result<usize, String> {
     podcast.refresh_due_feeds().await
 }
+
+/// Import YouTube-channel subscriptions from an Invidious instance
+/// (`/api/v1/subscriptions`).
+///
+/// Phase 3: the manager method existed but was unwired AND incomplete — its
+/// insert was commented out, so it reported an imported count for work it never
+/// did. It is now registered, persists, and dedupes on the channel's
+/// `external_id` (Invidious' `authorId`), so a re-run imports nothing and
+/// reports 0 rather than a rising number.
+///
+/// Returns the same ImportResult shape the OPML import returns, so the two
+/// frontends share one contract.
+#[command]
+pub async fn import_youtube_subscriptions(
+    podcast: State<'_, Arc<crate::podcast::PodcastManager>>,
+    instanceUrl: String,
+) -> std::result::Result<crate::podcast::ImportResult, String> {
+    podcast.import_from_youtube(&instanceUrl).await
+}

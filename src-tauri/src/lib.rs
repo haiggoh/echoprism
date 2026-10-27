@@ -151,6 +151,7 @@ pub fn run() {
             commands::podcasts::search_podcasts,
             commands::podcasts::subscribe_podcast,
             commands::podcasts::refresh_podcasts,
+            commands::podcasts::import_youtube_subscriptions,
             commands::channels::unsubscribe,
             commands::channels::import,
             commands::channels::export,

@@ -3,7 +3,8 @@ import {
   Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
-  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, NotificationSummary, StoryboardSpec
+  KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, NotificationSummary, StoryboardSpec,
+  ImportResult,
 } from '../types';
 
 // Command names and payloads are derived from the Rust commands registered in
@@ -51,6 +52,10 @@ export const episodeCommands = {
 // prefers the feed's own title; omit it and the feed decides).
 export const podcastCommands = {
   search: (term: string) => invoke<PodcastSearchResult[]>('search_podcasts', { term }),
+  /** Import YouTube-channel subscriptions from an Invidious instance.
+   *  Dedupes on the channel's external_id, so a re-run reports 0. */
+  importFromYoutube: (instanceUrl: string) =>
+    invoke<ImportResult>('import_youtube_subscriptions', { instanceUrl }),
   subscribe: (feedUrl: string, title?: string) =>
     invoke<SubscribedPodcast>('subscribe_podcast', { feedUrl, title }),
   // Live-test feature: the manual trigger for the background refresh's

@@ -121,6 +121,47 @@ const handlers: Record<string, Handler> = {
     return { url: `/mock-media/${ep.id}.webm`, format: 'video' };
   },
 
+  // Phase 3: import_youtube_subscriptions mirrors the Rust command (and its
+  // ImportResult contract). The mock has no Invidious to call, so it registers
+  // the fixture YouTube channels ONCE and reports 0 on any later run — the
+  // dedupe the real command performs on external_id. A rising count here would
+  // hide exactly the stub defect Phase 3 fixed.
+  import_youtube_subscriptions: (args): { imported: number; errors: string[] } => {
+    // The real command builds `{instance}/api/v1/subscriptions` and fails the
+    // request when the host is unreachable; an empty URL is that failure in its
+    // cheapest form. Rejecting keeps a hand-typed empty value from reading as
+    // "imported 0 channels" — a silent no-op.
+    const instanceUrl = String(args?.instanceUrl ?? '').trim();
+    if (!instanceUrl) {
+      throw new Error('import_youtube_subscriptions: instanceUrl is required');
+    }
+    const existing = new Set(db.channels.map((c) => c.external_id));
+    let imported = 0;
+    for (const ch of mockDb.channels) {
+      if (ch.type !== 'video' || existing.has(ch.external_id)) continue;
+      const nowIso = new Date().toISOString();
+      db.channels = [
+        ...db.channels,
+        {
+          id: `ch-import-${ch.external_id}`,
+          user_id: 'current-user',
+          external_id: ch.external_id,
+          title: ch.title,
+          is_subscribed: true,
+          subscribed_at: nowIso,
+          notifications_enabled: false,
+          format_preference: 'both',
+          type: 'video' as const,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      ];
+      existing.add(ch.external_id);
+      imported += 1;
+    }
+    return { imported, errors: [] };
+  },
+
   // Podcasts (2e — mirrors commands/podcasts.rs). search_podcasts filters
   // the fixture directory across title/author/genres (the Rust command hits
   // iTunes live). subscribe_podcast persists channel + episodes like the

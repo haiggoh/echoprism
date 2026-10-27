@@ -303,59 +303,132 @@ impl PodcastManager {
         Ok(refreshed)
     }
 
-    /// Import subscriptions from YouTube (via Invidious instance)
-    /// Unwired future feature: import YouTube-channel subscriptions via an
-    /// Invidious-compatible subscriptions endpoint, kept for the
-    /// video-channel subscribe step (see Database::insert_channel).
-    #[allow(dead_code)]
+    /// Import subscriptions from YouTube (via an Invidious instance).
+    ///
+    /// Phase 3: this was an unwired stub that built a `Channel` per subscription
+    /// and then DISCARDED it — its `insert_channel` call was commented out — so
+    /// it returned `imported: N` for work it never performed, which is worse
+    /// than an unreachable button: a confident count for nothing. It now
+    /// persists, and it dedupes on `external_id` (the Invidious `authorId`)
+    /// because `insert_channel` has no existence check of its own — the same
+    /// guard `register_podcast_feed` uses for OPML.
+    ///
+    /// Fetch and persist are split so the persistence half is testable offline:
+    /// `import_from_youtube_with` takes the client, and
+    /// [`import_subscriptions`] takes already-parsed subscriptions.
     pub async fn import_from_youtube(&self, instance_url: &str) -> Result<ImportResult, String> {
-        // Fetch subscriptions from Invidious instance
+        Self::import_from_youtube_with(&self.client, &self.db, instance_url).await
+    }
+
+    /// Client/DB-taking core of [`Self::import_from_youtube`], mirroring the
+    /// `fetch_feed_with` / `search_itunes_with` seam so the decision logic has
+    /// no app-state dependency.
+    pub(crate) async fn import_from_youtube_with(
+        client: &Client,
+        db: &Arc<Database>,
+        instance_url: &str,
+    ) -> Result<ImportResult, String> {
         let url = format!("{}/api/v1/subscriptions", instance_url.trim_end_matches('/'));
-        
-        let response = reqwest::get(&url).await
+
+        let response = client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        
+
         if !response.status().is_success() {
-            return Err("Failed to fetch subscriptions".to_string());
+            return Err(format!(
+                "Failed to fetch subscriptions: {} from {}",
+                response.status(),
+                url
+            ));
         }
-        
-        let subscriptions: Vec<YoutubeSubscription> = response.json().await
+
+        let subscriptions: Vec<YoutubeSubscription> = response
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse subscriptions: {}", e))?;
-        
-        let mut imported = 0;
-        let errors = Vec::new();
-        
-        for sub in subscriptions {
-            // Add as channel
-            let now = chrono::Utc::now().to_rfc3339();
-            let _channel = crate::types::Channel {
-                id: uuid::Uuid::new_v4().to_string(),
-                user_id: "current-user".to_string(),
-                external_id: sub.author_id.clone(),
-                title: sub.author.clone(),
-                handle: Some(sub.author_url.clone()),
-                thumbnail_url: sub.author_thumbnails.first().map(|t| t.url.clone()),
-                description: None,
-                subscriber_count: Some(sub.subscriber_count as i64),
-                is_subscribed: true,
-                subscribed_at: now.clone(),
-                notifications_enabled: true,
-                format_preference: crate::types::Format::Both,
-                instance_id: None,
-                channel_type: crate::types::ChannelType::Video,
-                podcast_feed_url: None,
-                podcast_guid: None,
-                last_fetched_at: None,
-                created_at: now.clone(),
-                updated_at: now,
-            };
-            
-            // Insert into database
-            // self.db.insert_channel(&channel).await?;
-            imported += 1;
+
+        import_subscriptions_db(db, &subscriptions).await
+    }
+}
+
+/// The persistence half of the YouTube import: map each subscription to a
+/// channel, skip the ones already present under the same `external_id`, insert
+/// the rest, and report a count that reflects reality.
+///
+/// Free-standing (not a method) so tests can drive it with a temp-DB pool and
+/// no app handle, exactly like the OPML path's use of `register_podcast_feed`.
+pub(crate) async fn import_subscriptions(
+    manager: &PodcastManager,
+    subscriptions: &[YoutubeSubscription],
+) -> Result<ImportResult, String> {
+    import_subscriptions_db(&manager.db, subscriptions).await
+}
+
+async fn import_subscriptions_db(
+    db: &Arc<Database>,
+    subscriptions: &[YoutubeSubscription],
+) -> Result<ImportResult, String> {
+    let mut imported: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // One existence query up front rather than one per row: the count is small
+    // (a user's subscriptions) and this keeps the loop free of per-row SELECTs.
+    let existing_ids: std::collections::HashSet<String> =
+        match db.list_channels(None).await {
+            Ok(channels) => channels
+                .into_iter()
+                .map(|c| c.external_id)
+                .collect(),
+            Err(e) => return Err(format!("Failed to read existing channels: {}", e)),
+        };
+
+    for sub in subscriptions {
+        // `external_id` is the dedupe key: Invidious reports the same channel
+        // on every sync, and without this the same import run twice would grow
+        // the list (and keep reporting a rising count).
+        if existing_ids.contains(&sub.author_id) {
+            continue;
         }
-        
-        Ok(ImportResult { imported, errors })
+        let channel = channel_from_subscription(sub);
+        match db.insert_channel(&channel).await {
+            Ok(()) => imported += 1,
+            Err(e) => errors.push(format!("Failed to import {}: {}", sub.author, e)),
+        }
+    }
+
+    Ok(ImportResult { imported, errors })
+}
+
+/// Map one Invidious subscription to the app's Channel shape. Pure — no DB, no
+/// network — so the mapping is pinned by a unit test (`youtube_import_tests`).
+fn channel_from_subscription(sub: &YoutubeSubscription) -> Channel {
+    let now = chrono::Utc::now().to_rfc3339();
+    Channel {
+        id: uuid::Uuid::new_v4().to_string(),
+        user_id: "current-user".to_string(),
+        external_id: sub.author_id.clone(),
+        title: sub.author.clone(),
+        handle: Some(sub.author_url.clone()),
+        // The first tier only; an empty thumbnail list is a real Invidious
+        // shape for some channels and must not panic.
+        thumbnail_url: sub.author_thumbnails.first().map(|t| t.url.clone()),
+        description: None,
+        subscriber_count: Some(sub.subscriber_count as i64),
+        is_subscribed: true,
+        subscribed_at: now.clone(),
+        // Off by default, matching the OPML path (register_podcast_feed): an
+        // import must not start notifying about dozens of channels at once.
+        notifications_enabled: false,
+        format_preference: crate::types::Format::Both,
+        instance_id: None,
+        channel_type: crate::types::ChannelType::Video,
+        podcast_feed_url: None,
+        podcast_guid: None,
+        last_fetched_at: None,
+        created_at: now.clone(),
+        updated_at: now,
     }
 }
 
@@ -704,5 +777,96 @@ mod tests {
         assert!(broken_touched.is_none(), "failed feed must stay due");
         pool.close().await;
     }
-}
 
+    // --- Phase 3: YouTube subscription import ---
+
+    /// The Invidious /api/v1/subscriptions shape: authorId is the channel's
+    /// external id and the natural dedupe key.
+    fn subs_fixture() -> Vec<YoutubeSubscription> {
+        vec![
+            YoutubeSubscription {
+                author: "Some More News".into(),
+                author_id: "UC-mock-smn".into(),
+                author_url: "https://youtube.com/channel/UC-mock-smn".into(),
+                author_thumbnails: vec![Thumbnail {
+                    url: "https://example/smn.jpg".into(),
+                    width: 100,
+                    height: 100,
+                }],
+                subscriber_count: 42,
+            },
+            YoutubeSubscription {
+                author: "Even More News".into(),
+                author_id: "UC-mock-emn".into(),
+                author_url: "https://youtube.com/channel/UC-mock-emn".into(),
+                author_thumbnails: vec![],
+                subscriber_count: 7,
+            },
+        ]
+    }
+
+    /// The pure seam: a Channel built from a subscription, WITHOUT touching the
+    /// DB. Tested directly so the mapping is pinned offline, the way
+    /// search_itunes_with factors the iTunes path.
+    #[test]
+    fn channel_from_subscription_maps_the_external_id_and_marks_it_subscribed() {
+        let ch = channel_from_subscription(&subs_fixture()[0]);
+        assert_eq!(ch.external_id, "UC-mock-smn", "author_id is the dedupe key");
+        assert_eq!(ch.title, "Some More News");
+        assert!(ch.is_subscribed, "an imported subscription IS a subscription");
+        assert_eq!(ch.channel_type, crate::types::ChannelType::Video);
+        assert_eq!(ch.handle.as_deref(), Some("https://youtube.com/channel/UC-mock-smn"));
+        assert!(ch.thumbnail_url.is_some(), "the first thumbnail tier is used");
+    }
+
+    /// Discriminant for the stub: a subscription with no thumbnails must not
+    /// panic or produce a broken row — `first()` on an empty vec is None.
+    #[test]
+    fn channel_from_subscription_tolerates_no_thumbnails() {
+        let ch = channel_from_subscription(&subs_fixture()[1]);
+        assert!(ch.thumbnail_url.is_none());
+        assert_eq!(ch.subscriber_count, Some(7));
+    }
+
+    /// THE property the stub violated: a channel already present under the same
+    /// external_id must NOT be inserted again, and the reported count must
+    /// reflect reality rather than the loop.
+    #[tokio::test]
+    async fn import_skips_channels_already_subscribed() {
+        let (pool, manager) = refresh_test_pool().await;
+        // Seed one of the two subscriptions as an existing channel.
+        let existing = channel_from_subscription(&subs_fixture()[0]);
+        crate::db::queries::insert_channel(&pool, &existing)
+            .await
+            .expect("seed existing channel");
+
+        let result = import_subscriptions(&manager, &subs_fixture())
+            .await
+            .expect("import");
+
+        assert_eq!(
+            result.imported, 1,
+            "the duplicate is NOT counted — the stub reported 2 here"
+        );
+        assert_eq!(result.errors.len(), 0, "a skip is not an error");
+        // And the survivor is really in the DB.
+        let channels = crate::db::queries::list_channels(&pool, None)
+            .await
+            .expect("list");
+        assert_eq!(channels.len(), 2, "one seeded + one newly imported");
+    }
+
+    /// The honest-count property end to end: the same import run twice imports
+    /// nothing the second time.
+    #[tokio::test]
+    async fn importing_the_same_list_twice_imports_nothing_the_second_time() {
+        let (_pool, manager) = refresh_test_pool().await;
+
+        let first = import_subscriptions(&manager, &subs_fixture()).await.expect("first");
+        assert_eq!(first.imported, 2);
+
+        let second = import_subscriptions(&manager, &subs_fixture()).await.expect("second");
+        assert_eq!(second.imported, 0, "idempotent on the external_id key");
+        assert_eq!(second.errors.len(), 0);
+    }
+}

@@ -147,4 +147,35 @@ describe('Phase 2: onboarding imports OPML through the real command', () => {
     // "reports success for work it never did" defect pass here.
     expect(screen.queryByText(/imported \d+ feeds?/i)).toBeNull();
   });
+
+  it('Import from YouTube calls the real command with the step-2 instance URL', async () => {
+    renderOnboarding();
+    await gotoImportStep();
+
+    // The instance URL typed at step 2 is what the import runs against.
+    fireEvent.click(screen.getByRole('button', { name: /import from youtube/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/imported \d+ subscription/i)).toBeTruthy();
+    });
+  });
+
+  it('DISCRIMINANT: the wizard cannot reach the YouTube import without a step-2 instance', async () => {
+    // The import has no host without an instance, and a button that fired
+    // anyway would report "imported 0" — a silent no-op. Step 3 is unreachable
+    // with an empty URL (both step-2 advance controls are disabled), so THAT is
+    // the guard to pin: re-enabling either one is what would expose the no-op.
+    renderOnboarding();
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }));
+
+    const advance = [
+      screen.getByRole('button', { name: /add instance/i }),
+      screen.getByRole('button', { name: /^next$/i }),
+    ] as HTMLButtonElement[];
+    for (const b of advance) expect(b.disabled).toBe(true);
+
+    for (const b of advance) fireEvent.click(b);
+    expect(screen.queryByRole('heading', { name: /import subscriptions/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /import from youtube/i })).toBeNull();
+  });
 });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { useToasts } from '../ui/Toaster';
-import { channelCommands, instanceCommands } from '../../hooks/useTauriCommands';
+import { channelCommands, instanceCommands, podcastCommands } from '../../hooks/useTauriCommands';
 
 export function OnboardingScreen() {
   const [step, setStep] = useState(1);
@@ -11,6 +11,7 @@ export function OnboardingScreen() {
   const [instanceType, setInstanceType] = useState<'invidious' | 'piped'>('invidious');
   const [opml, setOpml] = useState('');
   const [importing, setImporting] = useState(false);
+  const [importingYoutube, setImportingYoutube] = useState(false);
   const { addToast } = useToasts();
 
   const handleNext = async () => {
@@ -26,6 +27,44 @@ export function OnboardingScreen() {
     } else {
       // Complete onboarding
       navigate('/feed');
+    }
+  };
+
+  /**
+   * Phase 3: "Import from YouTube" was `onClick={() => {}}` — one of five dead
+   * controls no plan had inventoried. The backend behind it existed but was
+   * unwired AND incomplete (its insert was commented out, so it reported an
+   * imported count for work it never did); it now persists and dedupes on the
+   * channel's external_id, so a re-run reports 0 rather than a rising number.
+   *
+   * It imports from the instance the user added at step 2 — the only instance
+   * the onboarding flow has actually vouched for. The same success/warning
+   * split as the OPML path, because both return the same ImportResult shape.
+   */
+  const handleYoutubeImport = async () => {
+    const url = instanceUrl.trim();
+    if (!url || importingYoutube) return;
+    setImportingYoutube(true);
+    try {
+      const result = await podcastCommands.importFromYoutube(url);
+      addToast({
+        title: `Imported ${result.imported} subscription${result.imported === 1 ? '' : 's'}`,
+        description:
+          result.errors.length > 0
+            ? `${result.errors.length} could not be imported`
+            : result.imported === 0
+              ? 'Everything from that instance is already subscribed.'
+              : 'Episodes arrive when the background refresh runs.',
+        variant: result.errors.length > 0 ? 'warning' : result.imported === 0 ? 'default' : 'success',
+      });
+    } catch (error) {
+      addToast({
+        title: 'Import failed',
+        description: String(error),
+        variant: 'danger',
+      });
+    } finally {
+      setImportingYoutube(false);
     }
   };
 
@@ -192,9 +231,18 @@ export function OnboardingScreen() {
         Import your YouTube subscriptions to instantly build your EchoPrism feed.
       </p>
       <div className="max-w-md mx-auto space-y-4">
-        <Button variant="unified" className="w-full" onClick={() => {}}>
-          Import from YouTube
+        <Button
+          variant="unified"
+          className="w-full"
+          onClick={handleYoutubeImport}
+          disabled={importingYoutube || !instanceUrl.trim()}
+        >
+          {importingYoutube ? 'Importing…' : 'Import from YouTube'}
         </Button>
+        <p className="text-xs text-text-muted">
+          Reads your subscriptions from the instance added on the previous step
+          {instanceUrl.trim() ? ` (${instanceUrl.trim()})` : ' — add one first'}.
+        </p>
         <div>
           <label htmlFor="onboarding-opml" className="block text-sm font-medium text-text mb-1">
             Import from OPML
