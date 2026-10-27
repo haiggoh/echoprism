@@ -79,7 +79,7 @@ pub async fn refresh_podcasts(
 #[command]
 pub async fn import_youtube_subscriptions(
     podcast: State<'_, Arc<crate::podcast::PodcastManager>>,
-    instanceUrl: String,
+    instance_url: String,
 ) -> std::result::Result<crate::podcast::ImportResult, String> {
-    podcast.import_from_youtube(&instanceUrl).await
+    podcast.import_from_youtube(&instance_url).await
 }

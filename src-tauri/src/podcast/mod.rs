@@ -359,6 +359,9 @@ impl PodcastManager {
 ///
 /// Free-standing (not a method) so tests can drive it with a temp-DB pool and
 /// no app handle, exactly like the OPML path's use of `register_podcast_feed`.
+/// Test-only: production reaches `import_subscriptions_db` through
+/// `import_from_youtube_with`.
+#[cfg(test)]
 pub(crate) async fn import_subscriptions(
     manager: &PodcastManager,
     subscriptions: &[YoutubeSubscription],
