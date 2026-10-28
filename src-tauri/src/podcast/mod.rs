@@ -100,6 +100,11 @@ impl PodcastManager {
             .itunes_ext()
             .and_then(|ext| ext.image())
             .map(|s| s.to_string())
+            // An empty href is not art. Filtered on BOTH sources (found by the
+            // branch review: this path had no filter while the RSS <image> one
+            // did), because a stored '' defeats the `IS NULL` backfill guard and
+            // renders an empty <img src> in the list.
+            .filter(|u| !u.trim().is_empty())
             .or_else(|| channel.image().and_then(|img| Some(img.url.clone())).filter(|u| !u.trim().is_empty()));
 
         let mut episodes = Vec::new();
@@ -121,6 +126,9 @@ impl PodcastManager {
                 .itunes_ext()
                 .and_then(|ext| ext.image())
                 .map(|s| s.to_string())
+                // Same emptiness filter as the channel art above: an empty href
+                // is not art, and inheriting one would put '' on the row.
+                .filter(|u| !u.trim().is_empty())
                 .or_else(|| channel_thumbnail.clone());
 
             episodes.push(PodcastEpisode {
@@ -774,6 +782,37 @@ mod tests {
         assert!(
             data.episodes.iter().all(|e| e.thumbnail_url.is_some()),
             "every episode of an art-publishing feed must carry art"
+        );
+    }
+
+    #[test]
+    fn an_empty_itunes_image_href_is_not_art() {
+        // Found by the branch review: the itunes path had no emptiness filter
+        // while the RSS <image> path did, so a feed publishing
+        // <itunes:image href=""/> stored '' as the channel's art. An empty
+        // string then defeats the `IS NULL` backfill guard and renders an empty
+        // <img src> in the Channels list.
+        const EMPTY: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Empty Art</title>
+    <link>https://example.org/</link>
+    <description>publishes an empty image href and no RSS image</description>
+    <itunes:image href=""/>
+    <item>
+      <title>An episode</title>
+      <guid>empty-art-ep</guid>
+    </item>
+  </channel>
+</rss>"#;
+        let data = PodcastManager::parse_rss(EMPTY).expect("parse empty-art feed");
+        assert_eq!(
+            data.thumbnail_url, None,
+            "an empty href is not art — it must not become a stored '' that defeats the backfill"
+        );
+        assert!(
+            data.episodes.iter().all(|e| e.thumbnail_url.is_none()),
+            "and no episode may inherit the empty href either"
         );
     }
 
