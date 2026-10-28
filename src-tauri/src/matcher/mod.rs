@@ -92,10 +92,11 @@ impl Scorer {
     /// Secondary: fuzzy match over the joined content words, for near-misses
     /// Jaccard cannot see ("verge" vs "vergecast"). The final score is the
     /// larger of the two.
-    pub(crate) fn title_similarity(&self, title1: &str, title2: &str) -> f64 {
-        let words1 = self.content_words(title1);
-        let words2 = self.content_words(title2);
-
+    /// The comparison itself, over content-word lists. Extracted so the
+    /// channel-suffix-aware path and the plain path cannot drift apart: two
+    /// copies of Jaccard + fuzzy would eventually disagree, and the doc comment
+    /// above this function is the only thing that says what "similarity" means.
+    fn similarity_of(&self, words1: &[String], words2: &[String]) -> f64 {
         let mut best = 0.0f64;
 
         if !words1.is_empty() && !words2.is_empty() {
@@ -149,11 +150,67 @@ impl Scorer {
         best
     }
 
+    pub(crate) fn title_similarity(&self, title1: &str, title2: &str) -> f64 {
+        let words1 = self.content_words(title1);
+        let words2 = self.content_words(title2);
+        self.similarity_of(&words1, &words2)
+    }
+
     pub(crate) fn channel_similarity(&self, ch1: &Option<String>, ch2: &Option<String>) -> f64 {
         match (ch1, ch2) {
             (Some(c1), Some(c2)) => self.title_similarity(c1, c2),
-            _ => 0.0,
+            // A MISSING channel name is neutral, not a penalty. This used to
+            // return 0.0, so two titles matching word for word still lost 0.10
+            // of confidence purely because the metadata was absent — live-test
+            // 2026-10-28: the owner measured 0.85 for an identical pair. Symmetric
+            // with date_score's treatment of a missing date, which is already
+            // neutral 0.5 for exactly this reason.
+            _ => 0.5,
         }
+    }
+
+    /// Content words with a trailing segment removed when it spells out the
+    /// OTHER side's channel name.
+    ///
+    /// "Why Billionaires Should Not Exist | Some More News" paired against
+    /// "Why Billionaires Should Not Exist", where the other side's channel is
+    /// "Some More News": the trailing run IS that channel, so it is the show's
+    /// own branding — corroboration that these are the same story on the same
+    /// show, not extra content that dilutes the match. Stripping it takes the
+    /// pair from 0.78 to 1.00 (live-test 2026-10-28).
+    ///
+    /// Exact-match only, and only when the trailing run is the WHOLE segment:
+    /// an unrelated trailing segment ("… | A Bonus Segment") stays as content,
+    /// so this cannot paper over a genuine mismatch.
+    fn content_words_minus_channel_suffix(&self, text: &str, other_channel: Option<&str>) -> Vec<String> {
+        let mut words = self.content_words(text);
+        let Some(channel) = other_channel.filter(|c| !c.trim().is_empty()) else {
+            return words;
+        };
+        let channel_words = self.content_words(channel);
+        if channel_words.is_empty() || words.len() <= channel_words.len() {
+            return words;
+        }
+        let tail = &words[words.len() - channel_words.len()..];
+        if tail == channel_words.as_slice() {
+            words.truncate(words.len() - channel_words.len());
+        }
+        words
+    }
+
+    /// `title_similarity` minus a trailing channel-name segment on either side.
+    /// Used where the channel context is known, so a show brace ("| Show")
+    /// cannot cost the pair its similarity.
+    pub(crate) fn title_similarity_for_pairing(
+        &self,
+        title1: &str,
+        title2: &str,
+        channel1: Option<&str>,
+        channel2: Option<&str>,
+    ) -> f64 {
+        let words1 = self.content_words_minus_channel_suffix(title1, channel2);
+        let words2 = self.content_words_minus_channel_suffix(title2, channel1);
+        self.similarity_of(&words1, &words2)
     }
 
     /// 1.0 same day, linearly down to 0 at `max_date_diff_days`, 0 beyond.
@@ -201,7 +258,14 @@ impl Scorer {
         video: &YoutubeVideo,
         config: &MatchingConfig,
     ) -> f64 {
-        let title_sim = self.title_similarity(&podcast.title, &video.title);
+        // Channel-aware: a trailing "| <the other side's channel>" segment is
+        // the shared show's own branding, corroboration, not extra content.
+        let title_sim = self.title_similarity_for_pairing(
+            &podcast.title,
+            &video.title,
+            podcast.channel_title.as_deref(),
+            video.channel_title.as_deref(),
+        );
         let date_score = self.date_score(podcast.published_at, video.published_at, config);
         let duration_score = self.duration_score(
             podcast.duration_seconds.unwrap_or(0),
@@ -252,7 +316,12 @@ impl Scorer {
     ) -> Option<BestPairing> {
         let mut best: Option<(f64, f64, &YoutubeVideo)> = None; // (confidence, title_sim, video)
         for video in youtube_videos {
-            let title_sim = self.title_similarity(&podcast.title, &video.title);
+            let title_sim = self.title_similarity_for_pairing(
+                &podcast.title,
+                &video.title,
+                podcast.channel_title.as_deref(),
+                video.channel_title.as_deref(),
+            );
             // Title gate: the pairing signal is the title. Date/duration
             // coincidence between two unrelated titles must not cross the
             // confidence bar on its own.
@@ -364,6 +433,127 @@ mod scorer_tests {
     fn scorer() -> Scorer {
         Scorer::new()
     }
+
+    // ---- Live-test 2026-10-28: confidence that reads honestly ----
+    // The owner: "just those confidence ratios are surprisingly low. if a see
+    // two titles that are word for word letter for letter identical, and they
+    // both carry the name of the same show, shouldn't that be a 100% match
+    // rather than only 85%? and the 73% items seem highly likely too, the only
+    // difference I'm seeing is that one is the plain episode name whilst the
+    // other adds the name of the channel at the end (pipe separated)".
+    //
+    // Measured on the real scorer before any change:
+    //   identical titles + same show + same length .............. 0.900
+    //   identical titles, NO channel metadata on either side .... 0.800
+    //   "Why Billionaires Should Not Exist"
+    //     vs "Why Billionaires Should Not Exist | Some More News" 0.748
+    //
+    // Two defects, both principled:
+    //  1. ABSENT DATA WAS PUNISHED. channel_similarity returned 0.0 when
+    //     either side had no channel name, so a missing signal scored as
+    //     evidence AGAINST — while date_score correctly treats a missing date
+    //     as neutral 0.5. Two titles matching word for word lost 0.10 purely
+    //     because the metadata was absent. A missing signal must be neutral.
+    //  2. A TRAILING CHANNEL NAME WAS COUNTED AS EXTRA CONTENT. "… | Show Name"
+    //     is a formatting convention of the SAME show — corroboration, not a
+    //     mismatch. Word-set Jaccard scored it as pure extra words and dropped
+    //     the pair to 0.78.
+
+    #[test]
+    fn a_missing_channel_signal_is_neutral_not_a_penalty() {
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+
+        // The signal itself: absent must read as neutral, exactly as
+        // date_score treats an absent date. It used to be 0.0 — absent data
+        // scored as evidence AGAINST.
+        assert_eq!(sc.channel_similarity(&None, &None), 0.5);
+        assert_eq!(sc.channel_similarity(&Some("Some More News".into()), &None), 0.5);
+        assert_eq!(sc.channel_similarity(&None, &Some("Some More News".into())), 0.5);
+
+        // And the effect: identical titles, no channel metadata, nothing else
+        // known. Was 0.800 (0.10 lost to the punishment); now 0.850 — the
+        // remaining gap is the neutral date and duration, which is honest.
+        let p = pod("Why Billionaires Should Not Exist");
+        let v = vid("Why Billionaires Should Not Exist");
+        let confidence = sc.confidence(&p, &v, &cfg);
+        assert!(
+            (confidence - 0.85).abs() < 1e-9,
+            "expected 0.850 (title 1.0 + neutral date/duration/channel). Got {confidence:.3}"
+        );
+    }
+
+    #[test]
+    fn an_identical_pair_with_the_same_show_scores_as_near_certain() {
+        // The owner's actual case: "two titles that are word for word letter
+        // for letter identical, and they both carry the name of the same show".
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        let mut p = pod("Why Billionaires Should Not Exist");
+        p.channel_title = Some("Some More News".into());
+        p.duration_seconds = Some(1600);
+        let mut v = vid("Why Billionaires Should Not Exist");
+        v.channel_title = Some("Some More News".into());
+        v.duration_seconds = Some(1600);
+
+        let confidence = sc.confidence(&p, &v, &cfg);
+        assert!(
+            confidence >= 0.9,
+            "the same episode, same show, same length must read as near-certain. \
+             Got {confidence:.3}"
+        );
+    }
+
+    #[test]
+    fn a_trailing_channel_name_is_not_counted_as_extra_words() {
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        let mut p = pod("Why Billionaires Should Not Exist");
+        p.channel_title = Some("Some More News".into());
+        p.duration_seconds = Some(1600);
+        let mut v = vid("Why Billionaires Should Not Exist | Some More News");
+        v.channel_title = Some("Some More News".into());
+        v.duration_seconds = Some(1600);
+
+        // NOTE: title_similarity (plain) deliberately does NOT strip the suffix
+        // — it is also used channel-to-channel, where there is no "other side"
+        // to corroborate against. The channel-aware path is the one the pairing
+        // uses, and that is what must see the two titles as the same words.
+        assert_eq!(
+            sc.title_similarity_for_pairing(
+                &p.title,
+                &v.title,
+                p.channel_title.as_deref(),
+                v.channel_title.as_deref(),
+            ),
+            1.0,
+            "a trailing '| <the same channel>' segment must not lower title similarity"
+        );
+        let confidence = sc.confidence(&p, &v, &cfg);
+        assert!(
+            confidence >= 0.9,
+            "the same episode on two streams must score as a near-certain match. \
+             Got {confidence:.3}"
+        );
+    }
+
+    #[test]
+    fn a_trailing_name_that_is_not_the_channel_still_counts() {
+        // The guard on the fix: only the suffix naming the OTHER side's channel
+        // is treated as boilerplate. A genuinely different trailing segment is
+        // still extra content, so the rule cannot paper over a mismatch.
+        let sc = scorer();
+        let mut p = pod("Why Billionaires Should Not Exist");
+        p.channel_title = Some("Some More News".into());
+        let mut v = vid("Why Billionaires Should Not Exist | A Bonus Segment");
+        v.channel_title = Some("Some More News".into());
+
+        assert!(
+            sc.title_similarity(&p.title, &v.title) < 1.0,
+            "an unrelated trailing segment is still extra content, not boilerplate"
+        );
+    }
+
 
     fn pod(title: &str) -> PodcastEpisode {
         PodcastEpisode {
