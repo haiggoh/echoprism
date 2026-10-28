@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { usePlayer } from './PlayerProvider';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
+import { ShuffleButton } from './ui/ShuffleButton';
 import { SpeedControl } from './player/SpeedControl';
 import { useConvergence } from '../hooks/useConvergence';
 import { Thumbnail } from './ui/Thumbnail';
@@ -118,24 +119,14 @@ export function MiniPlayer() {
 
         {/* The ONE set of transport controls */}
         <div className="flex items-center gap-4">
-          {/* Live-test batch 2 Task 1b: shuffle IS wired — it just had no
-              pressed state, so toggling it looked inert. */}
-          <button
-            className={`p-2 rounded-lg transition-colors ${
-              shuffle ? 'text-accent' : 'text-text-muted hover:text-text hover:bg-surface-hover'
-            }`}
-            aria-label="Shuffle"
-            aria-pressed={shuffle}
-            title={shuffle ? 'Shuffle is on' : 'Shuffle is off'}
-            onClick={() => setShuffle(!shuffle)}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="16 3 22 3 22 9"></polyline>
-              <polyline points="8 21 2 21 2 15"></polyline>
-              <line x1="15" y1="12" x2="9" y2="6"></line>
-              <line x1="21" y1="21" x2="9" y2="9"></line>
-            </svg>
-          </button>
+          {/* Live-test batch 2 Task 1b/1c: shuffle IS wired — it just had no
+              pressed state and an unreadable glyph. Shared ShuffleButton. */}
+          <ShuffleButton
+            active={shuffle}
+            onToggle={() => setShuffle(!shuffle)}
+            size={18}
+            showLabel={false}
+          />
 
           <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

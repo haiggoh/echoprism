@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
+import { ShuffleButton } from '../ui/ShuffleButton';
 import { SpeedControl } from '../player/SpeedControl';
 import { usePlayer } from '../PlayerProvider';
 import { useQueueStore } from '../../store/slices/queueSlice';
@@ -197,25 +198,11 @@ export function PlayerScreen() {
 
         {/* Main Controls */}
         <div className="flex items-center justify-center gap-6 mb-4">
-          {/* Live-test batch 2 Task 1b: the leftmost button is SHUFFLE. It was
-              already wired, but carried no aria-pressed and no active styling,
-              so toggling it changed the queue's behaviour while looking
-              identical — which reads as "not wired". Same pattern the rest of
-              the codebase uses for toggles (InstanceCard, ChannelCard). */}
-          <button
-            className={`btn-ghost p-2 ${shuffle ? 'text-accent' : ''}`}
-            aria-label="Shuffle"
-            aria-pressed={shuffle}
-            title={shuffle ? 'Shuffle is on' : 'Shuffle is off'}
-            onClick={() => setShuffle(!shuffle)}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="16 3 22 3 22 9"></polyline>
-              <polyline points="8 21 2 21 2 15"></polyline>
-              <line x1="15" y1="12" x2="9" y2="6"></line>
-              <line x1="21" y1="21" x2="9" y2="9"></line>
-            </svg>
-          </button>
+          {/* Live-test batch 2 Task 1b/1c: the leftmost button is SHUFFLE. It was
+              already wired but showed no state (reading as "not wired"), and its
+              glyph was too thin to recognise — both fixed in the shared
+              ShuffleButton, so the two surfaces cannot drift apart again. */}
+          <ShuffleButton active={shuffle} onToggle={() => setShuffle(!shuffle)} />
 
           <button
             className="btn-ghost p-2 disabled:opacity-40 disabled:cursor-not-allowed"

@@ -91,6 +91,22 @@ describe('Live-test batch 2 Task 1b: toggle buttons must show their state', () =
     expect(shuffle.className).toMatch(/accent/);
   });
 
+  it('shuffle is labelled in VISIBLE text, not only by its icon', async () => {
+    // Live-test batch 2 Task 1c: "the shuffle icon needs to be replaced with one
+    // that is styled to be typically recognized as this function based on what
+    // uses have come to know from other apps with a player." A glyph alone —
+    // especially one drawn thin at 18-24px — is not reliably recognisable, so the
+    // control carries the word "Shuffle" too.
+    renderPlayer();
+    const shuffle = (await waitFor(() => screen.getByRole('button', { name: 'Shuffle' }))) as HTMLButtonElement;
+
+    expect(shuffle.textContent).toContain('Shuffle');
+    // And the glyph is drawn bold enough to survive a small render: the
+    // arrowheads are what made it read as abstract crossing lines.
+    const svg = shuffle.querySelector('svg');
+    expect(svg?.getAttribute('stroke-width')).toBe('2.6');
+  });
+
   it('repeat announces its mode too', async () => {
     renderPlayer();
     const repeat = (await waitFor(() => screen.getByRole('button', { name: /^Repeat/ }))) as HTMLButtonElement;
