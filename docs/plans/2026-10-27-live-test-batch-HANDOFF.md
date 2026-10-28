@@ -112,4 +112,33 @@ final summary into §7.
 
 ## 7. Final summary (fill in at the end)
 
-_(rulings made, deferred minors, anything the owner must verify in the app)_
+**All ten tasks are complete**, in 21 commits on `master` (from `09ce2e7b`), every one gated: `cargo test` **136 passed**, `cargo build` **zero warnings**, `tsc --noEmit` clean, `vitest` **260/260** (from 108 + 228 at handover).
+
+### Rulings made (and why)
+
+- **`subscribed_at` is set to `''`, not NULL** — `schema.sql:83` declares the column `NOT NULL`, so the plan's `NULL` would need a full SQLite table rebuild on the owner's live DB, and `''` is already this codebase's "no subscription time" representation (mock fixture `ch-5`).
+- **`nextTrack`/`previousTrack` kept their names** rather than the plan's `next()`/`previous()` — a rename would churn PlayerScreen, MiniPlayer, useMediaSession and useMenuPlayback for no behavioural gain.
+- **Persistence for playback rate lives in PlayerProvider**, wrapping the store action, so the slice stays a plain state holder.
+- **The src-change rate re-application reads a ref**, so the resolve effect does not re-enter its `play()` branch on every rate change.
+- **`list_channels`' two duplicated branches collapsed into one statement** (`WHERE type = COALESCE(?, type) AND is_subscribed >= ?`) so the typed/untyped × subscribed/everything matrix cannot drift.
+- **`hasPrevious` is never true at the first item** — previous does not wrap. `hasNext` is true at the last item only under repeat `all`, which really does wrap.
+- **The picker takes the SMALLEST `authorThumbnail` tier meeting 88 px**, not the largest: Invidious returns ascending, so a 1024 px master to fill a 40 px circle is waste.
+- **`height` is not kept on the parsed thumbnail shape** — nothing decides on it and an unused field breaks the zero-warnings gate; serde ignores unknown fields so real responses still parse.
+
+### Deferred minors (found, deliberately NOT changed)
+
+- The queue header's **"Save as playlist"** button has `onClick={() => {}}` — a silent no-op that looks like a working control. Wire it or disable it with an explaining title.
+- `d7-play-mode-chain.test.tsx` **flakes** (one red in five full-suite runs; 13/13 in isolation). Filed as waypoint `echoprism-d7-flaky-test` — do not re-run-and-hope it away.
+- The **`Sqlite` dev database was stale**; the repo now ships `scripts/sqlx-prepare.sh`, which prepares against a throwaway DB built from `sql/schema.sql` so a stale input can never poison `.sqlx` again.
+- Commit `558702f6`'s body contains a typo ("tscclean"); not fixed because that would mean rewriting pushed history.
+
+### What the owner must verify in the app
+
+1. **Task 6** — launch `tauri dev`, use the native Playback menu, confirm `crash-reports.jsonl` gains no new `event.listen` line. Code + ACL resolution are verified; the runtime was not.
+2. **Task 9 / Task 10a** — press **Refresh once** to backfill cover art onto the 1,102/1,103 existing podcast episodes and channels.
+3. **Task 10b** — open Channels; video-channel avatars resolve from Invidious, four at a time.
+4. **The confidence curve changed** — scores rise where channel metadata was absent, so more pairs may auto-link. The hard title gate (0.7) still protects, and all nine calibration tests pass, but watch a matcher re-run before trusting the new curve wholesale.
+
+### How the work was verified
+
+Every behavioural change was mutation-checked (each guard broken on purpose, a test seen red, restored, `cmp`-identical). Four mutation checks found real gaps that green tests had missed: an untested default path (T4), a **vacuous** test whose fixture a unique constraint silently dropped (T5), an untested range guard (T7), and a channel backfill whose "never overwrite" half was unpinned (T10a). The whole-branch adversarial review was dispatched to a free validator; of its four named findings, one was confirmed and fixed (`36b912de`), and the other three were rejected with reasons recorded in that commit.
