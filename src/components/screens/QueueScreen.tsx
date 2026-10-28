@@ -124,7 +124,16 @@ export function QueueScreen() {
                     }
                     setDragIndex(null);
                   }}
-                  onPlay={() => setCurrentIndex(index)}
+                  onPlay={() => {
+                    setCurrentIndex(index);
+                    // Live-test 2026-10-28: clicking a queue row only moved the
+                    // cursor, so from the Queue tab there was NO way back to the
+                    // player you are listening to — the owner had to detour
+                    // through History. This is the one surface used precisely to
+                    // move between items, so a play here must open the player.
+                    const ep = items[index]?.episode;
+                    if (ep) navigate(`/player/${ep.id}`);
+                  }}
                   onRemove={() => removeItem(item.id)}
                   onQueueAction={(action) => {
                     if (action === 'remove') removeItem(item.id);
