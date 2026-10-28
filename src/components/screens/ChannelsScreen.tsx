@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { channelCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
@@ -10,6 +11,33 @@ import { Thumbnail } from '../ui/Thumbnail';
  * channelCommands.list/unsubscribe were live. Now lists the subscriptions
  * with the loading/error/empty states every data screen needs.
  */
+/// How many avatar resolutions may be in flight at once (live-test Task 10).
+/// The list is often dozens of rows; one Invidious request per row
+/// simultaneously is a self-inflicted rate-limit.
+const AVATAR_RESOLUTION_CONCURRENCY = 4;
+
+/**
+ * Resolve avatars for the channels that lack one, `limit` at a time.
+ *
+ * Rows that already have art are never asked — the backend would return what
+ * it has without touching the network, but there is no reason to make the
+ * call. Failures are swallowed: a missing avatar keeps the placeholder, and a
+ * dead instance must not take the list's rendering down with it.
+ */
+async function resolveMissingAvatars(
+  channels: { id: string; thumbnail_url?: string }[],
+  limit: number,
+): Promise<void> {
+  const missing = channels.filter((c) => !c.thumbnail_url);
+  for (let i = 0; i < missing.length; i += limit) {
+    await Promise.all(
+      missing
+        .slice(i, i + limit)
+        .map((c) => channelCommands.resolveAvatar(c.id).catch(() => null)),
+    );
+  }
+}
+
 export function ChannelsScreen() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -17,6 +45,23 @@ export function ChannelsScreen() {
     queryKey: ['channels', 'all'],
     queryFn: () => channelCommands.list(),
   });
+
+  // Live-test Task 10: fill in the small profile pictures, bounded so a long
+  // list cannot hammer the instance. Keyed on the ids that lack art, so a
+  // re-render does not re-ask, and the query is invalidated once resolved so
+  // the rows re-render with their new image.
+  const needingArt = (channels ?? []).filter((c) => !c.thumbnail_url).map((c) => c.id).join(',');
+  useEffect(() => {
+    if (!channels || channels.length === 0 || needingArt === '') return;
+    let cancelled = false;
+    void resolveMissingAvatars(channels, AVATAR_RESOLUTION_CONCURRENCY).then(() => {
+      if (!cancelled) queryClient.invalidateQueries({ queryKey: ['channels'] });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // `needingArt` is the dependency: the ids that lack art, as a stable key.
+  }, [channels, needingArt, queryClient]);
 
   const unsubscribe = useMutation({
     mutationFn: (channelId: string) => channelCommands.unsubscribe(channelId),

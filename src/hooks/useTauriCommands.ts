@@ -32,6 +32,9 @@ export const channelCommands = {
   subscribe: (externalId: string, channelType: 'video' | 'podcast' | 'both', instanceId?: string) =>
     invoke<Channel>('subscribe', { externalId, channelType, instanceId }),
   unsubscribe: (channelId: string) => invoke<void>('unsubscribe', { channelId }),
+  /** Live-test Task 10: resolve (and remember) a channel's avatar. Fails soft —
+   *  null means "no art available", never an error. */
+  resolveAvatar: (channelId: string) => invoke<string | null>('resolve_channel_avatar', { channelId }),
   import: (source: string, data: string) => invoke<{ imported: number; errors: string[] }>('import', { source, data }),
   export: (format: 'json' | 'opml') => invoke<string>('export', { format }),
 };

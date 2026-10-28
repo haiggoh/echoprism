@@ -564,6 +564,48 @@ pub async fn list_channels(
 /// reset to '' (the column is NOT NULL, and '' is this codebase's established
 /// "no subscription time" representation, see the ch-5 fixture). A later
 /// re-subscribe re-dates it. An unknown id is an Err, never a silent success.
+/// The three fields avatar resolution needs, and nothing else: a full `Channel`
+/// carries 17 columns and this reads three.
+#[derive(sqlx::FromRow)]
+pub struct ChannelForAvatar {
+    pub external_id: String,
+    pub thumbnail_url: Option<String>,
+    pub channel_type: ChannelType,
+}
+
+pub async fn channel_for_avatar(pool: &SqlitePool, channel_id: &str) -> DbResult<Option<ChannelForAvatar>> {
+    let row = sqlx::query_as!(
+        ChannelForAvatar,
+        r#"SELECT external_id, thumbnail_url, type as "channel_type: _"
+           FROM channels WHERE id = ? LIMIT 1"#,
+        channel_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(row)
+}
+
+/// Set a channel's avatar, but ONLY when it has none.
+///
+/// Live-test Task 10: the Channels list asks for art on rows that lack it, and
+/// several rows can be in flight at once. A last-write-wins UPDATE would let a
+/// slower, worse answer overwrite a good one — so the NULL guard is what makes
+/// concurrent resolution safe, not just a nicety.
+pub async fn set_channel_thumbnail_if_missing(
+    pool: &SqlitePool,
+    channel_id: &str,
+    thumbnail_url: &str,
+) -> DbResult<()> {
+    query("UPDATE channels SET thumbnail_url = ? WHERE id = ? AND thumbnail_url IS NULL")
+        .bind(thumbnail_url)
+        .bind(channel_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub async fn unsubscribe_channel(pool: &SqlitePool, channel_id: &str) -> DbResult<()> {
     let result = query("UPDATE channels SET is_subscribed = 0, subscribed_at = '' WHERE id = ?")
         .bind(channel_id)

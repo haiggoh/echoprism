@@ -107,6 +107,20 @@ impl Database {
         queries::unsubscribe_channel(&self.pool, channel_id).await
     }
 
+    /// Live-test Task 10: the three fields avatar resolution reads.
+    pub async fn channel_for_avatar(&self, channel_id: &str) -> DbResult<Option<queries::ChannelForAvatar>> {
+        queries::channel_for_avatar(&self.pool, channel_id).await
+    }
+
+    /// Live-test Task 10: fill a missing channel avatar, never overwrite one.
+    pub async fn set_channel_thumbnail_if_missing(
+        &self,
+        channel_id: &str,
+        thumbnail_url: &str,
+    ) -> DbResult<()> {
+        queries::set_channel_thumbnail_if_missing(&self.pool, channel_id, thumbnail_url).await
+    }
+
     /// Unwired until the video-channel subscribe step (1c deferral): the
     /// subscribe/unsubscribe commands keep their calls commented at
     /// commands/channels.rs:51/58 pending channel-metadata fetching.

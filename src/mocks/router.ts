@@ -324,6 +324,21 @@ const handlers: Record<string, Handler> = {
 
   // 2c screen wiring: channels unsubscribe, history clear, downloads
   // list/cancel/delete. Same semantics as the Rust commands.
+  // Live-test Task 10: resolve a channel's avatar. Mirrors
+  // commands::channels::resolve_channel_avatar — an already-present art
+  // short-circuits without any "network", a podcast's art is feed-derived and
+  // already stored (so nothing to resolve here), and a video channel without
+  // one gets a deterministic placeholder URL rather than a real Invidious call.
+  resolve_channel_avatar: (args): string | null => {
+    const channelId = args?.channelId as string | undefined;
+    const channel = db.channels.find((c) => c.id === channelId);
+    if (!channel) return null;
+    if (channel.thumbnail_url) return channel.thumbnail_url;
+    if (channel.type !== 'video') return null;
+    // Deterministic, so a test can assert on it without hitting a network.
+    return `https://invidious.example/yt4.ggpht/${channel.id}/author.jpg`;
+  },
+
   unsubscribe: (args): null => {
     const channelId = args?.channelId as string | undefined;
     const channel = db.channels.find((c) => c.id === channelId);

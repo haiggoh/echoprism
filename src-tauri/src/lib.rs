@@ -13,6 +13,7 @@ mod instance_pool;
 mod extractor;
 mod netpath;
 mod matcher;
+mod channel_art;
 mod podcast;
 mod sponsorblock;
 mod background_tasks;
@@ -161,6 +162,7 @@ pub fn run() {
             commands::podcasts::refresh_podcasts,
             commands::podcasts::import_youtube_subscriptions,
             commands::channels::unsubscribe,
+            commands::channels::resolve_channel_avatar,
             commands::channels::import,
             commands::channels::export,
 

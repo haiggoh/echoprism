@@ -1,6 +1,7 @@
 //! Channel/Subscription commands
 
 use crate::db::Database;
+use crate::instance_pool::InstancePool;
 use crate::podcast::{ImportResult, PodcastManager};
 use crate::types::*;
 use serde::Serialize;
@@ -225,6 +226,49 @@ pub async fn subscribe(
 #[command]
 pub async fn unsubscribe(db: State<'_, Database>, channel_id: String) -> std::result::Result<(), String> {
     db.unsubscribe_channel(&channel_id).await
+}
+
+/// Resolve (and remember) a channel's avatar — "the should have small profile
+/// pictures" (live-test Task 10).
+///
+/// Returns the URL to show. A podcast channel's art comes from its feed's
+/// `<itunes:image>`, already stored by the Task 9 parse and the Task 10a refresh
+/// backfill, so a podcast with no stored art is a feed that publishes none —
+/// nothing to resolve. A video channel has no feed, so its art comes from an
+/// Invidious instance's `/api/v1/channels/{ucid}`.
+///
+/// Fails SOFT: no instance, no art, a dead instance — all return None rather
+/// than an Err, because the caller is a list of rows that has nothing useful to
+/// do with the reason. Only an already-present avatar short-circuits the
+/// network entirely, which is what keeps repeat calls free.
+#[command]
+pub async fn resolve_channel_avatar(
+    db: State<'_, Database>,
+    pool: State<'_, InstancePool>,
+    channel_id: String,
+) -> std::result::Result<Option<String>, String> {
+    let row = db.channel_for_avatar(&channel_id).await?;
+    let Some(channel) = row else {
+        return Ok(None);
+    };
+    if let Some(existing) = channel.thumbnail_url.as_deref() {
+        return Ok(Some(existing.to_string()));
+    }
+
+    // A podcast's art is feed-derived and already stored, so there is nothing
+    // to resolve — returning early avoids a pointless Invidious lookup for a
+    // feed URL that is not a channel id.
+    if channel.channel_type != ChannelType::Video {
+        return Ok(None);
+    }
+
+    if let Some(art) = pool.fetch_channel_art(&channel.external_id).await {
+        // NULL-only: concurrent resolution of several rows must not let a slow,
+        // worse answer overwrite a good one already on screen.
+        db.set_channel_thumbnail_if_missing(&channel_id, &art).await?;
+        return Ok(Some(art));
+    }
+    Ok(None)
 }
 
 /// Live-test feature (the 1c unwired contract): OPML import — registration

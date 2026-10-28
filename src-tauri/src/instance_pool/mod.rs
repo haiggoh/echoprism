@@ -36,6 +36,30 @@ impl InstancePool {
         }
     }
     
+    /// A video channel's avatar from an Invidious instance (live-test Task 10:
+    /// "the should have small profile pictures").
+    ///
+    /// Tries the instances in the pool's own search order — the same precedence
+    /// that decides which instance serves a search — and returns the first
+    /// answer. None means no instance could answer, which is not an error: a
+    /// channel without a visible avatar keeps its placeholder.
+    pub async fn fetch_channel_art(&self, author_id: &str) -> Option<String> {
+        let instances = self.get_all().await;
+        for instance in order_for_search(&instances) {
+            let art = crate::channel_art::fetch_author_thumbnail(
+                &self.client,
+                &instance.url,
+                author_id,
+                Duration::from_secs(10),
+            )
+            .await;
+            if art.is_some() {
+                return art;
+            }
+        }
+        None
+    }
+
     /// Load instances from the database into the in-memory pool. Health
     /// checking is NOT started here — `background_tasks` owns the single
     /// health-check loop (two loops would double-probe every instance).
