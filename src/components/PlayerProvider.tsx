@@ -425,6 +425,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const position = playbackState?.position_seconds ?? 0;
   const duration = playbackState?.duration_seconds ?? 0;
 
+  // Live-test 2026-10-28: the seek path bails on `duration <= 0`, so an episode
+  // with no known length has a DEAD timeline — every click a silent no-op, which
+  // is why no gate noticed. Podcasts hit this wholesale: parse_rss ignored
+  // <itunes:duration> until now, and all 1,103 of the owner's stored podcast rows
+  // still carry duration_seconds NULL. The media element knows its own length as
+  // soon as metadata loads, so adopt it rather than leave the timeline inert.
+  // Only fills a GAP — a known duration is never second-guessed.
+  const setDurationSafe = usePlayerStore((s) => s.setDuration);
+  useEffect(() => {
+    if (duration > 0 || !activeEl) return;
+    const d = activeEl.duration;
+    if (Number.isFinite(d) && d > 0) setDurationSafe(d);
+  }, [duration, activeEl, setDurationSafe]);
+
   // Live-test Task 8 (owner decision 2026-10-27 11:20): "let restarting be a
   // separate button so that previous always means previous". So restart is its
   // OWN action — seek to 0 on what is already loaded. It does NOT advance the

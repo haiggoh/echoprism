@@ -179,6 +179,11 @@ export function PlayerScreen() {
               ref={progressBarRef}
               className="flex-1 h-1.5 bg-surface rounded-full relative overflow-hidden cursor-pointer"
               onClick={handleSeek}
+              // The seek target. A testid here is what makes the seek path
+              // drivable at all — without one, no test could click the
+              // timeline, which is how "the podcast timeline is dead" shipped
+              // behind a fully green suite (live-test 2026-10-28).
+              data-testid="progress-bar"
             >
               <div
                 className="bg-accent h-full rounded-full transition-all duration-100"

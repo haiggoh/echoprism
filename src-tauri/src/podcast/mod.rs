@@ -91,7 +91,14 @@ impl PodcastManager {
             let guid = item.guid.as_ref().map(|g| g.value.clone()).unwrap_or_else(|| {
                 item.link.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
             });
-            
+            // Read before the moves below: `item.description` is moved into the
+            // struct, which would make a later `item.itunes_ext()` a borrow of
+            // a partially moved value.
+            let duration_seconds = item
+                .itunes_ext()
+                .and_then(|ext| ext.duration())
+                .and_then(parse_duration);
+
             episodes.push(PodcastEpisode {
                 id: uuid::Uuid::new_v4().to_string(),
                 guid,
@@ -100,7 +107,7 @@ impl PodcastManager {
                 channel_title: Some(channel.title.clone()),
                 channel_id: None,
                 published_at: item.pub_date.as_ref().and_then(|d| DateTime::parse_from_rfc2822(d).ok().map(|dt| DateTimeUtc(dt.with_timezone(&Utc)))),
-                duration_seconds: None,
+                duration_seconds,
                 audio_url: item.enclosure.as_ref().map(|e| e.url.clone()),
                 transcript: None,
             });
@@ -540,11 +547,15 @@ pub struct Thumbnail {
     pub height: u32,
 }
 
-/// Reserved for itunes:duration parsing: feeds publish `<itunes:duration>`
-/// (seen in the Even More News fixture) but parse_rss ignores it today, so
-/// podcast durations are always None and the matcher's duration signal sits
-/// at neutral. Wiring this in is the recorded 1d future work.
-#[allow(dead_code)]
+/// Parse an `<itunes:duration>` value into seconds. Feeds publish HH:MM:SS,
+/// H:MM:SS, MM:SS or bare seconds; anything unparseable is None so a bad feed
+/// cannot put a wrong length on the timeline.
+///
+/// Wired in 2026-10-28 (live-test): until then this was dead code and every
+/// podcast episode parsed with `duration_seconds: None`, which left the
+/// player's seek path bailing on `duration <= 0` — the owner could not move
+/// the podcast timeline at all, while video (which learns its duration from
+/// yt-dlp) seeked fine.
 fn parse_duration(duration: &str) -> Option<u64> {
     // Parse iTunes duration format (HH:MM:SS or MM:SS or seconds)
     let parts: Vec<&str> = duration.split(':').collect();
@@ -595,6 +606,7 @@ mod tests {
     }
 
     const VERGECAST_FEED: &str = include_str!("fixtures/vergecast_feed.xml");
+    const SOME_MORE_NEWS_FEED: &str = include_str!("fixtures/some_more_news_feed.xml");
 
     /// Real captured Vergecast feed (megaphone.fm, 2026-10-20, trimmed to 2
     /// items): the RSS path must produce a titled feed whose episodes keep
@@ -616,6 +628,84 @@ mod tests {
                 .starts_with("https://www.podtrac.com/"),
             "enclosure audio URL must survive parsing"
         );
+    }
+
+    // ---- RSS2-R-1: episode DURATION ----
+    // Live-test 2026-10-28: the owner cannot jump the timeline on a podcast
+    // ("I can't jump around on the timeline while its playing … the issue
+    // seems to affect only podcast"), while video seeks fine. Measured cause:
+    // the seek handler bails on `duration <= 0`, and every one of the owner's
+    // 1,103 podcast episodes has duration_seconds NULL — because parse_rss
+    // hard-codes None and the `parse_duration` helper written for exactly this
+    // was never wired in (it carried #[allow(dead_code)]).
+
+    #[test]
+    fn rss_parses_itunes_duration_into_seconds() {
+        let data = PodcastManager::parse_rss(SOME_MORE_NEWS_FEED).expect("parse feed");
+        let first = &data.episodes[0];
+        assert_eq!(
+            first.duration_seconds,
+            Some(2003),
+            "00:33:23 must parse to 2003 seconds — without it the timeline is dead"
+        );
+        // HH:MM:SS on a longer item too, so the hours branch is covered.
+        assert!(
+            data.episodes.iter().any(|e| e.duration_seconds == Some(3741)),
+            "01:02:21 must parse to 3741 seconds"
+        );
+    }
+
+    #[test]
+    fn rss_item_without_its_own_duration_stays_none() {
+        // A fixture built for this case: the SECOND item publishes no
+        // <itunes:duration>. Its length must stay None — never borrowed from
+        // the sibling item, which would put a WRONG length on the timeline and
+        // make a seek land somewhere the audio is not.
+        //
+        // (An earlier version of this test asserted the Vergecast fixture had
+        // no durations at all. Wrong: that feed publishes them under the
+        // generated prefix <ns1:duration>, and ns1 IS the iTunes DTD namespace
+        // — http://www.itunes.com/dtds/podcast-1.0.dtd. The rss crate matches
+        // by namespace, not by prefix, so those parse correctly and the test
+        // failed once the wiring landed. The premise was mine, not the code's.)
+        const MIXED: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Mixed Durations</title>
+    <link>https://example.org/</link>
+    <description>one item with a duration, one without</description>
+    <item>
+      <title>Has a duration</title>
+      <guid>with-duration</guid>
+      <itunes:duration>00:10:00</itunes:duration>
+    </item>
+    <item>
+      <title>Has none</title>
+      <guid>without-duration</guid>
+    </item>
+  </channel>
+</rss>"#;
+        let data = PodcastManager::parse_rss(MIXED).expect("parse mixed fixture");
+        assert_eq!(data.episodes.len(), 2, "both items parse");
+        assert_eq!(data.episodes[0].duration_seconds, Some(600));
+        assert_eq!(
+            data.episodes[1].duration_seconds, None,
+            "an absent itunes:duration must stay None, not borrow its sibling's"
+        );
+    }
+
+    #[test]
+    fn parse_duration_handles_every_itunes_shape() {
+        // Feeds publish HH:MM:SS, MM:SS or bare seconds.
+        assert_eq!(parse_duration("00:33:23"), Some(2003));
+        assert_eq!(parse_duration("33:23"), Some(2003));
+        assert_eq!(parse_duration("2003"), Some(2003));
+        assert_eq!(parse_duration("1:02:21"), Some(3741));
+        // Junk is None, never a panic or a zero that would look like "seekable
+        // at 0".
+        assert_eq!(parse_duration(""), None);
+        assert_eq!(parse_duration("nonsense"), None);
+        assert_eq!(parse_duration("1:2:3:4"), None);
     }
 
     // ---- LIVE smoke (network-dependent; #[ignore] keeps CI offline) --------
