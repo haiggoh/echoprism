@@ -149,11 +149,15 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   },
   
   previousTrack: () => {
-    const { currentIndex, shuffle } = get();
-    if (shuffle) {
-      const prevIndex = Math.floor(Math.random() * get().items.length);
-      set({ currentIndex: prevIndex });
-    } else if (currentIndex > 0) {
+    // Live-test Task 8: previous means PREVIOUS. This used to pick a RANDOM
+    // index when shuffle was on, so pressing Back could jump forward, stay
+    // put, or land anywhere — the owner's 11:20 decision is explicit that
+    // previous must always go back, and shuffle reorders the queue, it does
+    // not redefine what "back" means. (Proven by the seeded-mutation test in
+    // queue-navigation.test.tsx: with Math.random pinned to 0.99 the old
+    // branch landed on the LAST item.)
+    const { currentIndex } = get();
+    if (currentIndex > 0) {
       set({ currentIndex: currentIndex - 1 });
     }
   },

@@ -100,11 +100,24 @@ describe('shuffle random-pick (F05-E3)', () => {
     expect(index).toBeLessThanOrEqual(1);
   });
 
-  it('previousTrack under shuffle lands on the seeded index', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    useQueueStore.setState({ items: seedItems(['A', 'B', 'C']), currentIndex: 2, shuffle: true });
-    useQueueStore.getState().previousTrack();
-    expect(useQueueStore.getState().currentIndex).toBe(0);
+  it('previousTrack under shuffle goes BACK — it is not a random pick', () => {
+    // REWRITTEN 2026-10-28 (live-test Task 8). This test previously pinned the
+    // OPPOSITE: previousTrack under shuffle picked a RANDOM index, and the
+    // assertion above asserted exactly that bug ("lands on the seeded index"
+    // meant "wherever Math.random pointed"). The owner's 11:20 decision is
+    // explicit that previous must always mean previous, and a random Back that
+    // can jump forward is the defect he reported. shuffle reorders the QUEUE;
+    // it does not redefine what "back" means.
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      useQueueStore.setState({ items: seedItems(['A', 'B', 'C']), currentIndex: 2, shuffle: true });
+      useQueueStore.getState().previousTrack();
+      expect(useQueueStore.getState().currentIndex).toBe(1);
+      // ...and randomness must not be consulted at all.
+      expect(random).not.toHaveBeenCalled();
+    } finally {
+      random.mockRestore();
+    }
   });
 });
 

@@ -30,7 +30,7 @@ export function MiniPlayer() {
     nextTrack,
     previousTrack,
   } = useQueueStore();
-  const { isPlaying, togglePlay, volume, setVolume, currentTime, duration, seek } = usePlayer();
+  const { isPlaying, togglePlay, volume, setVolume, currentTime, duration, seek, restart, hasNext, hasPrevious } = usePlayer();
   const { state, setMode } = useConvergence();
   const navigate = useNavigate();
   const seekStripRef = useRef<HTMLDivElement>(null);
@@ -132,8 +132,12 @@ export function MiniPlayer() {
           </button>
 
           <button
-            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Previous"
+            // Disabled at the first item — a press that silently does nothing
+            // reads as a broken button (Review Focus 4). Previous ALWAYS means
+            // the previous item; restarting has its own button.
+            disabled={!hasPrevious}
             onClick={previousTrack}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -160,13 +164,28 @@ export function MiniPlayer() {
           </button>
 
           <button
-            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Next"
+            disabled={!hasNext}
             onClick={nextTrack}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 4 15 12 5 20 5 4"></polygon>
               <line x1="19" y1="5" x2="19" y2="19"></line>
+            </svg>
+          </button>
+
+          {/* Live-test Task 8: Restart is its own button, so Previous can
+              always mean Previous (owner decision 2026-10-27 11:20). */}
+          <button
+            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Restart"
+            disabled={!hasNext && !hasPrevious}
+            onClick={restart}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 1 9 9"></path>
+              <polyline points="3 12 3 6 9 6"></polyline>
             </svg>
           </button>
         </div>

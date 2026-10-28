@@ -39,6 +39,12 @@ interface PlayerContextType {
   togglePip: () => void;
   nextTrack: () => void;
   previousTrack: () => void;
+  /** Seek to 0 on the loaded item and keep playing. Its own action, so
+   *  previous() can always mean "the previous item" (owner 2026-10-27). */
+  restart: () => void;
+  /** False at the queue's ends — the buttons disable rather than no-op. */
+  hasNext: boolean;
+  hasPrevious: boolean;
   /** PlayerScreen registers its <video> element here; the engine picks the active media element. */
   registerVideoElement: (el: HTMLVideoElement | null) => void;
 }
@@ -62,7 +68,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVolume,
     setPlaybackRate: setStorePlaybackRate,
   } = usePlayerStore();
-  const { items, currentIndex, nextTrack: queueNext, previousTrack: queuePrev } = useQueueStore();
+  const { items, currentIndex, repeatMode, setCurrentIndex, nextTrack: queueNext, previousTrack: queuePrev } = useQueueStore();
   const { addToast } = useToasts();
   // D7 (Phase 5): the engine resolves the play-mode chain on QUEUE ADVANCE too,
   // not just on the card-click path in useEpisodePlay. It READS the shared
@@ -131,6 +137,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   playbackRateRef.current = playbackRate;
   // play() re-created each render; auto-advance reads it through a ref to avoid effect loops.
   const playRef = useRef<(ep: Episode, mode?: PlayMode) => void>(() => {});
+  // Same for load(): the queue-cursor effect follows the cursor while paused
+  // through this (live-test Task 8), and must not re-run on every load change.
+  const loadRef = useRef<(ep: Episode, opts?: { paused?: boolean; mode?: PlayMode }) => void>(() => {});
 
   // The per-play format: an explicit D7 chain mode wins; otherwise the user's
   // standing toggle decides. 'unified' — the queue's no-preference value —
@@ -153,6 +162,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (ep: Episode, mode?: PlayMode) => {
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
+      // Live-test Task 8: playing an episode that is ALREADY a queue item must
+      // move the queue cursor onto it. Without this the player and the queue
+      // disagreed about position — the owner's "the queue isn't working
+      // correctly" — because Next/Previous navigate relative to
+      // currentIndex, so skipping from a feed-clicked episode moved the WRONG
+      // item. An episode that is not in the queue leaves the cursor alone:
+      // there is nothing truthful to point it at.
+      const queuedAt = items.findIndex((it) => it.episode?.id === ep.id);
+      if (queuedAt >= 0 && queuedAt !== currentIndex) setCurrentIndex(queuedAt);
       // Sets the playback format only — NEVER the user's audio toggle, which
       // would leak the override into every later override-less play.
       applyPlaybackFormat(formatFor(mode));
@@ -166,7 +184,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // by the resolve effect below (single code path, also serves load(paused)).
       setStreamUrl(null);
     },
-    [setPlaying, setPlaybackState]
+    [setPlaying, setPlaybackState, items, currentIndex, setCurrentIndex]
   );
   playRef.current = play;
 
@@ -187,6 +205,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     },
     [setPlaying, setPlaybackState]
   );
+  // Read by the queue-cursor effect below (a paused skip must still follow it).
+  loadRef.current = load;
 
   // The user's audio toggle: writes the standing preference AND switches the
   // current playback over. Distinct from the D7 chain's per-play mode, which
@@ -375,26 +395,61 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (item?.id === lastItemIdRef.current) return;
     lastItemIdRef.current = item?.id;
     const ep = item?.episode;
-    if (isPlaying && ep) {
-      // Phase 5: resolve the D7 chain HERE, at play time, so a rule the owner
-      // set for this title family applies to the queue too — and a rule edited
-      // AFTER this item was queued still takes effect (owner decision
-      // 2026-10-25: lazy resolution, not a mode stamped at queue time).
-      // A cache miss resolves to [] — no override — exactly like having no
-      // rules. undefined falls through to the engine default as before.
-      const rules = (queryClient.getQueryData<PlayModeRule[]>(['play-mode-rules']) ??
-        []) as PlayModeRule[];
-      const channels = (queryClient.getQueryData<Channel[]>(['channels', 'for-play-mode']) ??
-        []) as Channel[];
-      const mode: PlayMode | undefined = resolveDefaultPlayMode(ep, rules, channels);
-      playRef.current(ep, mode);
-    } else if (isPlaying && !ep) {
-      setPlaying(false);
+    if (!ep) {
+      if (isPlaying) setPlaying(false);
+      return;
     }
+    // Phase 5: resolve the D7 chain HERE, at play time, so a rule the owner
+    // set for this title family applies to the queue too — and a rule edited
+    // AFTER this item was queued still takes effect (owner decision
+    // 2026-10-25: lazy resolution, not a mode stamped at queue time).
+    // A cache miss resolves to [] — no override — exactly like having no
+    // rules. undefined falls through to the engine default as before.
+    const rules = (queryClient.getQueryData<PlayModeRule[]>(['play-mode-rules']) ??
+      []) as PlayModeRule[];
+    const channels = (queryClient.getQueryData<Channel[]>(['channels', 'for-play-mode']) ??
+      []) as Channel[];
+    const mode: PlayMode | undefined = resolveDefaultPlayMode(ep, rules, channels);
+    // Live-test Task 8: the queue cursor must be followed in BOTH states. This
+    // was gated on `isPlaying` alone, so a Next/Previous pressed while PAUSED
+    // moved the cursor and left the player on the OLD episode — the owner's
+    // "the queue isn't working correctly yet". `currentEpisode` is state, so
+    // the `?? items[currentIndex]?.episode` fallback in the context value can
+    // only apply while it is still null; once set, nothing else updated it.
+    // Paused stays paused on the new item (a load, no stream resolve — the
+    // resolve happens when the user presses play); playing keeps playing.
+    if (isPlaying) playRef.current(ep, mode);
+    else loadRef.current(ep, { mode });
   }, [currentIndex, items, isPlaying, setPlaying, queryClient]);
 
   const position = playbackState?.position_seconds ?? 0;
   const duration = playbackState?.duration_seconds ?? 0;
+
+  // Live-test Task 8 (owner decision 2026-10-27 11:20): "let restarting be a
+  // separate button so that previous always means previous". So restart is its
+  // OWN action — seek to 0 on what is already loaded. It does NOT advance the
+  // queue, does NOT re-resolve the source, and does not stop playback: an
+  // element that is playing keeps playing from the top, a paused one simply
+  // sits at 0. Nothing loaded means nothing to restart.
+  const restart = useCallback(() => {
+    const el = activeEl;
+    if (!el) return;
+    el.currentTime = 0;
+    setPlaybackState({
+      episode_id: currentEpisode?.id ?? playbackState?.episode_id ?? '',
+      position_seconds: 0,
+      duration_seconds: playbackState?.duration_seconds,
+    });
+  }, [activeEl, currentEpisode, playbackState, setPlaybackState]);
+
+  // Review Focus 4: the ends are no-ops, and the BUTTONS must be disabled so
+  // the state is visible instead of a press that silently does nothing.
+  // Forward is available at the last item only under repeat 'all', which really
+  // does wrap (queueSlice.nextTrack). Back never wraps — previous means
+  // previous — so at the first item it is genuinely unavailable.
+  const hasNext =
+    items.length > 0 && (currentIndex < items.length - 1 || repeatMode === 'all');
+  const hasPrevious = items.length > 0 && currentIndex > 0;
 
   const value: PlayerContextType = {
     currentEpisode: currentEpisode ?? items[currentIndex]?.episode ?? null,
@@ -418,6 +473,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     togglePip,
     nextTrack,
     previousTrack,
+    restart,
+    hasNext,
+    hasPrevious,
     registerVideoElement,
   };
 

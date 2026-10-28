@@ -105,7 +105,7 @@ final summary into §7.
 - [x] Task 5 — Smart Links titles
 - [x] Task 6 — Tauri capabilities — ⚠️ **OWNER-VERIFY PENDING**: launch `tauri dev`, use the native Playback menu, and confirm `crash-reports.jsonl` gains no new `event.listen` line. Code + test + build verified; only the runtime check is outstanding.
 - [x] Task 7 — playback speed
-- [ ] Task 8 — queue next / previous / separate restart
+- [x] Task 8 — queue next / previous / separate restart
 - [ ] Task 9 — podcast cover art
 - [ ] Task 10 — clickable channels + avatars
 - [ ] Whole-branch review
