@@ -11,6 +11,7 @@ import { SettingsScreen } from './components/screens/SettingsScreen';
 import { HistoryScreen } from './components/screens/HistoryScreen';
 import { DownloadsScreen } from './components/screens/DownloadsScreen';
 import { ChannelsScreen } from './components/screens/ChannelsScreen';
+import { ChannelScreen } from './components/screens/ChannelScreen';
 import { SmartLinksScreen } from './components/screens/SmartLinksScreen';
 import { OnboardingScreen } from './components/screens/OnboardingScreen';
 import { PlayerProvider } from './components/PlayerProvider';
@@ -66,6 +67,9 @@ function AppRoutes() {
               <Route path="/history" element={<HistoryScreen />} />
               <Route path="/downloads" element={<DownloadsScreen />} />
               <Route path="/channels" element={<ChannelsScreen />} />
+              {/* Live-test Task 10: a channel is a destination, not an inert
+                  row — reached by route so it is linkable and back-navigable. */}
+              <Route path="/channels/:channelId" element={<ChannelScreen />} />
               <Route path="/smart-links" element={<SmartLinksScreen />} />
               <Route path="/" element={<Navigate to="/feed" replace />} />
               <Route path="*" element={<Navigate to="/feed" replace />} />

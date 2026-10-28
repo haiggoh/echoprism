@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { channelCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
@@ -11,6 +12,7 @@ import { Thumbnail } from '../ui/Thumbnail';
  */
 export function ChannelsScreen() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { data: channels, isLoading, isError, refetch } = useQuery({
     queryKey: ['channels', 'all'],
     queryFn: () => channelCommands.list(),
@@ -55,19 +57,29 @@ export function ChannelsScreen() {
                 data-testid="channel-row"
                 className="flex items-center justify-between gap-4 bg-surface border border-border rounded-lg px-4 py-3"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Live-test Task 10: a channel row is a way IN, not an inert
+                    label. A real button (not a click handler on the <li>) so it
+                    is keyboard-reachable and announced. Named distinctly from
+                    the external home link beside it, which already reads
+                    "Open <title> home". */}
+                <button
+                  type="button"
+                  className="flex items-center gap-3 min-w-0 text-left rounded-lg"
+                  aria-label={`Explore ${channel.title}`}
+                  onClick={() => navigate(`/channels/${channel.id}`)}
+                >
                   <Thumbnail
                     src={channel.thumbnail_url}
                     alt=""
                     className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                   />
-                  <div className="min-w-0">
-                    <p className="font-medium text-text truncate">{channel.title}</p>
-                    <p className="text-xs text-text-muted truncate mt-0.5">
+                  <span className="min-w-0">
+                    <span className="block font-medium text-text truncate">{channel.title}</span>
+                    <span className="block text-xs text-text-muted truncate mt-0.5">
                       {channel.format_preference}
-                    </p>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </button>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {channel.home_url && (
                     <a

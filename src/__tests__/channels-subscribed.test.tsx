@@ -15,6 +15,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { ChannelsScreen } from '../components/screens/ChannelsScreen';
 import { channelCommands } from '../hooks/useTauriCommands';
 import { resetMockState } from '../mocks/router';
@@ -23,9 +24,13 @@ function renderScreen() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // Task 10 made the row navigable, so a Router is now required — the screen
+  // legitimately calls useNavigate().
   return render(
     <QueryClientProvider client={queryClient}>
-      <ChannelsScreen />
+      <MemoryRouter>
+        <ChannelsScreen />
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
