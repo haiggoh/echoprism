@@ -319,6 +319,19 @@ export const mockDb: MockDb = {
       created_at: now,
       updated_at: now,
     },
+    // Live-test Task 5: a link whose NEITHER episode is local. The panel must
+    // fall back to the raw ids (monospace, muted) rather than invent a title.
+    {
+      id: 'link-4',
+      podcast_guid: 'guid-no-local-episode',
+      youtube_video_id: 'vid-no-local-episode',
+      confidence: 0.71,
+      matched_at: '2026-10-18T03:00:00Z',
+      matched_by: 'manual',
+      user_confirmed: false,
+      created_at: now,
+      updated_at: now,
+    },
   ],
   // D7: per-title-family play-mode rules (owner's example verbatim).
   playModeRules: [

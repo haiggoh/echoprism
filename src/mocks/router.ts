@@ -267,7 +267,25 @@ const handlers: Record<string, Handler> = {
     db.instances = [...db.instances, instance];
     return instance;
   },
-  list_smart_links: () => db.smartLinks,
+  list_smart_links: () =>
+    // Mirrors queries::list_episode_links: the podcast side resolves on
+    // episodes.podcast_guid, the video side on episodes.video_id, and a side
+    // with no local episode gets NO title — the UI falls back to the raw id.
+    // One row per link either way (the Rust side uses LIMIT 1 subqueries for
+    // the same reason a duplicate guid would fan out here).
+    db.smartLinks.map((link) => {
+      const podEp = db.episodes.find((e) => e.podcast_guid === link.podcast_guid);
+      const vidEp = db.episodes.find((e) => e.video_id === link.youtube_video_id);
+      const podChannel = podEp && db.channels.find((c) => c.id === podEp.channel_id);
+      const vidChannel = vidEp && db.channels.find((c) => c.id === vidEp.channel_id);
+      return {
+        ...link,
+        podcast_title: podEp?.title,
+        video_title: vidEp?.title,
+        podcast_channel: podChannel?.title,
+        video_channel: vidChannel?.title,
+      };
+    }),
   list_history: () =>
     db.history.map((h) => {
       const ep = db.episodes.find((e) => e.id === h.episode_id);

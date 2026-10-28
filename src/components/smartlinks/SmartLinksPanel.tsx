@@ -16,6 +16,24 @@ import { EmptyState } from '../ui/EmptyState';
  * `heading` and `showHeading` let each caller keep its own chrome: the route
  * owns a full-width app header, the Settings tab wants a compact section title.
  */
+/**
+ * One side of a pair. With a local episode it shows the episode's real title —
+ * the owner's ask ("user-readable title"), because a guid or a video id is
+ * something they cannot judge. With NO local episode it falls back to the raw
+ * id in monospace + muted, so the two cases are visibly different and nothing
+ * is ever invented: an absent title is honest, a fabricated one is not.
+ */
+function LinkSide({ title, id }: { title?: string; id: string }) {
+  if (title) {
+    return <span className="text-sm text-text">{title}</span>;
+  }
+  return (
+    <span className="font-mono text-xs text-text-muted" title={id}>
+      {id}
+    </span>
+  );
+}
+
 export function SmartLinksPanel({
   showHeading = true,
   headingLevel = 1,
@@ -96,9 +114,20 @@ export function SmartLinksPanel({
               className="flex items-center justify-between gap-4 bg-surface border border-border rounded-lg px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="font-mono text-sm text-text truncate">
-                  {link.podcast_guid} ↔ {link.youtube_video_id}
+                {/* Live-test Task 5: was `{podcast_guid} ↔ {youtube_video_id}`
+                    — "long id strings the user doesn't know how to judge". */}
+                <p className="text-sm truncate flex items-baseline gap-2 flex-wrap">
+                  <LinkSide title={link.podcast_title} id={link.podcast_guid} />
+                  <span className="text-text-muted" aria-hidden="true">
+                    ↔
+                  </span>
+                  <LinkSide title={link.video_title} id={link.youtube_video_id} />
                 </p>
+                {(link.podcast_channel || link.video_channel) && (
+                  <p className="text-xs text-text-muted mt-0.5 truncate">
+                    {[link.podcast_channel, link.video_channel].filter(Boolean).join(' · ')}
+                  </p>
+                )}
                 <p className="text-xs text-text-muted mt-1">
                   {Math.round(link.confidence * 100)}% confidence
                   {link.user_confirmed ? ' · confirmed' : ''}

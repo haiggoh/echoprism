@@ -9,14 +9,36 @@
 use crate::db::Database;
 use crate::matcher::EpisodeMatcher;
 use crate::types::*;
+use serde::Serialize;
 use std::sync::Arc;
 use tauri::{command, State};
+
+/// The list response: the link plus BOTH sides' episode titles, resolved at
+/// read time. Mirrors `ChannelWithHome` (commands/channels.rs:36) — the list
+/// endpoint returns the entity plus the derived fields the UI needs, flattened
+/// so the wire shape stays flat for the TS `EpisodeLink`.
+///
+/// Live-test Task 5: the panel printed `{podcast_guid} ↔ {youtube_video_id}`,
+/// which the owner called "long id strings the user doesn't know how to judge".
+/// Titles are hydrated, NOT stored — `episode_links` has no title columns, and
+/// a renamed episode must show its new name here without a re-match.
+#[derive(Serialize)]
+pub struct EpisodeLinkWithTitles {
+    #[serde(flatten)]
+    pub link: EpisodeLink,
+    /// `None` when no local episode carries this guid — the UI falls back to
+    /// the raw id (monospace, muted) rather than inventing a title.
+    pub podcast_title: Option<String>,
+    pub video_title: Option<String>,
+    pub podcast_channel: Option<String>,
+    pub video_channel: Option<String>,
+}
 
 #[command]
 pub async fn list_smart_links(
     db: State<'_,  Database>,
     confidence_min: Option<f64>,
-) -> std::result::Result<Vec<EpisodeLink>, String> {
+) -> std::result::Result<Vec<EpisodeLinkWithTitles>, String> {
     db.list_episode_links(confidence_min).await
 }
 

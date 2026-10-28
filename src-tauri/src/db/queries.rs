@@ -1053,7 +1053,10 @@ pub async fn play_next(pool: &SqlitePool, episode_id: String) -> DbResult<()> {
     Ok(())
 }
 
-pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) -> DbResult<Vec<EpisodeLink>> {
+pub async fn list_episode_links(
+    pool: &SqlitePool,
+    confidence_min: Option<f64>,
+) -> DbResult<Vec<crate::commands::smart_links::EpisodeLinkWithTitles>> {
     let min_conf = confidence_min.unwrap_or(0.0);
 
     #[derive(sqlx::FromRow)]
@@ -1070,44 +1073,91 @@ pub async fn list_episode_links(pool: &SqlitePool, confidence_min: Option<f64>) 
         user_confirmed: i64,
         created_at: DateTimeUtc,
         updated_at: DateTimeUtc,
+        podcast_title: Option<String>,
+        video_title: Option<String>,
+        podcast_channel: Option<String>,
+        video_channel: Option<String>,
     }
 
+    // LEFT JOINs whose ON-clause picks ONE episode via a LIMIT-1 subquery:
+    // `episodes.podcast_guid`/`video_id` carry no UNIQUE constraint, so a plain
+    // join would fan ONE link into several rows and the UI would list the same
+    // pair twice. Titles are hydrated, never stored — a renamed episode shows
+    // its new name without a re-match.
+    //
+    // ⚠️ The titles are passed through `title_or_none` on the way out. sqlx-sqlite
+    // infers nullability from the UNDERLYING column's NOT NULL flag and ignores
+    // the join, so `episodes.title` is recorded non-nullable even when the LEFT
+    // JOIN makes it NULL — and sqlx then decodes that NULL as `Some("")`. The
+    // UI must see `None` there so it falls back to the id, so the empty string
+    // is mapped back to None here, where the intent is explicit.
     let rows = sqlx::query_as!(
         EpisodeLinkRow,
         r#"SELECT
-            id,
-            podcast_guid,
-            youtube_video_id,
-            confidence,
-            matched_at,
-            matched_by as "matched_by: _",
-            title_similarity,
-            date_diff_days,
-            duration_diff_seconds,
-            user_confirmed,
-            created_at,
-            updated_at
-         FROM episode_links WHERE confidence >= ? ORDER BY confidence DESC"#,
+            el.id,
+            el.podcast_guid,
+            el.youtube_video_id,
+            el.confidence,
+            el.matched_at,
+            el.matched_by as "matched_by: _",
+            el.title_similarity,
+            el.date_diff_days,
+            el.duration_diff_seconds,
+            el.user_confirmed,
+            el.created_at,
+            el.updated_at,
+            pod.title as podcast_title,
+            vid.title as video_title,
+            pod_ch.title as podcast_channel,
+            vid_ch.title as video_channel
+         FROM episode_links el
+         LEFT JOIN episodes pod
+                ON pod.id = (SELECT p.id FROM episodes p
+                              WHERE p.podcast_guid = el.podcast_guid LIMIT 1)
+         LEFT JOIN channels pod_ch ON pod_ch.id = pod.channel_id
+         LEFT JOIN episodes vid
+                ON vid.id = (SELECT v.id FROM episodes v
+                              WHERE v.video_id = el.youtube_video_id LIMIT 1)
+         LEFT JOIN channels vid_ch ON vid_ch.id = vid.channel_id
+         WHERE el.confidence >= ?
+         ORDER BY el.confidence DESC"#,
         min_conf
     )
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|r| EpisodeLink {
-        id: r.id,
-        podcast_guid: r.podcast_guid,
-        youtube_video_id: r.youtube_video_id,
-        confidence: r.confidence,
-        matched_at: r.matched_at,
-        matched_by: r.matched_by,
-        title_similarity: r.title_similarity,
-        date_diff_days: r.date_diff_days,
-        duration_diff_seconds: r.duration_diff_seconds,
-        user_confirmed: r.user_confirmed != 0,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| crate::commands::smart_links::EpisodeLinkWithTitles {
+            link: EpisodeLink {
+                id: r.id,
+                podcast_guid: r.podcast_guid,
+                youtube_video_id: r.youtube_video_id,
+                confidence: r.confidence,
+                matched_at: r.matched_at,
+                matched_by: r.matched_by,
+                title_similarity: r.title_similarity,
+                date_diff_days: r.date_diff_days,
+                duration_diff_seconds: r.duration_diff_seconds,
+                user_confirmed: r.user_confirmed != 0,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+            },
+            podcast_title: title_or_none(r.podcast_title),
+            video_title: title_or_none(r.video_title),
+            podcast_channel: title_or_none(r.podcast_channel),
+            video_channel: title_or_none(r.video_channel),
+        })
+        .collect())
+}
+
+/// A hydrated title is `None` when it is absent OR empty. Absent arrives as
+/// `Some("")` because sqlx records `episodes.title` as non-nullable (it ignores
+/// the LEFT JOIN that makes it nullable), and an empty stored title is not a
+/// title either. The UI treats `None` as "fall back to the raw id".
+fn title_or_none(title: Option<String>) -> Option<String> {
+    title.filter(|t| !t.is_empty())
 }
 
 pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
@@ -2445,16 +2495,16 @@ mod d6_d7_tests {
 
         set_episode_link_confirmation(&pool, "link-1", true).await.expect("confirm");
         let links = list_episode_links(&pool, None).await.expect("list links");
-        let link = links.iter().find(|l| l.id == "link-1").expect("link present");
-        assert!(link.user_confirmed, "confirm must set user_confirmed");
-        assert!(link.updated_at.inner() > before, "updated_at must move forward");
-        let other = links.iter().find(|l| l.id == "link-2").expect("other link present");
-        assert!(!other.user_confirmed, "the flip must touch ONLY the named link");
+        let link = links.iter().find(|l| l.link.id == "link-1").expect("link present");
+        assert!(link.link.user_confirmed, "confirm must set user_confirmed");
+        assert!(link.link.updated_at.inner() > before, "updated_at must move forward");
+        let other = links.iter().find(|l| l.link.id == "link-2").expect("other link present");
+        assert!(!other.link.user_confirmed, "the flip must touch ONLY the named link");
 
         set_episode_link_confirmation(&pool, "link-1", false).await.expect("unconfirm");
         let links = list_episode_links(&pool, None).await.expect("list links");
-        let link = links.iter().find(|l| l.id == "link-1").expect("link present");
-        assert!(!link.user_confirmed, "unconfirm must clear user_confirmed");
+        let link = links.iter().find(|l| l.link.id == "link-1").expect("link present");
+        assert!(!link.link.user_confirmed, "unconfirm must clear user_confirmed");
     }
 
     #[tokio::test]
@@ -2478,7 +2528,7 @@ mod d6_d7_tests {
         // The seeded row must be untouched by the failed calls.
         let links = list_episode_links(&pool, None).await.expect("list links");
         assert_eq!(links.len(), 1);
-        assert!(!links[0].user_confirmed);
+        assert!(!links[0].link.user_confirmed);
     }
 
     #[tokio::test]
@@ -2491,7 +2541,143 @@ mod d6_d7_tests {
 
         let links = list_episode_links(&pool, None).await.expect("list links");
         assert_eq!(links.len(), 1, "only the unlinked row remains");
-        assert_eq!(links[0].id, "link-2");
+        assert_eq!(links[0].link.id, "link-2");
+    }
+
+    // ---- Live-test Task 5: Smart Links show titles, not raw ids ----
+    // The panel printed `{podcast_guid} ↔ {youtube_video_id}` — ids the owner
+    // cannot judge. The list query now joins the episodes on both keys so the
+    // UI can show real titles, and leaves the ids for the UI to fall back to.
+
+    #[tokio::test]
+    async fn list_episode_links_resolves_both_sides_titles_and_channels() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-pod", "feed-pod", "The Deep Dive Podcast", "podcast", None).await;
+        insert_channel(&pool, "ch-vid", "UC-vid", "Tech Talks Weekly", "video", None).await;
+        insert_stream_episode(
+            &pool, "ep-pod", "ch-pod", "deep-dive-042",
+            "Episode 42 — RSS is winning again",
+            None, Some("deep-dive-042"), None, None, None,
+        )
+        .await;
+        insert_stream_episode(
+            &pool, "ep-vid", "ch-vid", "dQw4w9WgXcQ",
+            "How Invidious pools actually work",
+            Some("dQw4w9WgXcQ"), None, None, None, None,
+        )
+        .await;
+        insert_link(&pool, "link-1", "deep-dive-042", "dQw4w9WgXcQ").await;
+
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        let l = &links[0];
+        assert_eq!(l.link.podcast_guid, "deep-dive-042");
+        assert_eq!(
+            l.podcast_title.as_deref(),
+            Some("Episode 42 — RSS is winning again"),
+            "the podcast side resolves its local episode title"
+        );
+        assert_eq!(l.podcast_channel.as_deref(), Some("The Deep Dive Podcast"));
+        assert_eq!(
+            l.video_title.as_deref(),
+            Some("How Invidious pools actually work"),
+            "the video side resolves its local episode title"
+        );
+        assert_eq!(l.video_channel.as_deref(), Some("Tech Talks Weekly"));
+    }
+
+    #[tokio::test]
+    async fn list_episode_links_without_a_local_episode_has_no_title() {
+        let pool = fresh_pool().await;
+        // A link whose NEITHER episode is local: the join must yield NULL, so
+        // the UI knows to fall back to the id — it must NOT be dropped from
+        // the list, and it must NOT borrow another episode's title.
+        insert_link(&pool, "link-1", "guid-no-local-episode", "vid-no-local-episode").await;
+
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        assert_eq!(links.len(), 1, "an unlocal link is still listed");
+        let l = &links[0];
+        assert!(l.podcast_title.is_none(), "no local podcast episode ⇒ no title");
+        assert!(l.podcast_channel.is_none());
+        assert!(l.video_title.is_none(), "no local video episode ⇒ no title");
+        assert!(l.video_channel.is_none());
+        // The ids survive for the fallback.
+        assert_eq!(l.link.podcast_guid, "guid-no-local-episode");
+        assert_eq!(l.link.youtube_video_id, "vid-no-local-episode");
+    }
+
+    #[tokio::test]
+    async fn a_duplicated_guid_never_fans_one_link_into_several_rows() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-pod", "feed-pod", "The Deep Dive Podcast", "podcast", None).await;
+        // `episodes.podcast_guid` carries NO unique constraint, so two rows may
+        // share one guid. A plain join would then return the SAME link twice
+        // and the UI would list a duplicate pair. The LIMIT-1 subquery in the
+        // ON clause must prevent that.
+        //
+        // The two rows MUST differ in external_id: `episodes` is
+        // UNIQUE(channel_id, external_id), so two rows sharing BOTH would make
+        // `INSERT OR IGNORE` silently drop the second and this test would pass
+        // without ever exercising a duplicate (measured — the first version of
+        // this test was vacuous for exactly that reason).
+        insert_stream_episode(
+            &pool, "ep-pod-a", "ch-pod", "ext-a",
+            "Episode 42 — RSS is winning again",
+            None, Some("dup-guid"), None, None, None,
+        )
+        .await;
+        insert_stream_episode(
+            &pool, "ep-pod-b", "ch-pod", "ext-b",
+            "Episode 42 (re-imported copy)",
+            None, Some("dup-guid"), None, None, None,
+        )
+        .await;
+
+        // Guard the FIXTURE itself: if the duplicate did not land, the row-count
+        // assertion below proves nothing. Measured once already.
+        let dupes = sqlx::query("SELECT COUNT(*) AS n FROM episodes WHERE podcast_guid = 'dup-guid'")
+            .fetch_one(&pool)
+            .await
+            .expect("count duplicate guids");
+        let n: i64 = sqlx::Row::try_get(&dupes, "n").expect("count column");
+        assert_eq!(n, 2, "fixture must hold TWO episodes sharing one guid");
+
+        insert_link(&pool, "link-1", "dup-guid", "vid-no-local-episode").await;
+
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        assert_eq!(links.len(), 1, "one link must yield exactly one row");
+        assert!(links[0].podcast_title.is_some(), "a title still resolves");
+    }
+
+    #[tokio::test]
+    async fn list_episode_links_never_cross_matches_the_two_sides() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-pod", "feed-pod", "The Deep Dive Podcast", "podcast", None).await;
+        insert_channel(&pool, "ch-vid", "UC-vid", "Tech Talks Weekly", "video", None).await;
+        // A podcast episode whose guid matches the link's PODCAST key, and a
+        // video episode matching the VIDEO key. A join that used one key for
+        // both sides would attach the wrong title to a side.
+        insert_stream_episode(
+            &pool, "ep-pod", "ch-pod", "guid-pod",
+            "Episode 42 — RSS is winning again",
+            None, Some("guid-pod"), None, None, None,
+        )
+        .await;
+        insert_stream_episode(
+            &pool, "ep-vid", "ch-vid", "vid-video",
+            "How Invidious pools actually work",
+            Some("vid-video"), None, None, None, None,
+        )
+        .await;
+        insert_link(&pool, "link-1", "guid-pod", "vid-video").await;
+
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        let l = &links[0];
+        assert_eq!(l.podcast_title.as_deref(), Some("Episode 42 — RSS is winning again"));
+        assert_eq!(l.video_title.as_deref(), Some("How Invidious pools actually work"));
+        assert_ne!(
+            l.podcast_title, l.video_title,
+            "the two sides must not resolve to each other's episode"
+        );
     }
 
     // The TS side calls invoke<{ matched_count: number }>('match_episodes')

@@ -169,6 +169,13 @@ export interface EpisodeLink {
   user_confirmed: boolean;
   created_at: string;
   updated_at: string;
+  /** Hydrated at read time by the list query's join (not stored on the link).
+   *  `undefined` when no local episode carries the guid — the UI falls back to
+   *  the raw id rather than inventing a title. */
+  podcast_title?: string;
+  video_title?: string;
+  podcast_channel?: string;
+  video_channel?: string;
 }
 
 // ============================

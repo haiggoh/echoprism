@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n            el.id,\n            el.podcast_guid,\n            el.youtube_video_id,\n            el.confidence,\n            el.matched_at,\n            el.matched_by as \"matched_by: _\",\n            el.title_similarity,\n            el.date_diff_days,\n            el.duration_diff_seconds,\n            el.user_confirmed,\n            el.created_at,\n            el.updated_at,\n            pod.title as podcast_title,\n            vid.title as video_title,\n            pod_ch.title as podcast_channel,\n            vid_ch.title as video_channel\n         FROM episode_links el\n         LEFT JOIN episodes pod\n                ON pod.id = (SELECT p.id FROM episodes p\n                              WHERE p.podcast_guid = el.podcast_guid LIMIT 1)\n         LEFT JOIN channels pod_ch ON pod_ch.id = pod.channel_id\n         LEFT JOIN episodes vid\n                ON vid.id = (SELECT v.id FROM episodes v\n                              WHERE v.video_id = el.youtube_video_id LIMIT 1)\n         LEFT JOIN channels vid_ch ON vid_ch.id = vid.channel_id\n         WHERE el.confidence >= ?\n         ORDER BY el.confidence DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_guid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "youtube_video_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "confidence",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "matched_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "matched_by: _",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "title_similarity",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "date_diff_days",
+        "ordinal": 7,
+        "type_info": "Int64"
+      },
+      {
+        "name": "duration_diff_seconds",
+        "ordinal": 8,
+        "type_info": "Int64"
+      },
+      {
+        "name": "user_confirmed",
+        "ordinal": 9,
+        "type_info": "Int64"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_title",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "video_title",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_channel",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "video_channel",
+        "ordinal": 15,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ffae3dd4a38859df8cfa3b0b47fbc27f8670e13a6e34117a85a4ed32775cbeaf"
+}

@@ -181,7 +181,10 @@ impl Database {
     }
 
     // Episode links
-    pub async fn list_episode_links(&self, confidence_min: Option<f64>) -> DbResult<Vec<EpisodeLink>> {
+    pub async fn list_episode_links(
+        &self,
+        confidence_min: Option<f64>,
+    ) -> DbResult<Vec<crate::commands::smart_links::EpisodeLinkWithTitles>> {
         queries::list_episode_links(&self.pool, confidence_min).await
     }
 
