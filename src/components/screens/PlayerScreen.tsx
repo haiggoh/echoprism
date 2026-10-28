@@ -25,6 +25,7 @@ export function PlayerScreen() {
     togglePlay,
     seek,
     setVolume,
+    toggleMute,
     setAudioMode,
     togglePip,
     nextTrack,
@@ -196,9 +197,16 @@ export function PlayerScreen() {
 
         {/* Main Controls */}
         <div className="flex items-center justify-center gap-6 mb-4">
+          {/* Live-test batch 2 Task 1b: the leftmost button is SHUFFLE. It was
+              already wired, but carried no aria-pressed and no active styling,
+              so toggling it changed the queue's behaviour while looking
+              identical — which reads as "not wired". Same pattern the rest of
+              the codebase uses for toggles (InstanceCard, ChannelCard). */}
           <button
-            className="btn-ghost p-2"
+            className={`btn-ghost p-2 ${shuffle ? 'text-accent' : ''}`}
             aria-label="Shuffle"
+            aria-pressed={shuffle}
+            title={shuffle ? 'Shuffle is on' : 'Shuffle is off'}
             onClick={() => setShuffle(!shuffle)}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -271,6 +279,8 @@ export function PlayerScreen() {
           <button
             className="btn-ghost p-2"
             aria-label={`Repeat: ${repeatMode}`}
+            aria-pressed={repeatMode !== 'off'}
+            title={`Repeat: ${repeatMode}`}
             onClick={cycleRepeat}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -306,9 +316,22 @@ export function PlayerScreen() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="btn-ghost p-2" aria-label="Volume">
+            {/* Live-test batch 2 Task 1: this was a speaker icon with NO
+                handler, sitting beside a live volume slider that carried the
+                SAME accessible name — two controls named "Volume", one inert.
+                The owner's instruction was to find out why it was there rather
+                than delete it: a speaker icon beside an always-visible slider
+                is a mute toggle, so that is what it now is. Its own label keeps
+                the slider the only control named "Volume". */}
+            <button
+              className="btn-ghost p-2"
+              aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+              title={volume === 0 ? 'Unmute' : 'Mute'}
+              onClick={toggleMute}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                {volume === 0 && <line x1="4" y1="4" x2="20" y2="20"></line>}
               </svg>
             </button>
             {/* Live-test Task 7: playback speed, beside the volume slider. */}

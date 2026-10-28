@@ -17,6 +17,10 @@ interface PlayerState {
   setDuration: (duration: number) => void;
   setPlaybackRate: (rate: number) => void;
   setVolume: (volume: number) => void;
+  /** The level a mute was taken FROM, so unmuting restores it instead of
+   *  jumping to 1.0. Live-test batch 2 Task 1. */
+  volumeBeforeMute: number;
+  toggleMute: () => void;
   setAudioMode: (mode: boolean) => void;
   setPip: (pip: boolean) => void;
   setInstance: (instanceId?: string) => void;
@@ -30,6 +34,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   isPip: false,
   volume: 1.0,
   playbackRate: 1.0,
+  volumeBeforeMute: 1.0,
   currentInstanceId: undefined,
 
   setPlaybackState: (state) => set((prev) => ({
@@ -45,6 +50,16 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   })),
   setPlaybackRate: (rate) => set({ playbackRate: rate }),
   setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)) }),
+  toggleMute: () =>
+    set((state) => {
+      if (state.volume > 0) {
+        // Remember where we muted from — a manual drag to 0 is the same
+        // state and should not be treated as a mute to undo.
+        return { volume: 0, volumeBeforeMute: state.volume };
+      }
+      const restore = state.volumeBeforeMute > 0 ? state.volumeBeforeMute : 1.0;
+      return { volume: restore };
+    }),
   setAudioMode: (mode) => set({ isAudioMode: mode }),
   setPip: (pip) => set({ isPip: pip }),
   setInstance: (instanceId) => set({ currentInstanceId: instanceId }),

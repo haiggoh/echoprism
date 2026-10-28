@@ -34,6 +34,8 @@ interface PlayerContextType {
   togglePlay: () => void;
   seek: (position: number) => void;
   setVolume: (volume: number) => void;
+  /** Mute/unmute. Unmute restores the level the mute was taken from. */
+  toggleMute: () => void;
   setPlaybackRate: (rate: number) => void;
   setAudioMode: (mode: boolean) => void;
   togglePip: () => void;
@@ -66,6 +68,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setAudioMode: setStoreAudioMode,
     setPip,
     setVolume,
+    toggleMute,
     setPlaybackRate: setStorePlaybackRate,
   } = usePlayerStore();
   const { items, currentIndex, repeatMode, setCurrentIndex, nextTrack: queueNext, previousTrack: queuePrev } = useQueueStore();
@@ -482,6 +485,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     togglePlay,
     seek,
     setVolume,
+    toggleMute,
     setPlaybackRate,
     setAudioMode,
     togglePip,
