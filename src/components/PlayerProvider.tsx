@@ -218,8 +218,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (mode: boolean) => {
       setStoreAudioMode(mode);
       applyPlaybackFormat(mode ? 'audio' : 'video');
+      // Live-test batch 2 Task 3: dropping the CURRENT stream is the whole fix.
+      // Without it the resolve effect bails on `streamUrl` already being set,
+      // so toggling mid-playback switched the active element to the hidden
+      // <audio> — which has no src — while the video stream kept running
+      // invisibly. The toggle looked inert, which is what the owner reported.
+      // Clearing it makes the effect resolve again for the new format.
+      // Playback position is NOT reset here: the effect restores it from the
+      // store on the new src (the F06 format-switch sync).
+      setStreamUrl(null);
     },
-    [setStoreAudioMode]
+    [setStoreAudioMode, setStreamUrl]
   );
 
   // Resolve the stream for the current episode once playback is requested.

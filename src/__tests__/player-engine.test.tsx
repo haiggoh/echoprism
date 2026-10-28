@@ -13,7 +13,7 @@
  *    playback (D1 regression: adding to the queue must never download/stream).
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '../components/ui/Toaster';
@@ -154,23 +154,47 @@ describe('PlayerProvider media engine', () => {
     expect(probeVideo.currentTime).toBe(42);
   });
 
-  it('switching to audio mode moves the stream to the audio element and keeps position', async () => {
+  it('switching to audio mode re-resolves for the AUDIO stream and keeps position', async () => {
+    // REWRITTEN 2026-10-29 (live-test batch 2, Task 3).
+    //
+    // The previous version of this test asserted the OPPOSITE — "The stream is
+    // reused, not re-resolved (same src, one resolution)" with
+    // `expect(streamMock).toHaveBeenCalledTimes(1)`, and checked that the audio
+    // element carried the VIDEO stream's URL. That pinned the defect the owner
+    // reported as working-as-intended: "the audio only checkbox doesn't seem to
+    // do anything." setAudioMode only switched which element was active while
+    // the video stream kept running on a hidden <audio>, so nothing audible or
+    // visible changed.
+    //
+    // The real contract: the toggle must drop the current stream so the engine
+    // resolves an AUDIO one, and playback position carries across the switch.
     const ep = makeEpisode({ progress_seconds: 42 });
-    streamMock.mockResolvedValue({ url: 'https://mock/ep.m3u8', format: 'video' });
+    streamMock.mockImplementation((_id: string, format?: string) =>
+      Promise.resolve({
+        url: `https://mock/${format ?? 'video'}/ep.m3u8`,
+        format: format ?? 'video',
+      }),
+    );
     renderEngine();
 
     await act(async () => {
       api.play(ep);
     });
+    await waitFor(() => expect(streamMock).toHaveBeenCalledWith(ep.id, 'video'));
+
     await act(async () => {
       api.setAudioMode(true);
     });
 
     const audioEl = container.querySelector('audio') as HTMLAudioElement;
-    // The stream is reused, not re-resolved (same src, one resolution).
-    expect(streamMock).toHaveBeenCalledTimes(1);
-    expect(audioEl.src).toContain('https://mock/ep.m3u8');
+    await waitFor(() => expect(streamMock).toHaveBeenLastCalledWith(ep.id, 'audio'));
+
+    // The AUDIO stream, not the video one repurposed.
+    expect(audioEl.src).toContain('/audio/ep.m3u8');
+    expect(audioEl.src).not.toContain('/video/ep.m3u8');
+    // Position carried across the format switch (the F06 sync).
     expect(audioEl.currentTime).toBe(42);
+    // ...and the video element is released rather than left playing invisibly.
     expect(probeVideo.paused).toBe(true);
   });
 
