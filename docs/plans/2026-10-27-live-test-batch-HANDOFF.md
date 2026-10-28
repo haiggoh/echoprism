@@ -104,7 +104,7 @@ final summary into §7.
 - [x] Task 4 — channels subscribed-only + real unsubscribe
 - [x] Task 5 — Smart Links titles
 - [x] Task 6 — Tauri capabilities — ⚠️ **OWNER-VERIFY PENDING**: launch `tauri dev`, use the native Playback menu, and confirm `crash-reports.jsonl` gains no new `event.listen` line. Code + test + build verified; only the runtime check is outstanding.
-- [ ] Task 7 — playback speed
+- [x] Task 7 — playback speed
 - [ ] Task 8 — queue next / previous / separate restart
 - [ ] Task 9 — podcast cover art
 - [ ] Task 10 — clickable channels + avatars

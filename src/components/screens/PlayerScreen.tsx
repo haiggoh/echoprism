@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
+import { SpeedControl } from '../player/SpeedControl';
 import { usePlayer } from '../PlayerProvider';
 import { useQueueStore } from '../../store/slices/queueSlice';
 import { useConvergence } from '../../hooks/useConvergence';
@@ -281,6 +282,11 @@ export function PlayerScreen() {
                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
               </svg>
             </button>
+            {/* Live-test Task 7: playback speed, beside the volume slider. */}
+            <div className="w-28">
+              <SpeedControl />
+            </div>
+
             <div className="w-32">
               <input
                 type="range"

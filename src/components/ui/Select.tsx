@@ -97,6 +97,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               onChange={handleSelectChange}
               onBlur={onBlur}
               onKeyDown={handleKeyDown}
+              // `value` was destructured above but never applied, leaving the
+              // select UNCONTROLLED: it showed whatever the user last picked
+              // and ignored the prop entirely, so a caller that renders the
+              // current state (SpeedControl's playback rate) could not show it.
+              value={value}
               disabled={loading || disabledProp}
               aria-invalid={error ? 'true' : 'false'}
               aria-describedby={error ? `${selectId}-error` : hint ? `${selectId}-hint` : undefined}

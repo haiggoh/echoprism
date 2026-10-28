@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { usePlayer } from './PlayerProvider';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
+import { SpeedControl } from './player/SpeedControl';
 import { useConvergence } from '../hooks/useConvergence';
 import { Thumbnail } from './ui/Thumbnail';
 
@@ -170,11 +171,18 @@ export function MiniPlayer() {
           </button>
         </div>
 
-        {/* Right side: PrismConvergeToggle + Audio toggle + Volume + time */}
+        {/* Right side: PrismConvergeToggle + Audio toggle + Speed + Volume + time */}
         <div className="flex items-center gap-4">
           <span className="text-sm text-text-muted tabular-nums hidden md:block">
             {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
+
+          {/* Live-test Task 7: playback speed. Hidden on narrow layouts,
+              where the bar is already crowded — the full player has it
+              always. */}
+          <div className="w-24 hidden md:block">
+            <SpeedControl />
+          </div>
 
           <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="sm" />
 

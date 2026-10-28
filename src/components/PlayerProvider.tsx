@@ -6,6 +6,7 @@ import { episodeCommands, historyCommands } from '../hooks/useTauriCommands';
 import { resolveDefaultPlayMode } from '../lib/playModeChain';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
+import { readStoredPlaybackRate, writeStoredPlaybackRate } from './player/SpeedControl';
 import { useToasts } from './ui/Toaster';
 import { Channel, Episode, PlayMode, PlayModeRule } from '../types';
 
@@ -59,7 +60,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setAudioMode: setStoreAudioMode,
     setPip,
     setVolume,
-    setPlaybackRate,
+    setPlaybackRate: setStorePlaybackRate,
   } = usePlayerStore();
   const { items, currentIndex, nextTrack: queueNext, previousTrack: queuePrev } = useQueueStore();
   const { addToast } = useToasts();
@@ -99,6 +100,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playbackFormatRef.current = format;
     setPlaybackFormat(format);
   };
+
+  // Playback speed is a STANDING preference, not per-playback state: the owner
+  // picks 1.5x once and expects it to hold, which means it must outlive the
+  // session. (Live-test Task 7: the rate existed but nothing persisted it, so
+  // the choice died with every launch.) Best-effort by design — a storage
+  // failure must not break the rate change itself.
+  const setPlaybackRate = useCallback(
+    (rate: number) => {
+      setStorePlaybackRate(rate);
+      writeStoredPlaybackRate(rate);
+    },
+    [setStorePlaybackRate],
+  );
+
+  // Restore the persisted rate once, on mount. A ref guards it so a re-mount
+  // inside the same session (a test re-render, a StrictMode double-invoke)
+  // does not overwrite a rate the user changed after launch. An absent or
+  // unusable stored value leaves the store default alone.
+  const rateHydrated = useRef(false);
+  useEffect(() => {
+    if (rateHydrated.current) return;
+    rateHydrated.current = true;
+    const stored = readStoredPlaybackRate();
+    if (stored !== null) setStorePlaybackRate(stored);
+  }, [setStorePlaybackRate]);
+
+  // Mirrored for the src-change path below, which is not keyed on the rate.
+  const playbackRateRef = useRef(playbackRate);
+  playbackRateRef.current = playbackRate;
   // play() re-created each render; auto-advance reads it through a ref to avoid effect loops.
   const playRef = useRef<(ep: Episode, mode?: PlayMode) => void>(() => {});
 
@@ -253,6 +283,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (activeEl.getAttribute('src') !== streamUrl) {
       activeEl.src = streamUrl;
       activeEl.currentTime = playbackState?.position_seconds ?? 0;
+      // The HTML media spec RESETS playbackRate to 1 whenever a new src is
+      // loaded, and the element NODE is reused for every episode, so the
+      // [playbackRate, videoEl] effect below never sees the change — leaving
+      // every new episode silently playing at 1x after the owner chose 1.5x.
+      // Re-apply here, where the src actually changes. Read from a ref so this
+      // effect does not need to re-run (and re-enter its play() branch) on
+      // every rate change.
+      activeEl.playbackRate = playbackRateRef.current;
     }
     if (isPlaying) {
       void activeEl.play().catch((err: unknown) => {
