@@ -96,9 +96,16 @@ impl NetPath {
     }
 
     /// Re-measure in the background. Never awaited by playback.
+    ///
+    /// Spawned through Tauri's own runtime, NOT `tokio::spawn`: this runs from
+    /// `.setup()`, which on macOS executes on the main thread via tao's
+    /// `did_finish_launching`, outside any Tokio runtime — a bare `tokio::spawn`
+    /// aborted the app at launch with "there is no reactor running" (regression
+    /// 2026-10-28, pinned by spawn_probe_outside_a_runtime_does_not_panic).
+    /// Same call the background-task loops use (background_tasks/mod.rs).
     pub fn spawn_probe(self: &Arc<Self>) {
         let me = self.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let v = probe_ipv6(PROBE_HOST, PROBE_TIMEOUT).await;
             tracing::info!("IPv6 to {} probe: {:?}", PROBE_HOST, v);
             me.set(v);
@@ -236,6 +243,41 @@ mod tests {
         let np = Arc::new(NetPath::in_memory());
         np.set(v);
         np
+    }
+
+    /// Regression, live-test 2026-10-28: `echoprism` aborted at launch with
+    /// "there is no reactor running, must be called from the context of a Tokio
+    /// 1.x runtime", traced to the probe spawn in NetPath::spawn_probe.
+    /// `.setup()` runs on the main thread — macOS reaches it through tao's
+    /// `did_finish_launching` — where there is no Tokio runtime, so a bare
+    /// `tokio::spawn` panics and takes the whole app down.
+    ///
+    /// Deliberately a PLAIN `#[test]`, NOT `#[tokio::test]`: the defect is
+    /// precisely that no runtime is present, and a tokio::test would supply one
+    /// and pass against the broken code.
+    #[test]
+    fn spawn_probe_outside_a_runtime_does_not_panic() {
+        use std::panic::{self, AssertUnwindSafe};
+
+        // The panic is ASSERTED here, not a real failure, so keep the default
+        // hook from printing a backtrace into the test log.
+        let prev_hook = panic::take_hook();
+        panic::set_hook(Box::new(|_| {}));
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+            Arc::new(NetPath::in_memory()).spawn_probe();
+        }));
+        panic::set_hook(prev_hook);
+
+        let panic_msg = result.as_ref().err().and_then(|p| {
+            p.downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| p.downcast_ref::<String>().cloned())
+        });
+        assert!(
+            result.is_ok(),
+            "spawn_probe must spawn through Tauri's own runtime (tauri::async_runtime::spawn), \
+             not tokio::spawn — .setup() runs outside a Tokio runtime. Panicked with: {panic_msg:?}"
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { smartLinkCommands } from '../../hooks/useTauriCommands';
+import type { EpisodeLink } from '../../types';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 
@@ -32,6 +33,17 @@ function LinkSide({ title, id }: { title?: string; id: string }) {
       {id}
     </span>
   );
+}
+
+/**
+ * The best human-readable name for a link: an episode TITLE beats an opaque
+ * guid. The owner's complaint was ids a person "doesn't know how to judge" —
+ * and a screen-reader user hears the row's BUTTON names rather than the
+ * rendered text, so an action still labelled with the raw guid is the same
+ * defect on a different surface. (Live-test Task 5 follow-up.)
+ */
+function linkLabel(link: EpisodeLink): string {
+  return link.podcast_title ?? link.podcast_guid;
 }
 
 export function SmartLinksPanel({
@@ -136,7 +148,7 @@ export function SmartLinksPanel({
               <div className="flex items-center gap-2 shrink-0">
                 <Button
                   variant="ghost"
-                  aria-label={`Confirm link ${link.podcast_guid}`}
+                  aria-label={`Confirm link ${linkLabel(link)}`}
                   onClick={() =>
                     confirmMutation.mutate({ linkId: link.id, confirmed: !link.user_confirmed })
                   }
@@ -145,7 +157,7 @@ export function SmartLinksPanel({
                 </Button>
                 <Button
                   variant="ghost"
-                  aria-label={`Unlink ${link.podcast_guid}`}
+                  aria-label={`Unlink ${linkLabel(link)}`}
                   onClick={() => unlinkMutation.mutate(link.id)}
                 >
                   Unlink

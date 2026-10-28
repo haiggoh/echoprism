@@ -117,6 +117,26 @@ describe('Live-test Task 5: Smart Links are human-readable', () => {
     // monospace + muted, which is the visual contract for "no title".
     expect(unlocal?.querySelector('.font-mono')).toBeTruthy();
   });
+
+  it("names the row's actions with the title, not the opaque guid", async () => {
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('smart-link-row').length).toBeGreaterThan(0);
+    });
+
+    // The owner's complaint was about ids a person "doesn't know how to judge".
+    // A screen-reader user hears the row's BUTTON names, not the rendered
+    // text — so an action still labelled with the raw guid is the exact same
+    // defect on a different surface. (Live-test Task 5's follow-up.)
+    expect(
+      screen.getByRole('button', { name: /Confirm link .*Episode 42 — RSS is winning again/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /Unlink .*Episode 42 — RSS is winning again/i }),
+    ).toBeTruthy();
+    // No button may still name the raw guid for a link that HAS a title.
+    expect(screen.queryByRole('button', { name: /deep-dive-042/ })).toBeNull();
+  });
 });
 
 /**
