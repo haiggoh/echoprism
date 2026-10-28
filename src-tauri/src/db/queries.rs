@@ -278,6 +278,23 @@ pub async fn upsert_podcast_subscription(
         }
     };
 
+    // Live-test Task 10: the channel-art backfill. The INSERT above writes
+    // thumbnail_url only for a NEW channel, so one subscribed before the parser
+    // read <itunes:image> keeps NULL forever — and the Channels list renders
+    // exactly this column. NULL-only, so a hand-picked image is never
+    // overwritten (and on the fresh-insert path it is a harmless no-op, since
+    // that row's art is already set).
+    if feed_data.thumbnail_url.is_some() {
+        sqlx::query(
+            "UPDATE channels SET thumbnail_url = ? WHERE id = ? AND thumbnail_url IS NULL",
+        )
+        .bind(&feed_data.thumbnail_url)
+        .bind(&channel_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
     sqlx::query(
         "INSERT OR IGNORE INTO podcast_feeds (user_id, feed_url, title, description, thumbnail_url, link, language, author, categories, last_fetched_at) \
          VALUES ('current-user', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -294,6 +311,18 @@ pub async fn upsert_podcast_subscription(
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
+    // INSERT OR REPLACE-SHAPED gap: the OR IGNORE above leaves an existing
+    // feed row's art untouched, so the same NULL-only backfill is needed here.
+    if feed_data.thumbnail_url.is_some() {
+        sqlx::query(
+            "UPDATE podcast_feeds SET thumbnail_url = ? WHERE feed_url = ? AND thumbnail_url IS NULL",
+        )
+        .bind(&feed_data.thumbnail_url)
+        .bind(feed_url)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
 
     let mut inserted = 0usize;
     for episode in &feed_data.episodes {
@@ -3098,6 +3127,102 @@ mod podcast_subscription_tests {
             art.iter().find(|(id, _)| id == "vergecast-ep-99").map(|(_, t)| t.clone()),
             Some(Some("https://img.example/ep100-custom.jpg".to_string())),
             "existing art is NEVER overwritten"
+        );
+    }
+
+    /// Live-test Task 10: "the should have small profile pictures". The channel
+    /// row writes art only on INSERT, so a channel subscribed before the parser
+    /// read <itunes:image> keeps `thumbnail_url` NULL forever — the same shape as
+    /// the episode backfill above, on the row the Channels list renders.
+    ///
+    /// BOTH halves are pinned, because the first version of this test only set
+    /// the column to NULL — which meant removing the NULL guard from the UPDATE
+    /// changed nothing and the mutation check passed against broken code.
+    #[tokio::test]
+    async fn refresh_backfills_missing_channel_art_only() {
+        let pool = fresh_pool().await;
+        let feed_url = "https://feeds.megaphone.fm/vergecast";
+        let feed_art = feed().thumbnail_url.clone().expect("channel art");
+
+        upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+            .await
+            .expect("subscribe");
+
+        // HALF 1 — a missing art is filled from the feed.
+        query("UPDATE channels SET thumbnail_url = NULL WHERE external_id = ?")
+            .bind(feed_url)
+            .execute(&pool)
+            .await
+            .expect("clear channel art");
+        upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+            .await
+            .expect("refresh");
+        let after_fill: Option<String> =
+            sqlx::query_scalar("SELECT thumbnail_url FROM channels WHERE external_id = ?")
+                .bind(feed_url)
+                .fetch_one(&pool)
+                .await
+                .expect("read channel art");
+        assert_eq!(after_fill, Some(feed_art.clone()), "missing channel art is backfilled");
+
+        // HALF 2 — an EXISTING art, deliberately different, is never overwritten.
+        query("UPDATE channels SET thumbnail_url = ? WHERE external_id = ?")
+            .bind("https://img.example/picked-by-hand.jpg")
+            .bind(feed_url)
+            .execute(&pool)
+            .await
+            .expect("set a hand-picked channel art");
+        upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+            .await
+            .expect("refresh again");
+        let after_keep: Option<String> =
+            sqlx::query_scalar("SELECT thumbnail_url FROM channels WHERE external_id = ?")
+                .bind(feed_url)
+                .fetch_one(&pool)
+                .await
+                .expect("read channel art");
+        assert_eq!(
+            after_keep,
+            Some("https://img.example/picked-by-hand.jpg".to_string()),
+            "existing channel art is NEVER overwritten"
+        );
+
+        // ...and the same two halves on the feed row, whose INSERT OR IGNORE
+        // leaves an existing row untouched.
+        query("UPDATE podcast_feeds SET thumbnail_url = NULL WHERE feed_url = ?")
+            .bind(feed_url)
+            .execute(&pool)
+            .await
+            .expect("clear feed art");
+        upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+            .await
+            .expect("refresh feeds");
+        let feed_filled: String =
+            sqlx::query_scalar("SELECT thumbnail_url FROM podcast_feeds WHERE feed_url = ?")
+                .bind(feed_url)
+                .fetch_one(&pool)
+                .await
+                .expect("read feed art");
+        assert_eq!(feed_filled, feed_art, "missing feed art is backfilled too");
+
+        query("UPDATE podcast_feeds SET thumbnail_url = ? WHERE feed_url = ?")
+            .bind("https://img.example/feed-picked-by-hand.jpg")
+            .bind(feed_url)
+            .execute(&pool)
+            .await
+            .expect("set a hand-picked feed art");
+        upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+            .await
+            .expect("refresh feeds again");
+        let feed_kept: String =
+            sqlx::query_scalar("SELECT thumbnail_url FROM podcast_feeds WHERE feed_url = ?")
+                .bind(feed_url)
+                .fetch_one(&pool)
+                .await
+                .expect("read feed art");
+        assert_eq!(
+            feed_kept, "https://img.example/feed-picked-by-hand.jpg",
+            "existing feed art is NEVER overwritten"
         );
     }
 
