@@ -56,3 +56,62 @@ describe('default podcast artwork', () => {
     expect(screen.queryByTestId('podcast-fallback-icon')).toBeNull();
   });
 });
+
+/**
+ * Live-test Task 9: "the headphone icon works now, but I know these podcasts
+ * normally should have real cover images, we need those displayed there."
+ *
+ * The card only looked at `episode.thumbnail_url`, so a podcast episode
+ * without its own `<itunes:image>` showed the headphones silhouette even when
+ * its CHANNEL publishes cover art — which is the normal case. Task 2 shipped
+ * `Episode.channel`, so the channel's art is available at read time and the
+ * card must use it before falling back.
+ *
+ * Discriminants: reverting the card to `episode.thumbnail_url` alone fails the
+ * second test; removing the headphones branch entirely fails the third.
+ */
+const channelArt = {
+  id: 'ch-1',
+  title: 'Some More News',
+  thumbnail_url: 'https://img.example/smn-show-art.jpg',
+  type: 'podcast' as const,
+};
+
+describe('Live-test Task 9: channel cover art before the headphones fallback', () => {
+  it("an episode without its own art shows the CHANNEL's art", () => {
+    renderCard(
+      makeEpisode({
+        audio_url: 'https://example.dev/ep.mp3',
+        channel: channelArt,
+      }),
+    );
+    const art = screen.getByTestId('episode-art') as HTMLImageElement;
+    // The channel's cover is rendered, not the headphones glyph.
+    expect(art.getAttribute('src')).toBe(channelArt.thumbnail_url);
+    expect(screen.queryByTestId('podcast-fallback-icon')).toBeNull();
+  });
+
+  it("an episode's OWN art wins over the channel's", () => {
+    renderCard(
+      makeEpisode({
+        audio_url: 'https://example.dev/ep.mp3',
+        thumbnail_url: 'https://img.example/episode-art.jpg',
+        channel: channelArt,
+      }),
+    );
+    const art = screen.getByTestId('episode-art') as HTMLImageElement;
+    expect(art.getAttribute('src')).toBe('https://img.example/episode-art.jpg');
+  });
+
+  it('the headphones icon remains when NEITHER the episode nor the channel has art', () => {
+    // Review Focus 5: nothing invented, and no broken <img src="">.
+    renderCard(
+      makeEpisode({
+        audio_url: 'https://example.dev/ep.mp3',
+        channel: { id: 'ch-1', title: 'Some More News', type: 'podcast' as const },
+      }),
+    );
+    expect(screen.getByTestId('podcast-fallback-icon')).toBeTruthy();
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+});

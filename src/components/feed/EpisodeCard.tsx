@@ -41,12 +41,19 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
       >
-        {episode.thumbnail_url ? (
+        {/* Live-test Task 9: an episode's own art, else its CHANNEL's. A
+            podcast episode without its own <itunes:image> is the normal case,
+            and the show publishes cover art — so the headphones silhouette was
+            showing on nearly every row ("I know these podcasts normally should
+            have real cover images, we need those displayed there"). The
+            headphones glyph is now only for a feed with no art anywhere. */}
+        {(episode.thumbnail_url ?? episode.channel?.thumbnail_url) ? (
           <Thumbnail
-            src={episode.thumbnail_url}
+            src={(episode.thumbnail_url ?? episode.channel?.thumbnail_url) as string}
             alt=""
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
+            data-testid="episode-art"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-bg-elevated">

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type ImgHTMLAttributes } from 'react';
 import clsx from 'clsx';
 
-interface ThumbnailProps {
+interface ThumbnailProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'alt'> {
   src?: string;
   alt: string;
   className?: string;
@@ -16,7 +16,7 @@ interface ThumbnailProps {
  * content — dead URLs, feeds with no artwork — degrades to something
  * deliberate.
  */
-export function Thumbnail({ src, alt, className, loading }: ThumbnailProps) {
+export function Thumbnail({ src, alt, className, loading, ...rest }: ThumbnailProps) {
   const [failed, setFailed] = useState(!src);
 
   if (failed || !src) {
@@ -25,6 +25,7 @@ export function Thumbnail({ src, alt, className, loading }: ThumbnailProps) {
         data-testid="thumbnail-fallback"
         aria-hidden="true"
         className={clsx(className, 'bg-bg-elevated flex items-center justify-center overflow-hidden')}
+        {...rest}
       >
         <span
           className="bg-border-strong"
@@ -35,6 +36,6 @@ export function Thumbnail({ src, alt, className, loading }: ThumbnailProps) {
   }
 
   return (
-    <img src={src} alt={alt} className={className} loading={loading} onError={() => setFailed(true)} />
+    <img src={src} alt={alt} className={className} loading={loading} onError={() => setFailed(true)} {...rest} />
   );
 }

@@ -307,12 +307,29 @@ pub async fn upsert_podcast_subscription(
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(|e| e.to_string())?;
-        if exists.is_some() {
+        if let Some(episode_id) = exists {
+            // Live-test Task 9: BACKFILL the art on a row stored before the
+            // parser read it, so pressing Refresh is enough — the owner's 1,102
+            // stored podcast episodes are exactly this case. Only a MISSING
+            // thumbnail is filled; a hand-set or different image is never
+            // overwritten.
+            if episode.thumbnail_url.is_some() {
+                sqlx::query(
+                    "UPDATE episodes SET thumbnail_url = ? WHERE id = ? AND thumbnail_url IS NULL",
+                )
+                .bind(&episode.thumbnail_url)
+                .bind(&episode_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            }
             continue;
         }
         sqlx::query(
-            "INSERT INTO episodes (channel_id, external_id, title, description, duration_seconds, published_at, podcast_guid, audio_url) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            // Live-test Task 9: thumbnail_url is written here — an episode
+            // INSERT that omitted it left every podcast row artless.
+            "INSERT INTO episodes (channel_id, external_id, title, description, duration_seconds, published_at, podcast_guid, audio_url, thumbnail_url) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&channel_id)
         .bind(&episode.guid)
@@ -322,6 +339,7 @@ pub async fn upsert_podcast_subscription(
         .bind(episode.published_at.as_ref().map(|d| d.0.to_rfc3339()))
         .bind(&episode.guid)
         .bind(&episode.audio_url)
+        .bind(&episode.thumbnail_url)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -3011,6 +3029,7 @@ mod podcast_subscription_tests {
                     duration_seconds: Some(5912),
                     audio_url: Some("https://audio.example/ep100.mp3".into()),
                     transcript: None,
+                    thumbnail_url: Some("https://img.example/ep100.jpg".into()),
                 },
                 PodcastEpisode {
                     id: uuid::Uuid::new_v4().to_string(),
@@ -3023,9 +3042,63 @@ mod podcast_subscription_tests {
                     duration_seconds: Some(5400),
                     audio_url: Some("https://audio.example/ep99.mp3".into()),
                     transcript: None,
+                    thumbnail_url: Some("https://img.example/ep99.jpg".into()),
                 },
             ],
         }
+    }
+
+    /// Live-test Task 9: cover art must reach episodes stored BEFORE the parser
+    /// read it. The owner has 1,102 podcast episodes in the database with no
+    /// thumbnail at all, so a fix that only helps newly-fetched feeds changes
+    /// nothing they can see. Re-running the subscription (what pressing Refresh
+    /// does) fills a NULL art column and never overwrites a real one.
+    #[tokio::test]
+    async fn refresh_backfills_missing_art_only() {
+        let pool = fresh_pool().await;
+        let feed_url = "https://feeds.megaphone.fm/vergecast";
+        let (_, inserted) =
+            upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+                .await
+                .expect("subscribe");
+        assert_eq!(inserted, 2, "both episodes stored");
+
+        // Simulate the owner's real data: art absent, and one row carrying a
+        // DIFFERENT art that must survive (a hand-set or previously backfilled
+        // image).
+        query("UPDATE episodes SET thumbnail_url = NULL WHERE external_id = ?")
+            .bind("vergecast-ep-100")
+            .execute(&pool)
+            .await
+            .expect("clear one art");
+        query("UPDATE episodes SET thumbnail_url = ? WHERE external_id = ?")
+            .bind("https://img.example/ep100-custom.jpg")
+            .bind("vergecast-ep-99")
+            .execute(&pool)
+            .await
+            .expect("set a different art on the other");
+
+        let (_, stored_now) =
+            upsert_podcast_subscription(&pool, feed_url, "The Vergecast", &feed())
+                .await
+                .expect("refresh");
+        assert_eq!(stored_now, 0, "a refresh adds no episodes");
+
+        let art: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT external_id, thumbnail_url FROM episodes ORDER BY external_id")
+                .fetch_all(&pool)
+                .await
+                .expect("read art back");
+        assert_eq!(
+            art.iter().find(|(id, _)| id == "vergecast-ep-100").map(|(_, t)| t.clone()),
+            Some(Some(feed().episodes[0].thumbnail_url.clone().expect("episode art"))),
+            "the missing art is backfilled from the feed"
+        );
+        assert_eq!(
+            art.iter().find(|(id, _)| id == "vergecast-ep-99").map(|(_, t)| t.clone()),
+            Some(Some("https://img.example/ep100-custom.jpg".to_string())),
+            "existing art is NEVER overwritten"
+        );
     }
 
     #[tokio::test]

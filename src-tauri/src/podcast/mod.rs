@@ -85,7 +85,23 @@ impl PodcastManager {
     fn parse_rss(content: &str) -> Result<PodcastFeedData, String> {
         let channel: RssChannel = rss::Channel::read_from(content.as_bytes())
             .map_err(|e| format!("Failed to parse RSS: {}", e))?;
-        
+
+        // Live-test Task 9. The line at the bottom of this function used to read
+        // `thumbnail_url: None, // channel.itunes_image not available` — false:
+        // the rss crate exposes `itunes_ext().image()` on the channel and on
+        // every item. 0 of the owner's 1,102 podcast episodes had any art.
+        //
+        // Two channel-art sources, in order: the podcast-specific
+        // <itunes:image> (matched by NAMESPACE, so a feed publishing it under a
+        // generated prefix such as <ns1:image> still resolves — Vergecast does
+        // exactly that), then the plain RSS <image><url>, which is the standard
+        // mechanism and what remains when a feed has no itunes block at all.
+        let channel_thumbnail = channel
+            .itunes_ext()
+            .and_then(|ext| ext.image())
+            .map(|s| s.to_string())
+            .or_else(|| channel.image().and_then(|img| Some(img.url.clone())).filter(|u| !u.trim().is_empty()));
+
         let mut episodes = Vec::new();
         for item in channel.items {
             let guid = item.guid.as_ref().map(|g| g.value.clone()).unwrap_or_else(|| {
@@ -98,6 +114,14 @@ impl PodcastManager {
                 .itunes_ext()
                 .and_then(|ext| ext.duration())
                 .and_then(parse_duration);
+            // An item's OWN artwork, else the show's — a podcast episode without
+            // its own `<itunes:image>` is normal, and the show art is the right
+            // thing to display rather than a generic headphones icon.
+            let thumbnail_url = item
+                .itunes_ext()
+                .and_then(|ext| ext.image())
+                .map(|s| s.to_string())
+                .or_else(|| channel_thumbnail.clone());
 
             episodes.push(PodcastEpisode {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -110,9 +134,10 @@ impl PodcastManager {
                 duration_seconds,
                 audio_url: item.enclosure.as_ref().map(|e| e.url.clone()),
                 transcript: None,
+                thumbnail_url,
             });
         }
-        
+
         Ok(PodcastFeedData {
             title: channel.title,
             description: Some(channel.description),
@@ -120,7 +145,7 @@ impl PodcastManager {
             language: channel.language,
             author: None, // channel.itunes_author not available
             categories: channel.categories.iter().map(|c| c.name.clone()).collect(),
-            thumbnail_url: None, // channel.itunes_image not available
+            thumbnail_url: channel_thumbnail,
             episodes,
         })
     }
@@ -130,6 +155,13 @@ impl PodcastManager {
             .map_err(|e| format!("Failed to parse JSON Feed: {}", e))?;
         
         let mut episodes = Vec::new();
+        // The feed's own image, hoisted so an item without one can inherit it
+        // (same shape as the RSS path's channel itunes_image).
+        let feed_image = value
+            .get("icon")
+            .or_else(|| value.get("favicon"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         if let Some(items) = value.get("items").and_then(|v| v.as_array()) {
             for item in items {
                 let guid = item.get("id").and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_else(|| {
@@ -143,6 +175,14 @@ impl PodcastManager {
                     .and_then(|arr| arr.iter().find(|a| a.get("mime_type").and_then(|m| m.as_str()).map(|m| m.starts_with("audio/")).unwrap_or(false)))
                     .and_then(|a| a.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()));
                 
+                // JSON Feed: an item's own `image`/`icon`, else the feed's —
+                // same shape as the RSS path's itunes_image inheritance.
+                let item_image = item
+                    .get("image")
+                    .or_else(|| item.get("icon"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
                 episodes.push(PodcastEpisode {
                     id: uuid::Uuid::new_v4().to_string(),
                     guid: guid.to_string(),
@@ -154,6 +194,7 @@ impl PodcastManager {
                     duration_seconds: None,
                     audio_url,
                     transcript: None,
+                    thumbnail_url: item_image.or_else(|| feed_image.clone()),
                 });
             }
         }
@@ -165,7 +206,7 @@ impl PodcastManager {
             language: value.get("language").and_then(|v| v.as_str()).map(|s| s.to_string()),
             author: value.get("author").and_then(|v| v.get("name")).and_then(|v| v.as_str()).map(|s| s.to_string()),
             categories: value.get("categories").and_then(|v| v.as_array()).map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect()).unwrap_or_default(),
-            thumbnail_url: value.get("icon").or_else(|| value.get("favicon")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+            thumbnail_url: feed_image.clone(),
             episodes,
         })
     }
@@ -466,6 +507,9 @@ pub struct PodcastEpisode {
     pub duration_seconds: Option<u64>,
     pub audio_url: Option<String>,
     pub transcript: Option<String>,
+    /// Cover art. An item's own `<itunes:image>` when it has one, otherwise the
+    /// channel's — hydrated at parse time, not stored per row redundantly.
+    pub thumbnail_url: Option<String>,
 }
 
 /// Unwired-future: return type of import_opml/import_from_youtube (kept with
@@ -706,6 +750,101 @@ mod tests {
         assert_eq!(parse_duration(""), None);
         assert_eq!(parse_duration("nonsense"), None);
         assert_eq!(parse_duration("1:2:3:4"), None);
+    }
+
+    // ---- RSS2-R-2: cover art ----
+    // Live-test 2026-10-27: "the headphone icon works now, but I know these
+    // podcasts normally should have real cover images, we need those displayed
+    // there". Measured: 0 of 1,102 of the owner's podcast episodes had any
+    // thumbnail_url, because parse_rss hard-coded None with a comment claiming
+    // "channel.itunes_image not available" — false; the rss crate exposes
+    // itunes_ext().image() on both the channel and every item.
+
+    #[test]
+    fn parse_reads_channel_itunes_image() {
+        let data = PodcastManager::parse_rss(SOME_MORE_NEWS_FEED).expect("parse feed");
+        let thumb = data
+            .thumbnail_url
+            .as_deref()
+            .expect("the channel publishes <itunes:image>");
+        assert!(thumb.starts_with("http"), "a real URL, not a placeholder: {thumb}");
+        // Every episode carries SOME art — its own or the channel's — so the
+        // card never has to fall back to the headphones icon for a feed that
+        // publishes cover art.
+        assert!(
+            data.episodes.iter().all(|e| e.thumbnail_url.is_some()),
+            "every episode of an art-publishing feed must carry art"
+        );
+    }
+
+    #[test]
+    fn an_item_without_its_own_image_inherits_the_channel_image() {
+        // Inline fixture: the channel publishes art, the SECOND item publishes
+        // none. That item must inherit the channel's image rather than showing
+        // the headphones fallback beside its art-carrying sibling.
+        const MIXED: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Art Test</title>
+    <link>https://example.org/</link>
+    <description>one item with art, one without</description>
+    <itunes:image href="https://example.org/show-art.png"/>
+    <item>
+      <title>Has its own art</title>
+      <guid>with-art</guid>
+      <itunes:image href="https://example.org/episode-art.png"/>
+    </item>
+    <item>
+      <title>Has none</title>
+      <guid>without-art</guid>
+    </item>
+  </channel>
+</rss>"#;
+        let data = PodcastManager::parse_rss(MIXED).expect("parse mixed fixture");
+        let channel_art = data.thumbnail_url.as_deref().expect("channel art");
+        assert_eq!(channel_art, "https://example.org/show-art.png");
+
+        assert_eq!(
+            data.episodes[0].thumbnail_url.as_deref(),
+            Some("https://example.org/episode-art.png"),
+            "an item's OWN art wins over the channel's"
+        );
+        assert_eq!(
+            data.episodes[1].thumbnail_url.as_deref(),
+            Some("https://example.org/show-art.png"),
+            "an item without its own art inherits the channel's"
+        );
+    }
+
+    #[test]
+    fn a_feed_with_no_art_anywhere_keeps_the_headphones_fallback() {
+        // Review Focus 5: nothing invented. A feed publishing no image anywhere
+        // must yield no image, so the UI can show its headphones fallback rather
+        // than a broken img.
+        //
+        // Inline fixture on purpose: every committed real feed DOES publish art
+        // — Vergecast carries it under <ns1:image> (ns1 is the iTunes DTD, so
+        // the crate resolves it) AND in a plain RSS <image>. Asserting "no art"
+        // against a real feed asserts a false premise; the first version of this
+        // test did exactly that and failed once the wiring landed.
+        const BARE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>No Art Anywhere</title>
+    <link>https://example.org/</link>
+    <description>a feed that publishes no image</description>
+    <item>
+      <title>An episode</title>
+      <guid>no-art-ep</guid>
+    </item>
+  </channel>
+</rss>"#;
+        let data = PodcastManager::parse_rss(BARE).expect("parse bare feed");
+        assert!(data.thumbnail_url.is_none(), "no channel art");
+        assert!(
+            data.episodes.iter().all(|e| e.thumbnail_url.is_none()),
+            "no episode art either — the UI must fall back, and must not invent one"
+        );
     }
 
     // ---- LIVE smoke (network-dependent; #[ignore] keeps CI offline) --------
