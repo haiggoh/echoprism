@@ -106,8 +106,8 @@ final summary into §7.
 - [x] Task 6 — Tauri capabilities — ⚠️ **OWNER-VERIFY PENDING**: launch `tauri dev`, use the native Playback menu, and confirm `crash-reports.jsonl` gains no new `event.listen` line. Code + test + build verified; only the runtime check is outstanding.
 - [x] Task 7 — playback speed
 - [x] Task 8 — queue next / previous / separate restart
-- [ ] Task 9 — podcast cover art
-- [ ] Task 10 — clickable channels + avatars
+- [x] Task 9 — podcast cover art (owner action: press Refresh once to backfill)
+- [x] Task 10 (part) — clickable channels done (/channels/:channelId + ChannelScreen); PODCAST avatars done via the refresh backfill; **VIDEO-channel avatars still OPEN** (Invidious /api/v1/channels/{ucid} authorThumbnails + yt-dlp fallback)
 - [ ] Whole-branch review
 
 ## 7. Final summary (fill in at the end)
