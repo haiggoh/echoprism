@@ -273,12 +273,22 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
     channelsMock.mockResolvedValue([]);
 
     await renderAndClick(makeEpisode());
-    expect(streamMock).toHaveBeenLastCalledWith('ep-smn-1', 'video');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-smn-1', 'video');
+    });
 
     await renderAndClick(
       makeEpisode({ id: 'ep-emn-1', channel_id: 'ch-4', title: 'Even More News: Why Billionaires', video_id: undefined })
     );
-    expect(streamMock).toHaveBeenLastCalledWith('ep-emn-1', 'audio');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-emn-1', 'audio');
+    });
   });
 
   // The DISCRIMINATING case: a rule that CONFLICTS with the engine default.
@@ -301,7 +311,12 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
         video_id: 'emn-vid-001',
       })
     );
-    expect(streamMock).toHaveBeenLastCalledWith('ep-emn-vid', 'audio');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-emn-vid', 'audio');
+    });
   });
 
   it('without rules, a channel format_preference video default applies', async () => {
@@ -311,7 +326,12 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
     await renderAndClick(
       makeEpisode({ id: 'ep-other', channel_id: 'ch-9', title: 'Special report', video_id: 'vid-9' })
     );
-    expect(streamMock).toHaveBeenLastCalledWith('ep-other', 'video');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-other', 'video');
+    });
   });
 
   it('with neither a rule nor a channel default, no override is sent (engine default)', async () => {
@@ -320,7 +340,12 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
 
     await renderAndClick(makeEpisode());
     // No mode argument → the engine applies its own defaults (global toggle).
-    expect(streamMock).toHaveBeenLastCalledWith('ep-smn-1', 'video');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-smn-1', 'video');
+    });
   });
 
   // D2 × D7 interaction (plan: "override affects initial choice only"): a
@@ -351,7 +376,12 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
     // Pressing play on the loaded episode honors the chain, not the toggle.
     fireEvent.click(screen.getByText('toggle-play'));
     await act(async () => {});
-    expect(streamMock).toHaveBeenLastCalledWith('ep-emn-vid', 'audio');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-emn-vid', 'audio');
+    });
   });
 });
 
@@ -462,7 +492,12 @@ describe('queue advance consults the D7 chain (Phase 5)', () => {
     // false->true, which is what drives the resolve effect.
     fireEvent.click(screen.getByText('start-first'));
     await act(async () => {});
-    expect(streamMock).toHaveBeenLastCalledWith('ep-adv-smn', 'video');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-adv-smn', 'video');
+    });
 
     fireEvent.click(screen.getByText('enqueue-first'));
     await act(async () => {});
@@ -472,6 +507,11 @@ describe('queue advance consults the D7 chain (Phase 5)', () => {
     fireEvent.click(screen.getByText('advance'));
     await act(async () => {});
 
-    expect(streamMock).toHaveBeenLastCalledWith('ep-adv-emn', 'audio');
+    // The stream call comes from a PlayerProvider effect, which can need
+    // one more flush than renderAndClick performs — under a loaded
+    // machine that made this a 1-in-6 flake. Wait, do not guess.
+    await waitFor(() => {
+      expect(streamMock).toHaveBeenLastCalledWith('ep-adv-emn', 'audio');
+    });
   });
 });
