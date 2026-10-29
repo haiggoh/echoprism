@@ -113,7 +113,10 @@ export function PlayerScreen() {
   return (
     <div className="h-screen flex flex-col bg-bg">
       {/* Video Player Area */}
-      <div className="relative w-full aspect-video bg-black">
+      {/* A testid here is what makes the video stage assertable: jsdom does not
+          lay out, so "does the video fit the window" can only be pinned as a
+          contract on the element. */}
+      <div className="relative bg-black flex-1 min-h-0 overflow-hidden" data-testid="video-stage">
         {isLoading ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="convergence-loader" role="status">
@@ -130,7 +133,8 @@ export function PlayerScreen() {
             {playbackFormat === 'video' ? (
               <video
                 ref={registerVideoElement}
-                className="absolute inset-0 h-full w-full bg-black"
+                title="video-surface"
+                className="absolute inset-0 h-full w-full object-contain bg-black"
                 poster={episode.thumbnail_url}
                 playsInline
               />
