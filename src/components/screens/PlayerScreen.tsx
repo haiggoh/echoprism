@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
@@ -12,6 +12,7 @@ import { Episode } from '../../types';
 
 export function PlayerScreen() {
   const { episodeId } = useParams<{ episodeId: string }>();
+  const navigate = useNavigate();
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const {
@@ -166,8 +167,22 @@ export function PlayerScreen() {
           channel line truncates. */}
       <div className="px-4 pt-4">
         <h1 className="text-lg font-semibold text-text line-clamp-2">{episode.title}</h1>
+        {/* Live-test batch 2 Task 8: "I should be able to click on the channel
+            name when watching one of their videos." This was plain text. Batch 1
+            shipped /channels/:id and the channel screen, so it is a link now —
+            and the channel screen is where subscribing lives, which is how the
+            owner reaches a channel they do not follow yet. */}
         {episode.channel?.title && (
-          <p className="text-sm text-text-muted truncate mt-0.5">{episode.channel.title}</p>
+          <p className="text-sm text-text-muted truncate mt-0.5">
+            <button
+              type="button"
+              className="hover:text-text hover:underline transition-colors"
+              aria-label={episode.channel.title}
+              onClick={() => navigate(`/channels/${episode.channel?.id}`)}
+            >
+              {episode.channel.title}
+            </button>
+          </p>
         )}
       </div>
 

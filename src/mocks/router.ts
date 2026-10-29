@@ -339,6 +339,20 @@ const handlers: Record<string, Handler> = {
     return `https://invidious.example/yt4.ggpht/${channel.id}/author.jpg`;
   },
 
+  // Live-test batch 2 Task 8: the UPDATE mirror of unsubscribe — an existing
+  // channel flagged back on, never a second row (which is what `subscribe`
+  // would create). Mirrors commands::channels::resubscribe.
+  resubscribe: (args): null => {
+    const channelId = args?.channelId as string | undefined;
+    const channel = db.channels.find((c) => c.id === channelId);
+    if (!channel) {
+      throw new Error(`mock: channel not found: ${channelId}`);
+    }
+    channel.is_subscribed = true;
+    channel.subscribed_at = new Date().toISOString();
+    return null;
+  },
+
   unsubscribe: (args): null => {
     const channelId = args?.channelId as string | undefined;
     const channel = db.channels.find((c) => c.id === channelId);

@@ -218,6 +218,18 @@ pub async fn subscribe(
     Ok(channel)
 }
 
+/// Flag an EXISTING channel back as subscribed (live-test batch 2, Task 8:
+/// "subscriptions seem to be missing, there's no obvious way to subscribe to a
+/// channel").
+///
+/// Deliberately NOT the `subscribe` command, which INSERTs a new channel row:
+/// calling it for a channel that already exists would duplicate the channel and
+/// detach its episodes. This is the UPDATE mirror of `unsubscribe`.
+#[command]
+pub async fn resubscribe(db: State<'_, Database>, channel_id: String) -> std::result::Result<(), String> {
+    db.subscribe_channel(&channel_id).await
+}
+
 /// Live-test Task 4: a REAL unsubscribe. Was a no-op stub that returned Ok(())
 /// without touching the database, so the button appeared to work and did
 /// nothing. The channel ROW is kept (owner decision 2026-10-27: hidden, never

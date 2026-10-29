@@ -162,6 +162,7 @@ pub fn run() {
             commands::podcasts::refresh_podcasts,
             commands::podcasts::import_youtube_subscriptions,
             commands::channels::unsubscribe,
+            commands::channels::resubscribe,
             commands::channels::resolve_channel_avatar,
             commands::channels::import,
             commands::channels::export,

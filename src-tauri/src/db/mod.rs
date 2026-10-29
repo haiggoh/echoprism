@@ -103,6 +103,12 @@ impl Database {
 
     /// Task 4 (live-test 2026-10-27): hide, never delete — the owner's decision
     /// for an unsubscribed channel. The row survives; only the flag clears.
+    /// Live-test batch 2 Task 8: flag an EXISTING channel back on. Not the
+    /// `subscribe` command, which inserts and would duplicate the row.
+    pub async fn subscribe_channel(&self, channel_id: &str) -> DbResult<()> {
+        queries::subscribe_channel(&self.pool, channel_id).await
+    }
+
     pub async fn unsubscribe_channel(&self, channel_id: &str) -> DbResult<()> {
         queries::unsubscribe_channel(&self.pool, channel_id).await
     }

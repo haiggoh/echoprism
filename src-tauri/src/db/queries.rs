@@ -606,6 +606,24 @@ pub async fn set_channel_thumbnail_if_missing(
     Ok(())
 }
 
+/// The mirror of `unsubscribe_channel`, and the reason it exists: the
+/// `subscribe` command INSERTS a new channel row, so using it for a channel that
+/// already exists would duplicate it and detach its episodes. Live-test batch 2
+/// Task 8 -- "there's no obvious way to subscribe to a channel".
+pub async fn subscribe_channel(pool: &SqlitePool, channel_id: &str) -> DbResult<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let result = query("UPDATE channels SET is_subscribed = 1, subscribed_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(channel_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("channel not found: {channel_id}"));
+    }
+    Ok(())
+}
+
 pub async fn unsubscribe_channel(pool: &SqlitePool, channel_id: &str) -> DbResult<()> {
     let result = query("UPDATE channels SET is_subscribed = 0, subscribed_at = '' WHERE id = ?")
         .bind(channel_id)
@@ -3817,5 +3835,106 @@ mod search_tests {
 
         let found = titles(&pool, "   ").await;
         assert!(found.is_empty(), "an empty query must return nothing, got {found:?}");
+    }
+}
+
+#[cfg(test)]
+mod resubscribe_tests {
+    //! Live-test batch 2, Task 8: "subscriptions seem to be missing, there's no
+    //! obvious way to subscribe to a channel."
+    //!
+    //! Batch 1 shipped a real `unsubscribe` (clear the flag, keep the row), but
+    //! its MIRROR was missing — `subscribe` INSERTs a new channel row, so
+    //! calling it for a channel that already exists would duplicate the channel
+    //! and orphan its episodes. A re-subscribe is an UPDATE.
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn fresh_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        pool
+    }
+
+    async fn seed(pool: &SqlitePool, id: &str, subscribed: bool) {
+        query(
+            "INSERT OR IGNORE INTO channels (id, user_id, external_id, title, is_subscribed, type) \
+             VALUES (?, 'current-user', ?, ?, ?, 'video')",
+        )
+        .bind(id)
+        .bind(id)
+        .bind(id)
+        .bind(if subscribed { 1_i64 } else { 0_i64 })
+        .execute(pool)
+        .await
+        .expect("seed channel");
+    }
+
+    #[tokio::test]
+    async fn resubscribe_flags_the_row_back_on_and_dates_it() {
+        let pool = fresh_pool().await;
+        seed(&pool, "ch-1", false).await;
+
+        subscribe_channel(&pool, "ch-1").await.expect("subscribe");
+
+        let (flag, at): (i64, Option<String>) =
+            sqlx::query_as("SELECT is_subscribed, subscribed_at FROM channels WHERE id = ?")
+                .bind("ch-1")
+                .fetch_one(&pool)
+                .await
+                .expect("read back");
+        assert_eq!(flag, 1, "the channel is subscribed again");
+        assert!(
+            at.as_deref().is_some_and(|t| !t.is_empty()),
+            "subscribed_at is re-dated so the list orders it as current"
+        );
+    }
+
+    #[tokio::test]
+    async fn resubscribe_never_duplicates_the_row() {
+        // The trap: `subscribe` (the command) INSERTs, so using it here would
+        // create a second channel row with a new id and detach the episodes.
+        let pool = fresh_pool().await;
+        seed(&pool, "ch-1", false).await;
+
+        subscribe_channel(&pool, "ch-1").await.expect("subscribe");
+        subscribe_channel(&pool, "ch-1").await.expect("subscribe again");
+
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels WHERE external_id = ?")
+            .bind("ch-1")
+            .fetch_one(&pool)
+            .await
+            .expect("count rows");
+        assert_eq!(count, 1, "one channel row, however many times it is re-subscribed");
+    }
+
+    #[tokio::test]
+    async fn resubscribe_unknown_id_errors() {
+        let pool = fresh_pool().await;
+        let err = subscribe_channel(&pool, "nope")
+            .await
+            .expect_err("an unknown channel id must not silently succeed");
+        assert!(err.contains("nope"), "the error names the id: {err}");
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_then_resubscribe_round_trips() {
+        // The owner's actual flow: unsubscribe by accident, then want it back.
+        let pool = fresh_pool().await;
+        seed(&pool, "ch-1", true).await;
+
+        unsubscribe_channel(&pool, "ch-1").await.expect("unsubscribe");
+        subscribe_channel(&pool, "ch-1").await.expect("resubscribe");
+
+        let flag: i64 = sqlx::query_scalar("SELECT is_subscribed FROM channels WHERE id = ?")
+            .bind("ch-1")
+            .fetch_one(&pool)
+            .await
+            .expect("read back");
+        assert_eq!(flag, 1);
     }
 }
