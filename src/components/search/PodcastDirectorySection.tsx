@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { channelCommands, episodeCommands, podcastCommands } from '../../hooks/useTauriCommands';
 import { useEpisodePlay } from '../../hooks/useEpisodePlay';
@@ -23,6 +24,7 @@ import type { Episode, PodcastSearchResult } from '../../types';
  */
 export function PodcastDirectorySection({ query }: { query: string }) {
   const { handleCardClick } = useEpisodePlay();
+  const navigate = useNavigate();
   const { addToast } = useToasts();
   const queryClient = useQueryClient();
   // feed_url -> channel_id for THIS session's subscriptions; older ones come
@@ -126,13 +128,21 @@ export function PodcastDirectorySection({ query }: { query: string }) {
                     Subscribe
                   </button>
                 ) : (
+                  // Live-test batch 2 Task 6: this used to be a DISABLED
+                  // "Subscribed ✓" — a dead control. The owner's complaint was
+                  // "it's not clickable. I should be able to click on the shows
+                  // podcast directory card to see inside and finde the
+                  // episodes", and a subscribed show was the one state with no
+                  // way in at all (only a channel subscribed DURING this
+                  // session expanded inline, via expandedChannelId). Batch 1
+                  // shipped /channels/:id and ChannelScreen, so open that.
                   <button
                     type="button"
                     className="btn-unified mt-2"
-                    disabled
-                    aria-label={`Subscribed to ${result.title}`}
+                    aria-label={`Open ${result.title}`}
+                    onClick={() => navigate(`/channels/${channelId}`)}
                   >
-                    Subscribed ✓
+                    Open show
                   </button>
                 )}
               </div>

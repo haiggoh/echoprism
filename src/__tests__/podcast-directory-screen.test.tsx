@@ -77,8 +77,14 @@ describe('2e: podcast directory on the Search screen', () => {
     const button = await screen.findByRole('button', { name: /subscribe to the weekly signal/i });
     fireEvent.click(button);
 
+    // REVISED 2026-10-29 (live-test batch 2, Task 6): this asserted the OLD
+    // dead control (`/subscribed/i` = a disabled "Subscribed ✓" button). A
+    // subscribed show now opens its channel (/channels/:id) instead, because a
+    // disabled button gave the owner no way in — see
+    // src/__tests__/podcast-directory-card.test.tsx. The inline episode list
+    // below is unchanged and still the point of this test.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /subscribed/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /open the weekly signal/i })).toBeTruthy();
     });
     // The subscribed feed's episodes, from get_feed { channelId }.
     await waitFor(() => {
