@@ -18,11 +18,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { PlayerScreen } from '../components/screens/PlayerScreen';
+import { MiniPlayer } from '../components/MiniPlayer';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
 import { ConvergenceProvider } from '../hooks/useConvergence';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { resetMockState } from '../mocks/router';
+import type { Episode } from '../types';
 
 let api: ReturnType<typeof usePlayer>;
 
@@ -107,6 +109,68 @@ describe('Live-test batch 2 Task 1: the speaker icon is a mute toggle', () => {
     await waitFor(() => expect(api).toBeDefined());
 
     expect(screen.getByRole('button', { name: /^mute$/i })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: 'Volume' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Volume' })).toBeNull();
+  });
+});
+
+/** A queued, playing video — what the mini player renders from. */
+function videoEpisode(): Episode {
+  return {
+    id: 'ep-video-1', channel_id: 'ch-1', external_id: 'ep-video-1', title: 'A video episode',
+    video_id: 'yt-1', is_downloaded: false, progress_seconds: 0,
+    created_at: '2026-10-19T00:00:00Z', updated_at: '2026-10-19T00:00:00Z',
+  } satisfies Episode;
+}
+
+/**
+ * The SAME defect on the OTHER control surface. The mini player's volume
+ * slider is hover-revealed (`opacity-0 invisible group-hover:opacity-100`), so
+ * the speaker icon is the only always-visible volume control there — and it was
+ * the same no-handler <button> the full player had. Fixing only the full player
+ * left this one inert, which is exactly what the owner reported after the first
+ * attempt: "the mute button still doesn't mute when clicked and it doesn't show
+ * its state".
+ */
+describe('Live-test batch 2 Task 1 (mini player): the speaker icon mutes too', () => {
+  function renderMini() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    useQueueStore.setState({
+      items: [{
+        id: 'q-0', queue_id: 'local', episode_id: 'ep-video-1', added_at: '2026-10-19T00:00:00Z',
+        source: 'feed', play_mode: 'unified', position: 0, episode: videoEpisode(),
+      }],
+      currentIndex: 0, repeatMode: 'off', shuffle: false,
+    });
+    return render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PlayerProvider>
+            <ConvergenceProvider>
+              <MiniPlayer />
+            </ConvergenceProvider>
+          </PlayerProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('mutes and unmutes from the mini player', async () => {
+    renderMini();
+    const mute = await waitFor(() => screen.getByRole('button', { name: /^mute$/i }));
+
+    fireEvent.click(mute);
+    await waitFor(() => expect(usePlayerStore.getState().volume).toBe(0));
+
+    fireEvent.click(screen.getByRole('button', { name: /^unmute$/i }));
+    await waitFor(() => expect(usePlayerStore.getState().volume).toBeCloseTo(0.7, 5));
+  });
+
+  it('names the slider, not the icon, "Volume"', async () => {
+    // The old defect was two controls sharing the accessible name "Volume" —
+    // the icon and the slider — with only one wired.
+    renderMini();
+    await waitFor(() => screen.getByRole('button', { name: /^mute$/i }));
     expect(screen.getByRole('slider', { name: 'Volume' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Volume' })).toBeNull();
   });

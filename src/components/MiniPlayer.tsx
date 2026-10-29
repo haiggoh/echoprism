@@ -4,6 +4,7 @@ import { useQueueStore } from '../store/slices/queueSlice';
 import { usePlayer } from './PlayerProvider';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
 import { ShuffleButton } from './ui/ShuffleButton';
+import { MuteButton } from './ui/MuteButton';
 import { SpeedControl } from './player/SpeedControl';
 import { useConvergence } from '../hooks/useConvergence';
 import { Thumbnail } from './ui/Thumbnail';
@@ -213,16 +214,16 @@ export function MiniPlayer() {
             <span className="text-sm text-text-muted">Audio</span>
           </label>
 
-          {/* Volume */}
-          <div className="relative group">
-            <button
-              className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-              aria-label="Volume"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-              </svg>
-            </button>
+          {/* Volume — live-test batch 2 Task 1, mini player.
+              This was the SAME dead <button aria-label="Volume"> the full player
+              carried: no handler, and the slider beside it hover-revealed
+              (`opacity-0 invisible group-hover:opacity-100`) so this icon was the
+              only always-visible volume control on this surface. Fixing the full
+              player alone left it inert — which is exactly what the owner saw
+              after the first attempt. It is the same mute toggle now (shared
+              store action), so the two surfaces cannot drift apart again. */}
+          <div className="relative group flex items-center">
+            <MuteButton size={18} />
             <div className="absolute bottom-full right-0 mb-2 w-32 opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible">
               <input
                 type="range"

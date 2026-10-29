@@ -4,6 +4,7 @@ import type { MouseEvent } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
 import { ShuffleButton } from '../ui/ShuffleButton';
+import { MuteButton } from '../ui/MuteButton';
 import { SpeedControl } from '../player/SpeedControl';
 import { usePlayer } from '../PlayerProvider';
 import { useQueueStore } from '../../store/slices/queueSlice';
@@ -27,7 +28,6 @@ export function PlayerScreen() {
     togglePlay,
     seek,
     setVolume,
-    toggleMute,
     setAudioMode,
     togglePip,
     nextTrack,
@@ -328,18 +328,10 @@ export function PlayerScreen() {
                 The owner's instruction was to find out why it was there rather
                 than delete it: a speaker icon beside an always-visible slider
                 is a mute toggle, so that is what it now is. Its own label keeps
-                the slider the only control named "Volume". */}
-            <button
-              className="btn-ghost p-2"
-              aria-label={volume === 0 ? 'Unmute' : 'Mute'}
-              title={volume === 0 ? 'Unmute' : 'Mute'}
-              onClick={toggleMute}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                {volume === 0 && <line x1="4" y1="4" x2="20" y2="20"></line>}
-              </svg>
-            </button>
+                the slider the only control named "Volume".
+                Shared with the mini player, which carried the SAME dead icon —
+                fixing only this surface left that one inert. */}
+            <MuteButton />
             {/* Live-test Task 7: playback speed, beside the volume slider. */}
             <div className="w-28">
               <SpeedControl />
