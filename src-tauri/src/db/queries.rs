@@ -906,6 +906,14 @@ pub async fn search_episodes(
     // Runtime QueryBuilder, not `query_as!` macros: the type filter is
     // optional (dynamic WHERE) and new macro SQL would demand regenerating
     // the .sqlx offline cache (same convention as resolve_smart_links).
+    // Live-test batch 2, Task 7: an empty or whitespace-only query used to be
+    // handed straight to FTS5, which is a syntax error — the command returned
+    // Err and the UI showed a failure instead of an empty list.
+    let query_terms: Vec<&str> = query_str.split_whitespace().collect();
+    if query_terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let mut qb = sqlx::QueryBuilder::new(
         "SELECT e.id, e.channel_id, e.external_id, e.title, e.description,
                 e.thumbnail_url, e.duration_seconds, e.published_at, e.url,
@@ -922,7 +930,13 @@ pub async fn search_episodes(
     if let Some(episode_type) = params.as_ref().and_then(|p| p.episode_type.as_deref()) {
         qb.push(" AND c.type = ").push_bind(episode_type.to_string());
     }
-    qb.push(" ORDER BY e.published_at DESC LIMIT ")
+    // Relevance first, recency as the tie-break. This used to be
+    // `ORDER BY e.published_at DESC` alone, so the newest rows that mentioned
+    // one search word outranked the rows the query was actually about — the
+    // owner's "it keeps showing me many individual vergecast episodes rather
+    // than even more news". FTS5's `rank` is the built-in bm25; lower is
+    // better, so ascending.
+    qb.push(" ORDER BY rank, e.published_at DESC LIMIT ")
         .push_bind(limit_i64);
 
     let rows = qb
@@ -3654,5 +3668,154 @@ mod subscription_tests {
             err.contains("ch-does-not-exist"),
             "the error names the id it could not find: {err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    //! Live-test batch 2, Task 7: multi-word search must not degrade to OR.
+    //!
+    //! The owner: "when I search for even more news instead of verge or
+    //! vergecast is still keeps showing me many individual vergecast episodes
+    //! rather than even more news". Measured cause: `episodes_fts MATCH ?` was
+    //! given the raw query string, and FTS5 treats a space-separated string as
+    //! an implicit OR — so "even more news" matched any row containing even,
+    //! more, or news, and every Vergecast episode title contains "news".
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn fresh_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        query("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
+            .execute(&pool)
+            .await
+            .expect("insert user");
+        pool
+    }
+
+    async fn seed(pool: &SqlitePool, id: &str, channel_id: &str, title: &str, description: &str) {
+        // episodes.channel_id FKs channels(id), which the search JOIN also
+        // requires — so a channel row has to exist first.
+        query(
+            "INSERT OR IGNORE INTO channels (id, user_id, external_id, title, is_subscribed, type) \
+             VALUES (?, 'current-user', ?, ?, 0, 'video')",
+        )
+        .bind(channel_id)
+        .bind(channel_id)
+        .bind(channel_id)
+        .execute(pool)
+        .await
+        .expect("seed channel");
+        query(
+            "INSERT INTO episodes (id, channel_id, external_id, title, description, is_downloaded, progress_seconds) \
+             VALUES (?, ?, ?, ?, ?, 0, 0)",
+        )
+        .bind(id)
+        .bind(channel_id)
+        .bind(id)
+        .bind(title)
+        .bind(description)
+        .execute(pool)
+        .await
+        .expect("seed episode");
+    }
+
+    /// Search by title text, ignoring the type filter.
+    async fn titles(pool: &SqlitePool, q: &str) -> Vec<String> {
+        search_episodes(pool, q.to_string(), None)
+            .await
+            .expect("search")
+            .into_iter()
+            .map(|e| e.title)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_multi_word_query_requires_every_term() {
+        let pool = fresh_pool().await;
+        // The even-more-news episode matches every term.
+        seed(&pool, "ep-emn", "ch-emn", "Even More News: a story", "the week in news").await;
+        // The Vergecast episode contains only "news".
+        seed(&pool, "ep-verge", "ch-verge", "Vergecast 900", "this week in tech news").await;
+
+        let found = titles(&pool, "even more news").await;
+        assert_eq!(
+            found,
+            vec!["Even More News: a story".to_string()],
+            "a row matching only ONE of the three terms must not be returned"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_best_match_comes_first_not_the_newest() {
+        // The relevance half of Task 7: results were ordered by published_at,
+        // so a recent episode that merely mentioned a search word outranked the
+        // episode the query was about.
+        let pool = fresh_pool().await;
+        seed(&pool, "ep-old", "ch-1", "Even More News: a story", "even more news").await;
+        seed(&pool, "ep-new", "ch-2", "Vergecast 900", "even more news this week").await;
+
+        // Give the even-more-news episode an OLDER published_at so date
+        // ordering would rank it last — relevance must still put it first,
+        // because its title carries all three terms.
+        query("UPDATE episodes SET published_at = ? WHERE id = ?")
+            .bind("2020-01-01T00:00:00Z")
+            .bind("ep-old")
+            .execute(&pool)
+            .await
+            .expect("backdate");
+        query("UPDATE episodes SET published_at = ? WHERE id = ?")
+            .bind("2026-10-01T00:00:00Z")
+            .bind("ep-new")
+            .execute(&pool)
+            .await
+            .expect("datestamp");
+
+        let found = titles(&pool, "even more news").await;
+        assert_eq!(
+            found.first().map(String::as_str),
+            Some("Even More News: a story"),
+            "the row the query is about must lead, whatever its date. Got {found:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_single_word_query_still_matches() {
+        // The AND rule must not make one-word search useless.
+        let pool = fresh_pool().await;
+        seed(&pool, "ep-1", "ch-1", "Vergecast 900", "tech news").await;
+        seed(&pool, "ep-2", "ch-2", "Even More News: a story", "news").await;
+
+        let found = titles(&pool, "vergecast").await;
+        assert_eq!(found, vec!["Vergecast 900".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn a_query_with_fts_operators_is_quoted_not_injected() {
+        // FTS5 would parse a raw `"` or `OR` in the term; each term is quoted,
+        // so a search for punctuation still searches for punctuation instead of
+        // erroring or becoming a boolean expression.
+        let pool = fresh_pool().await;
+        seed(&pool, "ep-1", "ch-1", "A \"quoted\" episode", "nothing").await;
+
+        let found = titles(&pool, "\"quoted\"").await;
+        assert_eq!(found, vec!["A \"quoted\" episode".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn an_all_stop_words_query_returns_nothing_rather_than_everything() {
+        // FTS5 treats some common words as syntax; a query made only of them
+        // must not silently become an empty MATCH expression that matches all
+        // rows.
+        let pool = fresh_pool().await;
+        seed(&pool, "ep-1", "ch-1", "Something", "nothing").await;
+
+        let found = titles(&pool, "   ").await;
+        assert!(found.is_empty(), "an empty query must return nothing, got {found:?}");
     }
 }

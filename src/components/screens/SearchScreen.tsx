@@ -24,7 +24,13 @@ export function SearchScreen() {
   // below keeps its per-keystroke behavior.
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
-  const [showResults, setShowResults] = useState(false);
+  // Live-test batch 2, Task 7: DERIVED, not submit-gated. The comment two lines
+  // up has always claimed "The local FTS search below keeps its per-keystroke
+  // behavior", but the code gated it on a submit flag — so typing a new term
+  // kept rendering the previous term's rows until Enter, which is exactly what
+  // the owner reported. The local FTS search is per-keystroke; only the iTunes
+  // directory stays submit-gated (rate-limited third party).
+  const showResults = query.trim().length >= 2;
 
   // Live-test pass: the Header's search box navigates here with ?q= —
   // prefill and run it, so the quick entry lands on real results.
@@ -34,20 +40,18 @@ export function SearchScreen() {
     if (q.length >= 2) {
       setQuery(q);
       setSubmittedQuery(q);
-      setShowResults(true);
     }
   }, [searchParams]);
 
   const { data: episodes, isLoading, error } = useQuery({
     queryKey: ['search', query, filter],
     queryFn: () => episodeCommands.search(query, { type: filter === 'all' ? undefined : filter }),
-    enabled: showResults && query.length >= 2,
+    enabled: showResults,
   });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim().length >= 2) {
-      setShowResults(true);
       setSubmittedQuery(query.trim());
     }
   };
