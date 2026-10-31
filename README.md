@@ -1,4 +1,4 @@
-# EchoPrism
+# 📐 EchoPrism
 
 A unified video and podcast player: YouTube watching and podcast listening
 converge in one app — one library, one queue, smart links pairing the two

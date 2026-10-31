@@ -7,6 +7,15 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.1] - 2026-10-31
+
+### Changed — credit-moment mark 📐 (emoji branding rollout, Task 18)
+
+- `bin/echoprism` usage banner now leads with `📐 echoprism`; README h1 is
+  `# 📐 EchoPrism`. App UI out of scope. Usage-error lines (`echoprism: unknown
+  command`) stay unbranded. Pinned by src/__tests__/branding.test.ts (RED→GREEN,
+  mutation-checked). Version 0.1.0 → 0.1.1 (package.json + this file).
+
 ## [0.1.0] - first public release
 
 ### Added

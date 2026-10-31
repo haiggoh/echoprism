@@ -11,7 +11,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-echoprism — launch EchoPrism from its source checkout (for testing)
+📐 echoprism — launch EchoPrism from its source checkout (for testing)
 
 Usage:
   echoprism [dev]     the desktop app via `tauri dev` (real Rust backend; hot reload)
