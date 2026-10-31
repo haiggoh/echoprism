@@ -163,3 +163,42 @@ describe('Live-test: a podcast timeline must be seekable', () => {
     await waitFor(() => expect(api.duration).toBe(420));
   });
 });
+
+/**
+ * A flaw the first version of this fix could not see, found after the owner
+ * reported it still broken: the duration-fallback effect in PlayerProvider is
+ * keyed on `[duration, activeEl, setDurationSafe]`, so it SAMPLES the element's
+ * duration once per render. If the media element learns its length AFTER the
+ * last render — which is exactly what happens for a streaming podcast whose
+ * metadata arrives a moment after playback starts — nothing re-runs the effect,
+ * the store keeps 0, and the timeline stays dead.
+ *
+ * The owner's data confirms how much this matters: of 1,104 stored podcast
+ * episodes, ONE carries a duration, because the itunes:duration parse only
+ * backfills on refresh. So the runtime path is the one that has to work.
+ */
+describe('Live-test Task 3 (podcast seek): metadata arriving LATE still teaches the player', () => {
+  it('adopts a duration that becomes known after mount', async () => {
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLAudioElement;
+
+    // The element starts with no known length, exactly as a real stream does.
+    Object.defineProperty(audio, 'duration', { configurable: true, get: () => Number.NaN });
+
+    await act(async () => {
+      api.play(podcastEpisode('ep-late', 'An episode whose length arrives late'));
+    });
+    await waitFor(() => expect(api.duration).toBe(0));
+
+    // ...and only NOW does the metadata land, after every render has happened.
+    Object.defineProperty(audio, 'duration', { configurable: true, get: () => 1830 });
+    await act(async () => {
+      audio.dispatchEvent(new Event('durationchange'));
+    });
+
+    await waitFor(() => {
+      expect(api.duration, 'the timeline must come alive when the length arrives').toBe(1830);
+    });
+  });
+});

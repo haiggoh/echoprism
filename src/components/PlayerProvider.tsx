@@ -447,8 +447,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const setDurationSafe = usePlayerStore((s) => s.setDuration);
   useEffect(() => {
     if (duration > 0 || !activeEl) return;
-    const d = activeEl.duration;
-    if (Number.isFinite(d) && d > 0) setDurationSafe(d);
+    // Adopt the element's length whenever it BECOMES known, not only at render
+    // time: a streaming podcast's metadata can land after the last render, and
+    // sampling once per render would leave the timeline dead (live-test 2026-10-31).
+    const adopt = () => {
+      const d = activeEl.duration;
+      if (Number.isFinite(d) && d > 0) setDurationSafe(d);
+    };
+    adopt();
+    activeEl.addEventListener('durationchange', adopt);
+    activeEl.addEventListener('loadedmetadata', adopt);
+    return () => {
+      activeEl.removeEventListener('durationchange', adopt);
+      activeEl.removeEventListener('loadedmetadata', adopt);
+    };
   }, [duration, activeEl, setDurationSafe]);
 
   // Live-test Task 8 (owner decision 2026-10-27 11:20): "let restarting be a
