@@ -6,6 +6,7 @@ import { PrismAppIcon } from './ui/PrismAppIcon';
 const navItems = [
   { path: '/feed', label: 'Feed', icon: 'home' },
   { path: '/queue', label: 'Queue', icon: 'list' },
+  { path: '/playlists', label: 'Playlists', icon: 'list' },
   { path: '/channels', label: 'Channels', icon: 'users' },
   { path: '/search', label: 'Search', icon: 'search' },
   { path: '/history', label: 'History', icon: 'clock' },

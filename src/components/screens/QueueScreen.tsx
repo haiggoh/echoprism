@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { QueueItemComponent } from '../queue/QueueItem';
 import { QueueEmptyState } from '../queue/QueueEmptyState';
 import { Modal } from '../ui/Modal';
@@ -7,7 +7,7 @@ import { Button } from '../ui/Button';
 import { useToasts } from '../ui/Toaster';
 import { useQueueStore } from '../../store/slices/queueSlice';
 import { queueItemFromEpisode } from '../../hooks/useEpisodePlay';
-import { settingsCommands } from '../../hooks/useTauriCommands';
+import { playlistCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { useNavigate } from 'react-router-dom';
 
 export function QueueScreen() {
@@ -34,6 +34,24 @@ export function QueueScreen() {
     queryFn: settingsCommands.get,
   });
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Phase 4: "Save as playlist" snapshots the live queue under a name.
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
+  const [playlistName, setPlaylistName] = useState('');
+  const savePlaylistMutation = useMutation({
+    mutationFn: (name: string) =>
+      playlistCommands.saveAsQueue(name, items.map((i) => i.episode_id)),
+    onSuccess: () => {
+      addToast({ title: 'Playlist saved', description: `${items.length} item${items.length === 1 ? '' : 's'} in “${playlistName.trim()}”`, variant: 'success' });
+      setSavingPlaylist(false);
+      setPlaylistName('');
+    },
+    onError: (err: unknown) =>
+      addToast({
+        title: 'Could not save playlist',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      }),
+  });
   // F05-H1 step 5 (replica/test-plan.md): clearing is destructive and
   // irreversible (local Zustand state) — it asks for confirmation first.
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -64,7 +82,11 @@ export function QueueScreen() {
           >
             Clear queue
           </button>
-          <button className="btn-ghost btn-sm" onClick={() => {}}>
+          <button
+            className="btn-ghost btn-sm"
+            disabled={items.length === 0}
+            onClick={() => setSavingPlaylist(true)}
+          >
             Save as playlist
           </button>
         </div>
@@ -97,6 +119,45 @@ export function QueueScreen() {
         <p className="text-sm text-text-muted">
           Your queue is local to this app and is not recoverable after clearing.
         </p>
+      </Modal>
+
+      <Modal
+        isOpen={savingPlaylist}
+        onClose={() => setSavingPlaylist(false)}
+        variant="form"
+        size="sm"
+        title="Save queue as playlist"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setSavingPlaylist(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="unified"
+              disabled={!playlistName.trim() || savePlaylistMutation.isPending}
+              onClick={() => savePlaylistMutation.mutate(playlistName)}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <div>
+          <label htmlFor="playlist-name" className="block text-sm font-medium mb-1">
+            Playlist name
+          </label>
+          <input
+            id="playlist-name"
+            type="text"
+            value={playlistName}
+            onChange={(e) => setPlaylistName(e.target.value)}
+            placeholder="e.g. Morning commute"
+            className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+          />
+          <p className="text-xs text-text-muted mt-1">
+            Saves the current {items.length} queue item{items.length === 1 ? '' : 's'} in order.
+          </p>
+        </div>
       </Modal>
 
       {error && (

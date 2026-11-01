@@ -4,7 +4,7 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { Channel, CrashRecord, Download, Episode, Instance, NewEpisodeItem, NotificationSummary, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
+import type { Channel, CrashRecord, Download, Episode, Instance, NewEpisodeItem, NotificationSummary, Playlist, PlaylistItem, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
@@ -329,6 +329,115 @@ const handlers: Record<string, Handler> = {
         episode_thumbnail: ep?.thumbnail_url,
       };
     }),
+
+  // Playlists (commands/playlists.rs — dead-controls Phase 4). Same semantics
+  // as the Rust side: names are trimmed, empty names and unknown ids ERROR,
+  // a duplicate episode per playlist errors, delete cascades, save keeps the
+  // given order as positions.
+  list_playlists: () =>
+    [...db.playlists].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)),
+  create_playlist: (args): Playlist => {
+    const name = String(args?.name ?? '').trim();
+    if (!name) throw new Error('playlist name must not be empty');
+    const now = new Date().toISOString();
+    const p: Playlist = {
+      id: `pl-${crypto.randomUUID().slice(0, 8)}`,
+      user_id: 'current-user',
+      name,
+      created_at: now,
+      updated_at: now,
+    };
+    db.playlists.push(p);
+    return p;
+  },
+  rename_playlist: (args): null => {
+    const id = String(args?.playlistId ?? '');
+    const name = String(args?.name ?? '').trim();
+    const p = db.playlists.find((x) => x.id === id);
+    if (!p) throw new Error(`no such playlist: ${id}`);
+    if (!name) throw new Error('playlist name must not be empty');
+    p.name = name;
+    p.updated_at = new Date().toISOString();
+    return null;
+  },
+  delete_playlist: (args): null => {
+    const id = String(args?.playlistId ?? '');
+    const before = db.playlists.length;
+    db.playlists = db.playlists.filter((x) => x.id !== id);
+    if (db.playlists.length === before) throw new Error(`no such playlist: ${id}`);
+    db.playlistItems = db.playlistItems.filter((i) => i.playlist_id !== id); // cascade
+    return null;
+  },
+  list_playlist_items: (args) => {
+    const id = String(args?.playlistId ?? '');
+    return db.playlistItems
+      .filter((i) => i.playlist_id === id)
+      .sort((a, b) => a.position - b.position)
+      .map((i) => ({
+        ...i,
+        episode_title: db.episodes.find((e) => e.id === i.episode_id)?.title,
+      }));
+  },
+  add_episode_to_playlist: (args): PlaylistItem => {
+    const playlistId = String(args?.playlistId ?? '');
+    const episodeId = String(args?.episodeId ?? '');
+    if (!db.playlists.some((p) => p.id === playlistId)) throw new Error(`no such playlist: ${playlistId}`);
+    if (db.playlistItems.some((i) => i.playlist_id === playlistId && i.episode_id === episodeId)) {
+      throw new Error('episode already in this playlist');
+    }
+    const position = db.playlistItems
+      .filter((i) => i.playlist_id === playlistId)
+      .reduce((m, i) => Math.max(m, i.position), -1) + 1;
+    const item: PlaylistItem = {
+      id: `pli-${crypto.randomUUID().slice(0, 8)}`,
+      playlist_id: playlistId,
+      episode_id: episodeId,
+      position,
+      added_at: new Date().toISOString(),
+    };
+    db.playlistItems.push(item);
+    return item;
+  },
+  remove_playlist_item: (args): null => {
+    const itemId = String(args?.itemId ?? '');
+    const before = db.playlistItems.length;
+    db.playlistItems = db.playlistItems.filter((i) => i.id !== itemId);
+    if (db.playlistItems.length === before) throw new Error(`no such playlist item: ${itemId}`);
+    return null;
+  },
+  save_queue_as_playlist: (args): Playlist => {
+    const name = String(args?.name ?? '').trim();
+    if (!name) throw new Error('playlist name must not be empty');
+    const ids = (args?.episodeIds as string[] | undefined) ?? [];
+    const now = new Date().toISOString();
+    const p: Playlist = {
+      id: `pl-${crypto.randomUUID().slice(0, 8)}`,
+      user_id: 'current-user',
+      name,
+      created_at: now,
+      updated_at: now,
+    };
+    db.playlists.push(p);
+    ids.forEach((episodeId, i) => {
+      db.playlistItems.push({
+        id: `pli-${crypto.randomUUID().slice(0, 8)}`,
+        playlist_id: p.id,
+        episode_id: episodeId,
+        position: i,
+        added_at: now,
+      });
+    });
+    return p;
+  },
+  play_playlist: (args): Episode[] => {
+    const id = String(args?.playlistId ?? '');
+    if (!db.playlists.some((p) => p.id === id)) throw new Error(`no such playlist: ${id}`);
+    return db.playlistItems
+      .filter((i) => i.playlist_id === id)
+      .sort((a, b) => a.position - b.position)
+      .map((i) => db.episodes.find((e) => e.id === i.episode_id))
+      .filter((e): e is Episode => Boolean(e));
+  },
 
   // Smart-link review (2c wiring; mirrors the Rust commands from 1d):
   // confirm flips user_confirmed, unlink deletes, both ERROR on an unknown

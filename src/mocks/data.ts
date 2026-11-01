@@ -6,7 +6,7 @@
  * and D2 (card_click_action = 'auto' default).
  */
 import type {
-  Channel, Download, Episode, EpisodeLink, HistoryEntry, Instance, PlayModeRule,
+  Channel, Download, Episode, EpisodeLink, HistoryEntry, Instance, Playlist, PlaylistItem, PlayModeRule,
   PodcastSearchResult, UserPreferences,
 } from '../types';
 
@@ -26,6 +26,8 @@ export interface MockDb {
   playModeRules: PlayModeRule[];
   history: HistoryEntry[];
   downloads: Download[];
+  playlists: Playlist[];
+  playlistItems: PlaylistItem[];
   preferences: UserPreferences;
 }
 
@@ -416,6 +418,8 @@ export const mockDb: MockDb = {
       created_at: '2026-10-17T10:00:00Z',
     },
   ],
+  playlists: [],
+  playlistItems: [],
   preferences: {
     user_id: 'current-user',
     default_format: 'unified',

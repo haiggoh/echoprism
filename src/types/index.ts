@@ -190,6 +190,31 @@ export interface LinkedChannelPair {
 }
 
 // ============================
+// PLAYLISTS (dead-controls Phase 4)
+// ============================
+
+export interface Playlist {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaylistItem {
+  id: string;
+  playlist_id: string;
+  episode_id: string;
+  position: number;
+  added_at: string;
+}
+
+/** A playlist item with its episode title hydrated at read time. */
+export interface PlaylistItemWithTitle extends PlaylistItem {
+  episode_title?: string;
+}
+
+// ============================
 // PLAY MODE RULES (D7)
 // ============================
 

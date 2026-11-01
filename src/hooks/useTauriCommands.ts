@@ -1,6 +1,6 @@
 import { invoke } from '../tauri-bridge';
 import {
-  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, LinkedChannelPair, PlayModeRule,
+  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, LinkedChannelPair, Playlist, PlaylistItem, PlaylistItemWithTitle, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
   KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, NotificationSummary, StoryboardSpec,
@@ -117,6 +117,21 @@ export const smartLinkCommands = {
   match: () => invoke<{ matched_count: number }>('match_episodes'),
   confirm: (linkId: string, confirmed: boolean) => invoke<void>('confirm_smart_link', { linkId, confirmed }),
   unlink: (linkId: string) => invoke<void>('unlink_smart_link', { linkId }),
+};
+
+// Playlist commands (playlists.rs — dead-controls Phase 4)
+export const playlistCommands = {
+  list: () => invoke<Playlist[]>('list_playlists'),
+  create: (name: string) => invoke<Playlist>('create_playlist', { name }),
+  rename: (playlistId: string, name: string) => invoke<void>('rename_playlist', { playlistId, name }),
+  remove: (playlistId: string) => invoke<void>('delete_playlist', { playlistId }),
+  items: (playlistId: string) => invoke<PlaylistItemWithTitle[]>('list_playlist_items', { playlistId }),
+  addEpisode: (playlistId: string, episodeId: string) =>
+    invoke<PlaylistItem>('add_episode_to_playlist', { playlistId, episodeId }),
+  removeItem: (itemId: string) => invoke<void>('remove_playlist_item', { itemId }),
+  saveAsQueue: (name: string, episodeIds: string[]) =>
+    invoke<Playlist>('save_queue_as_playlist', { name, episodeIds }),
+  play: (playlistId: string) => invoke<Episode[]>('play_playlist', { playlistId }),
 };
 
 // Play-mode rule commands (play_mode_rules.rs) — D7 per-title-family

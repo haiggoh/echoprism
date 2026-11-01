@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { MiniPlayer } from './components/MiniPlayer';
 import { FeedScreen } from './components/screens/FeedScreen';
 import { QueueScreen } from './components/screens/QueueScreen';
+import { PlaylistsScreen } from './components/screens/PlaylistsScreen';
 import { PlayerScreen } from './components/screens/PlayerScreen';
 import { SearchScreen } from './components/screens/SearchScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
@@ -61,6 +62,7 @@ function AppRoutes() {
               <Route path="/onboarding" element={<OnboardingScreen />} />
               <Route path="/feed" element={<FeedScreen />} />
               <Route path="/queue" element={<QueueScreen />} />
+              <Route path="/playlists" element={<PlaylistsScreen />} />
               <Route path="/player/:episodeId" element={<PlayerScreen />} />
               <Route path="/search" element={<SearchScreen />} />
               <Route path="/settings" element={<SettingsScreen />} />

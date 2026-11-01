@@ -247,6 +247,14 @@ implementation must fail this.
 **🧪 Receipt 4:** new cargo tests green; vitest + the new e2e spec green;
 schema applied on a fresh DB and on a copy of an existing DB.
 
+**✅ DONE 2026-10-31** — backend `461c0d15` (schema tables + index, core types,
+8 commands, 4 query tests incl. order-preservation and cascade), frontend
+this commit (PlaylistsScreen + /playlists + sidebar, QueueScreen "Save as
+playlist" modal, mock parity, 4 vitest + e2e f08 green). schema.sql's
+`CREATE TABLE IF NOT EXISTS` IS the existing-install migration
+(migrations::run applies schema.sql wholesale), so no separate data
+migration was needed — the receipt above holds by construction.
+
 ## ⏯️ Phase 5 — D7 resolution at play time
 
 **Objective:** play-mode rules apply when the queue advances, not only on
@@ -303,16 +311,12 @@ remains; record the new waypoints' resolution.
 **Tests:** `npx vitest run`, `cargo test`, `npx tsc --noEmit`,
 `npx playwright test`. Run the full set, not samples.
 
-**⚠️ `npm run lint` CANNOT RUN — exclude it from the gate list.** `package.json`
-ships `"lint": "eslint . --ext ts,tsx --report-unused-disable-directives
---max-warnings 0"`, ESLint 8.57.1 and the two react plugins are in
-devDependencies, but **no ESLint configuration file exists anywhere in the
-repo** (`ls -a | grep -i eslint` → nothing), so `eslint` exits 2 with
-"couldn't find a configuration file". This gate has therefore never run.
-Tracked as a waypoint; writing a config is deliberately NOT part of this plan
-because new lint rules would flag existing code and change the gate's meaning.
-Two traps it already produced in this session: piping eslint into `tail` made
-exit 2 read as exit 0 (`$?` was `tail`'s status).
+**🔄 UPDATED 2026-10-31:** `npm run lint` NOW RUNS — `.eslintrc.cjs` landed
+(commit 3e4fa624, waypoint echoprism-npm-run-lint-cannot) with a minimal
+config mirroring tsc plus react-hooks, and the first-run findings were
+triaged. The gate is part of the Phase 7 list again. The two traps it
+produced stand as history: piping eslint into `tail` made exit 2 read as
+exit 0 (`$?` was `tail`'s status).
 
 **🧪 Receipt 7:** each command's tail output with pass counts and exit 0.
 

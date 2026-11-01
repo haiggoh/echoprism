@@ -5,9 +5,11 @@ import { expect, test } from '@playwright/test';
  * reorder by drag, remove, clear.
  *
  * Deviation from the plan text: the plan's step 1 is "drag episode to queue"
- * (feed → queue drag); the built affordance is per-card queue buttons
- * ("Add to end" / "Play next" with toasts) — F05-E2's drag-from-feed stays
- * unbuilt and is not asserted. Reorder uses the queue's HTML5 drag handle.
+ * (feed → queue drag). That gesture IS built now (2026-10-31, draggable feed
+ * cards + queue drop zone, unit-tested in feed-drag-to-queue.test.tsx);
+ * Playwright's HTML5 DnD synthesis is unreliable, so this spec still drives
+ * the per-card queue buttons ("Add to end" / "Play next" with toasts).
+ * Reorder uses the queue's HTML5 drag handle.
  */
 test('F05-H1: add from feed, reorder, remove, clear', async ({ page }) => {
   await page.goto('/feed');
