@@ -160,3 +160,60 @@ describe('Settings → Play Modes rule editor (D7)', () => {
     }
   });
 });
+
+/**
+ * P3 remaining item (waypoint echoprism-p3-user-testable): "no priority
+ * control in the rule editor". Rules evaluate priority DESC (higher wins),
+ * so the form gains a Priority input and each row gains raise/lower buttons
+ * that re-set the rule (an upsert on channel+pattern) with priority ± 1.
+ *
+ * Discriminants: dropping the priority argument from the form's set call
+ * fails the first test (the new rule shows P0); removing the up/down
+ * buttons fails the second.
+ */
+describe('Play Modes priority control (P3 remaining item)', () => {
+  it('the add form sends the chosen priority and the new rule shows it', async () => {
+    renderSettings();
+    openPlayModesTab();
+
+    const section = await waitFor(() => channelSection('Tech Talks Weekly'));
+    fireEvent.change(within(section).getByLabelText('Title contains') as HTMLInputElement, {
+      target: { value: 'Cody' },
+    });
+    fireEvent.change(within(section).getByLabelText('Priority') as HTMLInputElement, {
+      target: { value: '5' },
+    });
+    fireEvent.click(within(section).getByRole('button', { name: 'Add rule' }));
+
+    await waitFor(() => {
+      const row = within(channelSection('Tech Talks Weekly')).getByText('"Cody"').closest('li');
+      expect(row?.textContent).toContain('P5');
+    });
+  });
+
+  it('raise/lower re-set the rule with the new priority (upsert on channel+pattern)', async () => {
+    renderSettings();
+    openPlayModesTab();
+
+    await waitFor(() => expect(channelSection('Even More News')).toBeTruthy());
+    fireEvent.click(
+      within(channelSection('Even More News')).getByRole('button', {
+        name: 'Raise priority of "Even More News" for Even More News',
+      }),
+    );
+    await waitFor(() => {
+      const row = within(channelSection('Even More News')).getByText('"Even More News"').closest('li');
+      expect(row?.textContent).toContain('P1');
+    });
+
+    fireEvent.click(
+      within(channelSection('Even More News')).getByRole('button', {
+        name: 'Lower priority of "Even More News" for Even More News',
+      }),
+    );
+    await waitFor(() => {
+      const row = within(channelSection('Even More News')).getByText('"Even More News"').closest('li');
+      expect(row?.textContent).toContain('P0');
+    });
+  });
+});

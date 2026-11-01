@@ -624,6 +624,7 @@ function ChannelRulesSection({
   const { addToast } = useToasts();
   const [pattern, setPattern] = useState('');
   const [mode, setMode] = useState<'video' | 'audio'>('video');
+  const [priority, setPriority] = useState(0);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['play-mode-rules'] });
   // Rule mutations are otherwise silent on failure — the form would just
@@ -635,15 +636,28 @@ function ChannelRulesSection({
       variant: 'danger',
     });
   const setMutation = useMutation({
-    mutationFn: () => playModeRuleCommands.set(channel.id, pattern.trim(), mode),
+    mutationFn: () => playModeRuleCommands.set(channel.id, pattern.trim(), mode, priority),
     onSuccess: () => {
       invalidate();
       setPattern('');
+      setPriority(0);
     },
     onError,
   });
   const removeMutation = useMutation({
     mutationFn: (ruleId: string) => playModeRuleCommands.remove(ruleId),
+    onSuccess: invalidate,
+    onError,
+  });
+  // Priority control (P3 remaining item): rules evaluate priority DESC, so
+  // raising a rule makes it win over same-channel siblings. set is an upsert
+  // on (channel, pattern), so re-setting with a new priority updates in place.
+  const priorityMutation = useMutation({
+    mutationFn: ({ ruleId, next }: { ruleId: string; next: number }) => {
+      const r = rules.find((x) => x.id === ruleId);
+      if (!r) throw new Error('rule not found');
+      return playModeRuleCommands.set(channel.id, r.title_pattern, r.play_mode, next);
+    },
     onSuccess: invalidate,
     onError,
   });
@@ -664,6 +678,25 @@ function ChannelRulesSection({
             <li key={rule.id} className="flex items-center justify-between py-2">
               <span className="text-sm text-text">"{rule.title_pattern}"</span>
               <span className="flex items-center gap-3">
+                <span className="text-xs text-text-muted" title="Priority — higher is evaluated first">
+                  P{rule.priority}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Raise priority of "${rule.title_pattern}" for ${channel.title}`}
+                  className="text-sm text-text-muted hover:text-text"
+                  onClick={() => priorityMutation.mutate({ ruleId: rule.id, next: rule.priority + 1 })}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Lower priority of "${rule.title_pattern}" for ${channel.title}`}
+                  className="text-sm text-text-muted hover:text-text"
+                  onClick={() => priorityMutation.mutate({ ruleId: rule.id, next: Math.max(0, rule.priority - 1) })}
+                >
+                  ↓
+                </button>
                 <span className="px-2 py-0.5 rounded bg-surface text-xs font-medium capitalize text-text">
                   {rule.play_mode}
                 </span>
@@ -703,6 +736,20 @@ function ChannelRulesSection({
             onChange={(e) => setPattern(e.target.value)}
             placeholder={`e.g. ${channel.title}`}
             className="w-full px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+          />
+        </div>
+        <div>
+          <label htmlFor={`rule-priority-${channel.id}`} className="block text-sm font-medium mb-1">
+            Priority
+          </label>
+          <input
+            id={`rule-priority-${channel.id}`}
+            type="number"
+            min={0}
+            step={1}
+            value={priority}
+            onChange={(e) => setPriority(Math.max(0, Number(e.target.value) || 0))}
+            className="w-20 px-3 py-2 bg-surface border border-border rounded-md text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
           />
         </div>
         <fieldset>
