@@ -169,20 +169,25 @@ impl Scorer {
         }
     }
 
-    /// Content words with a trailing segment removed when it spells out the
-    /// OTHER side's channel name.
+    /// Content words with a show-branding segment removed when it spells out
+    /// the OTHER side's channel name — in EITHER position, behind ANY divider.
     ///
     /// "Why Billionaires Should Not Exist | Some More News" paired against
     /// "Why Billionaires Should Not Exist", where the other side's channel is
     /// "Some More News": the trailing run IS that channel, so it is the show's
     /// own branding — corroboration that these are the same story on the same
     /// show, not extra content that dilutes the match. Stripping it takes the
-    /// pair from 0.78 to 1.00 (live-test 2026-10-28).
+    /// pair from 0.78 to 1.00 (live-test 2026-10-28). The same holds for the
+    /// prefix placement ("Some More News: Why Billionaires…") and for every
+    /// divider YouTube creators use (`|`, `-`, `–`, `—`, `:`) — content_words
+    /// splits on all non-alphanumerics, so the divider never reaches the word
+    /// list and only the placement matters (live-test batch 2 Task 4a,
+    /// 2026-10-28 owner report).
     ///
-    /// Exact-match only, and only when the trailing run is the WHOLE segment:
-    /// an unrelated trailing segment ("… | A Bonus Segment") stays as content,
-    /// so this cannot paper over a genuine mismatch.
-    fn content_words_minus_channel_suffix(&self, text: &str, other_channel: Option<&str>) -> Vec<String> {
+    /// Exact-match only, and only when the run is the WHOLE segment and at
+    /// least one content word remains: an unrelated segment ("… | A Bonus
+    /// Segment") stays as content, so this cannot paper over a mismatch.
+    fn strip_show_branding(&self, text: &str, other_channel: Option<&str>) -> Vec<String> {
         let mut words = self.content_words(text);
         let Some(channel) = other_channel.filter(|c| !c.trim().is_empty()) else {
             return words;
@@ -191,14 +196,20 @@ impl Scorer {
         if channel_words.is_empty() || words.len() <= channel_words.len() {
             return words;
         }
-        let tail = &words[words.len() - channel_words.len()..];
+        let n = channel_words.len();
+        let tail = &words[words.len() - n..];
         if tail == channel_words.as_slice() {
-            words.truncate(words.len() - channel_words.len());
+            words.truncate(words.len() - n);
+        } else {
+            let head = &words[..n];
+            if head == channel_words.as_slice() {
+                words.drain(..n);
+            }
         }
         words
     }
 
-    /// `title_similarity` minus a trailing channel-name segment on either side.
+    /// `title_similarity` minus a show-branding segment on either side.
     /// Used where the channel context is known, so a show brace ("| Show")
     /// cannot cost the pair its similarity.
     pub(crate) fn title_similarity_for_pairing(
@@ -208,8 +219,8 @@ impl Scorer {
         channel1: Option<&str>,
         channel2: Option<&str>,
     ) -> f64 {
-        let words1 = self.content_words_minus_channel_suffix(title1, channel2);
-        let words2 = self.content_words_minus_channel_suffix(title2, channel1);
+        let words1 = self.strip_show_branding(title1, channel2);
+        let words2 = self.strip_show_branding(title2, channel1);
         self.similarity_of(&words1, &words2)
     }
 
@@ -554,6 +565,72 @@ mod scorer_tests {
         );
     }
 
+    /// Live-test batch 2 Task 4a, owner's permutations: the show's own branding
+    /// segment must not cost the pair its similarity, for ANY of the dividers
+    /// YouTube creators actually use and in EITHER position (suffix or prefix).
+    /// content_words already splits on every non-alphanumeric, so the divider
+    /// itself never survives into the word list — only its placement matters.
+    #[test]
+    fn branded_titles_reach_1_0_for_every_divider_and_both_placements() {
+        let sc = scorer();
+        for divider in [" | ", " - ", " – ", " — ", ": "] {
+            for branded in [
+                format!("Why Billionaires Should Not Exist{divider}Some More News"),
+                format!("Some More News{divider}Why Billionaires Should Not Exist"),
+            ] {
+                let sim = sc.title_similarity_for_pairing(
+                    "Why Billionaires Should Not Exist",
+                    &branded,
+                    Some("Some More News"),
+                    Some("Some More News"),
+                );
+                assert_eq!(
+                    sim, 1.0,
+                    "divider {divider:?}, branded title {branded:?} names the other side's channel — it is branding, not content"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_branded_prefix_pair_scores_near_certain() {
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        let mut p = pod("Why Billionaires Should Not Exist");
+        p.channel_title = Some("Some More News".into());
+        p.duration_seconds = Some(1600);
+        let mut v = vid("Some More News — Why Billionaires Should Not Exist");
+        v.channel_title = Some("Some More News".into());
+        v.duration_seconds = Some(1600);
+
+        let confidence = sc.confidence(&p, &v, &cfg);
+        assert!(
+            confidence >= 0.9,
+            "a branded prefix spelling the same show must read as near-certain. Got {confidence:.3}"
+        );
+    }
+
+    /// Guard for the prefix half: only a segment spelling the OTHER side's
+    /// channel is boilerplate. A different leading segment stays content, so
+    /// the rule cannot paper over a genuine mismatch.
+    #[test]
+    fn an_unrelated_leading_segment_still_counts() {
+        let sc = scorer();
+        let mut p = pod("Why Billionaires Should Not Exist");
+        p.channel_title = Some("Some More News".into());
+        let v = vid("A Bonus Segment: Why Billionaires Should Not Exist");
+
+        let sim = sc.title_similarity_for_pairing(
+            &p.title,
+            &v.title,
+            p.channel_title.as_deref(),
+            v.channel_title.as_deref(),
+        );
+        assert!(
+            sim < 1.0,
+            "an unrelated leading segment is still extra content, not boilerplate"
+        );
+    }
 
     fn pod(title: &str) -> PodcastEpisode {
         PodcastEpisode {
