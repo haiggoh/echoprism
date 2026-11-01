@@ -64,6 +64,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Live-test batch 2 Task 1: the speaker icon is a mute toggle', () => {
+  it('a manual drag to 0, then unmute, restores the last dragged level (not a stale one)', () => {
+    // 2026-10-31 review minor: setVolume remembers the last non-zero slider
+    // level, so unmute after a drag-to-0 does not resurrect an old value.
+    usePlayerStore.setState({ volume: 0.8, volumeBeforeMute: 1.0 });
+    usePlayerStore.getState().setVolume(0.3);
+    usePlayerStore.getState().setVolume(0);
+    usePlayerStore.getState().toggleMute();
+    expect(usePlayerStore.getState().volume).toBe(0.3);
+  });
+
   it('clicking it mutes, and the slider follows', async () => {
     renderPlayer();
     await waitFor(() => expect(api).toBeDefined());

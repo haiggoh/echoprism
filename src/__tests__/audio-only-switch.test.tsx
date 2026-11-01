@@ -42,13 +42,6 @@ function Probe() {
   );
 }
 
-/** An audio element for the hidden engine, so a src can be observed. */
-function AudioSlot() {
-  const ctx = usePlayer();
-  void ctx;
-  return null;
-}
-
 function videoEpisode(id: string, title: string): Episode {
   return {
     id,
@@ -70,7 +63,6 @@ function renderPlayer() {
       <MemoryRouter>
         <PlayerProvider>
           <Probe />
-          <AudioSlot />
         </PlayerProvider>
       </MemoryRouter>
     </QueryClientProvider>,

@@ -50,16 +50,11 @@ function wrap(ui: React.ReactElement, initial: string) {
   );
 }
 
-function ChannelMarker() {
-  return <div data-testid="channel-screen">the channel</div>;
-}
-
 const APP_ROUTES = (
   <>
     <Route path="/channels" element={<ChannelsScreen />} />
     <Route path="/channels/:channelId" element={<ChannelScreen />} />
     <Route path="/player/:episodeId" element={<PlayerScreen />} />
-    <Route path="/channels/:channelId" element={<ChannelMarker />} />
   </>
 );
 

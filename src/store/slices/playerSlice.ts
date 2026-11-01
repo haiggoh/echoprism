@@ -49,7 +49,13 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     playbackState: state.playbackState ? { ...state.playbackState, duration_seconds: duration } : null,
   })),
   setPlaybackRate: (rate) => set({ playbackRate: rate }),
-  setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)) }),
+  setVolume: (volume) => {
+    const v = Math.max(0, Math.min(1, volume));
+    // 2026-10-31 review minor: a manual drag to a non-zero level is the level
+    // unmute should restore — without this, drag-to-0 then unmute resurrects
+    // a stale pre-mute value (or 1.0) instead of the last dragged level.
+    set({ volume: v, ...(v > 0 ? { volumeBeforeMute: v } : {}) });
+  },
   toggleMute: () =>
     set((state) => {
       if (state.volume > 0) {

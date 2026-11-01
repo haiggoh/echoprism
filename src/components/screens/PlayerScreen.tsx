@@ -183,7 +183,12 @@ export function PlayerScreen() {
               type="button"
               className="hover:text-text hover:underline transition-colors"
               aria-label={episode.channel.title}
-              onClick={() => navigate(`/channels/${episode.channel?.id}`)}
+              onClick={() => {
+                const channelId = episode.channel?.id;
+                // A channel object without an id (e.g. its row was deleted)
+                // must not navigate to /channels/undefined.
+                if (channelId) navigate(`/channels/${channelId}`);
+              }}
             >
               {episode.channel.title}
             </button>
