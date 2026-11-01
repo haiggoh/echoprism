@@ -2141,6 +2141,63 @@ pub async fn playlist_episode_ids(pool: &SqlitePool, playlist_id: &str) -> DbRes
     Ok(ids)
 }
 
+// ---- Retention: hidden-channel cap (owner decision 2026-10-31, waypoint
+// echoprism-hidden-row-retention). Unsubscribed channels are hidden, never
+// deleted BY THE USER — but the table grows without bound, so a cap applies:
+// when hidden rows exceed MAX_HIDDEN_CHANNELS, the OLDEST (created_at ASC)
+// are pruned. A channel with ANY episodes row is NEVER dropped —
+// episodes.channel_id cascades, and the standing rule is "never silently drop
+// a row that carries downloaded episodes or history" (all of which hang off
+// episodes). The owner picked "reasonable maximum size, ~2000, oldest first".
+
+pub const MAX_HIDDEN_CHANNELS: i64 = 2000;
+
+pub async fn hidden_channel_count(pool: &SqlitePool) -> DbResult<i64> {
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channels WHERE is_subscribed = 0")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(n)
+}
+
+/// Drop the oldest hidden channels beyond the cap. Returns how many were
+/// dropped. Channels that still have episodes are protected (see above).
+pub async fn prune_hidden_channels(pool: &SqlitePool, max_hidden: i64) -> DbResult<i64> {
+    let hidden = hidden_channel_count(pool).await?;
+    let excess = hidden - max_hidden;
+    if excess <= 0 {
+        return Ok(0);
+    }
+    // Candidates: hidden, episode-free, oldest first. The LIMIT takes only the
+    // excess — a channel that gains episodes between count and delete is still
+    // protected by the NOT EXISTS in the delete's WHERE (re-checked there).
+    let ids: Vec<String> = sqlx::query_scalar!(
+        r#"SELECT id FROM channels
+           WHERE is_subscribed = 0
+             AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.channel_id = channels.id)
+           ORDER BY created_at ASC, rowid ASC
+           LIMIT ?"#,
+        excess
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut dropped = 0i64;
+    for id in ids {
+        let result = sqlx::query(
+            "DELETE FROM channels WHERE id = ? AND is_subscribed = 0 \
+             AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.channel_id = channels.id)",
+        )
+        .bind(&id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        dropped += result.rows_affected() as i64;
+    }
+    Ok(dropped)
+}
+
 pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbResult<()> {
     let matched_at = link.matched_at.to_rfc3339();
     let matched_by = link.matched_by.to_string();
@@ -2675,6 +2732,41 @@ mod d6_d7_tests {
         assert_eq!(items.len(), 1);
         remove_playlist_item(&pool, &items[0].id).await.unwrap();
         assert!(list_playlist_items(&pool, &p.id).await.unwrap().is_empty());
+    }
+
+    // ---- Retention: hidden-channel cap (owner decision 2026-10-31) ----
+
+    #[tokio::test]
+    async fn prune_drops_oldest_hidden_beyond_the_cap_and_keeps_protected() {
+        let pool = fresh_pool().await;
+        for (id, created) in [("ch-old", "2026-01-01"), ("ch-mid", "2026-02-01"), ("ch-new", "2026-03-01")] {
+            insert_channel(&pool, id, &format!("ext-{id}"), &format!("Title {id}"), "video", None).await;
+            query("UPDATE channels SET is_subscribed = 0, created_at = ? WHERE id = ?")
+                .bind(created)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .expect("hide channel");
+        }
+        // The oldest hidden channel carries an episode — episodes.channel_id
+        // cascades, so it is protected no matter how old it is.
+        insert_stream_episode(&pool, "ep-old", "ch-old", "g-old", "Old episode", Some("vid-old"), None, None, None, None).await;
+        // A subscribed channel is never a candidate.
+        insert_channel(&pool, "ch-sub", "ext-sub", "Subscribed", "video", None).await;
+
+        assert_eq!(hidden_channel_count(&pool).await.unwrap(), 3);
+        // Cap 2 → drop 1: ch-old is protected, so the oldest UNPROTECTED (ch-mid) goes.
+        let dropped = prune_hidden_channels(&pool, 2).await.expect("prune");
+        assert_eq!(dropped, 1);
+        let remaining: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM channels ORDER BY id").fetch_all(&pool).await.unwrap();
+        assert_eq!(remaining, vec!["ch-new", "ch-old", "ch-sub"]);
+        assert_eq!(hidden_channel_count(&pool).await.unwrap(), 2);
+        // Under the cap: a no-op that drops nothing.
+        assert_eq!(prune_hidden_channels(&pool, 5).await.unwrap(), 0);
+        let remaining: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM channels ORDER BY id").fetch_all(&pool).await.unwrap();
+        assert_eq!(remaining.len(), 3, "an under-cap sweep must not drop anything");
     }
 
     // ---- Batch 2 Task 5: certain pairs are learned, not listed as awaiting ----

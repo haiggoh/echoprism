@@ -203,6 +203,10 @@ pub fn run() {
             commands::playlists::save_queue_as_playlist,
             commands::playlists::play_playlist,
 
+            // Retention commands
+            commands::retention::hidden_channel_stats,
+            commands::retention::prune_hidden_channels,
+
             // Play-mode rule commands (D7)
             commands::play_mode_rules::list_play_mode_rules,
             commands::play_mode_rules::set_play_mode_rule,

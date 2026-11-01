@@ -241,6 +241,14 @@ impl Database {
         queries::playlist_episode_ids(&self.pool, playlist_id).await
     }
 
+    // Retention
+    pub async fn hidden_channel_count(&self) -> DbResult<i64> {
+        queries::hidden_channel_count(&self.pool).await
+    }
+    pub async fn prune_hidden_channels(&self, max_hidden: i64) -> DbResult<i64> {
+        queries::prune_hidden_channels(&self.pool, max_hidden).await
+    }
+
     // Play-mode rules (D7)
     pub async fn list_play_mode_rules(&self, channel_id: Option<String>) -> DbResult<Vec<PlayModeRule>> {
         queries::list_play_mode_rules(&self.pool, channel_id).await

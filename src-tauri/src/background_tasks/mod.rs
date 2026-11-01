@@ -26,8 +26,9 @@ pub fn start_all(app_handle: tauri::AppHandle) {
     // Start SponsorBlock sync
     start_sponsorblock_sync();
 
-    // Start cleanup task
-    start_cleanup();
+    // Start cleanup task (includes the hidden-channel retention sweep)
+    let db = app_handle.state::<crate::db::Database>().inner().clone();
+    start_cleanup(db);
 }
 
 fn start_instance_health_checks(
@@ -112,11 +113,24 @@ fn start_sponsorblock_sync() -> tauri::async_runtime::JoinHandle<()> {
     })
 }
 
-fn start_cleanup() -> tauri::async_runtime::JoinHandle<()> {
+fn start_cleanup(db: crate::db::Database) -> tauri::async_runtime::JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400)); // 24 hours
+        // Consume the immediate first tick: the sweep runs on the daily
+        // cadence (the Settings "Prune now" button covers on-demand), and the
+        // starter-spawn test runs with no tokio reactor — a body that touches
+        // the pool on the immediate tick would panic there.
+        interval.tick().await;
         loop {
             interval.tick().await;
+
+            // Retention (owner decision 2026-10-31): hidden channels are capped,
+            // oldest pruned first; channels with episodes are never dropped.
+            match db.prune_hidden_channels(crate::db::queries::MAX_HIDDEN_CHANNELS).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("Retention sweep pruned {n} hidden channel(s) beyond the cap"),
+                Err(e) => tracing::warn!("Retention sweep failed: {e}"),
+            }
 
             // Clean old data
             // - Old downloads (completed > 30 days)
@@ -148,7 +162,13 @@ mod tests {
         // PodcastManager), so this covers the two remaining stubs; its spawn
         // mechanics are pinned by starter_spawns_outside_any_tokio_runtime.
         let sponsorblock = start_sponsorblock_sync();
-        let cleanup = start_cleanup();
+        let cleanup = start_cleanup(crate::db::Database::from_pool(
+            sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("in-memory pool"),
+        ));
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
@@ -174,7 +194,11 @@ mod tests {
     /// Deliberately a plain `#[test]`: no runtime context is the point.
     #[test]
     fn starter_spawns_outside_any_tokio_runtime() {
-        let handle = start_cleanup();
+        // sponsorblock is the no-db starter: building a Database needs a Tokio
+        // context (sqlx 0.7 connect_lazy panics without one), so the
+        // no-runtime spawn property is pinned on the db-free starter; the
+        // cleanup loop itself is covered by the tokio::test above.
+        let handle = start_sponsorblock_sync();
         assert!(
             !handle.inner().is_finished(),
             "cleanup task should be running on the tauri runtime"

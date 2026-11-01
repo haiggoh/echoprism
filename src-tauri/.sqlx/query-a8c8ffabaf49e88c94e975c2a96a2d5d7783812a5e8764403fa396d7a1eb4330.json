@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id FROM channels\n           WHERE is_subscribed = 0\n             AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.channel_id = channels.id)\n           ORDER BY created_at ASC, rowid ASC\n           LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a8c8ffabaf49e88c94e975c2a96a2d5d7783812a5e8764403fa396d7a1eb4330"
+}

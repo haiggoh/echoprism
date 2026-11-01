@@ -8,6 +8,7 @@ pub mod queue;
 pub mod playback;
 pub mod smart_links;
 pub mod playlists;
+pub mod retention;
 pub mod play_mode_rules;
 pub mod settings;
 pub mod history;
