@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueueScreen } from '../components/screens/QueueScreen';
 import { useQueueStore } from '../store/slices/queueSlice';
@@ -48,10 +49,16 @@ function seedQueue(count: number): QueueItem[] {
 }
 
 function renderQueue() {
+  // QueueScreen reads the preferences query since F05 (drop honours
+  // queue_behavior), so the harness must provide a QueryClient like the
+  // other screens' harnesses do.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter>
-      <QueueScreen />
-    </MemoryRouter>
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <QueueScreen />
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 
