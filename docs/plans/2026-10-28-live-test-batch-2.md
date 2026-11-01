@@ -227,7 +227,7 @@ After all tasks, dispatch an independent adversarial review of `git diff <batch-
 - [x] Task 7 — search freshness (4b20d41b)
 - [x] Task 8 — subscribe from the channel surface (592465f9)
 - [x] Task 9 — regression fixtures sweep (each new guard mutation-checked per task; d7 load_paused race root-caused 2026-10-31: click raced the preferences query cache — renderAndClick now waits on cached data; F07 e2e now clears seeded history first so the assertion cannot be fixture-satisfied)
-- [ ] Task 10 — whole-branch review
+- [x] Task 10 — whole-branch review (independent validator agent on git diff e664c435..HEAD: 2 Important findings fixed in af9aa440 — FTS5 term quoting in search_episodes, mutation-check.sh baseline gate; 3 minors waypointed; version surfaces synced to 0.1.1)
 
 ## Notes
 

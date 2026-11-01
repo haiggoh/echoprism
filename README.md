@@ -61,6 +61,8 @@ scripts/build-from-source.sh
 
 - One library for YouTube videos and podcast episodes, one queue, one player
 - Smart links pairing the same story across the two streams
+- Playlists: save the queue under a name and replay it in order; drag episodes
+  from the feed straight into the queue
 - Podcast directory search, subscriptions, background refresh, and OPML
   import/export
 - Episode notifications (new episodes since your last visit), play history
