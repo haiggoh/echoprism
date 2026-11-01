@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Queue, QueueItem } from '../../types';
+import { Episode, Queue, QueueItem } from '../../types';
 
 interface QueueState {
   queue: Queue | null;
@@ -10,7 +10,11 @@ interface QueueState {
   audioOnlyMode: boolean;
   isLoading: boolean;
   error: string | null;
-  
+  /** F05: the feed episode currently being dragged, so a queue drop target
+   *  can pick it up. Module store (not local state) because the drag STARTS
+   *  in the feed and the DROP lands in the queue screen. */
+  draggedEpisode: Episode | null;
+
   // Actions
   setQueue: (queue: Queue | null) => void;
   setItems: (items: QueueItem[]) => void;
@@ -28,6 +32,7 @@ interface QueueState {
   setPlayMode: (itemId: string, mode: 'video' | 'audio' | 'unified') => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setDraggedEpisode: (episode: Episode | null) => void;
   nextTrack: () => void;
   previousTrack: () => void;
 }
@@ -41,6 +46,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   audioOnlyMode: false,
   isLoading: false,
   error: null,
+  draggedEpisode: null,
 
   setQueue: (queue) => set({ queue }),
   setItems: (items) => set({ items }),
@@ -131,6 +137,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
+  setDraggedEpisode: (draggedEpisode) => set({ draggedEpisode }),
   
   nextTrack: () => {
     const { items, currentIndex, repeatMode, shuffle } = get();

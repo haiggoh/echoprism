@@ -1,9 +1,13 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { QueueItemComponent } from '../queue/QueueItem';
 import { QueueEmptyState } from '../queue/QueueEmptyState';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { useToasts } from '../ui/Toaster';
 import { useQueueStore } from '../../store/slices/queueSlice';
+import { queueItemFromEpisode } from '../../hooks/useEpisodePlay';
+import { settingsCommands } from '../../hooks/useTauriCommands';
 import { useNavigate } from 'react-router-dom';
 
 export function QueueScreen() {
@@ -18,8 +22,17 @@ export function QueueScreen() {
     removeItem,
     setCurrentIndex,
     clearQueue,
+    addItem,
+    playNextItem,
+    draggedEpisode,
+    setDraggedEpisode,
   } = useQueueStore();
   const navigate = useNavigate();
+  const { addToast } = useToasts();
+  const { data: preferences } = useQuery({
+    queryKey: ['preferences'],
+    queryFn: settingsCommands.get,
+  });
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   // F05-H1 step 5 (replica/test-plan.md): clearing is destructive and
   // irreversible (local Zustand state) — it asks for confirmation first.
@@ -90,8 +103,25 @@ export function QueueScreen() {
         <div className="px-4 py-2 bg-danger-soft text-danger text-sm">{error}</div>
       )}
 
-      {/* Queue Content */}
-      <div className="flex-1 overflow-auto">
+      {/* Queue Content. F05: the whole pane is a drop zone for a feed episode
+          being dragged over (works for the empty queue too); item-level drops
+          still reorder and bubble up here only when no feed episode is set. */}
+      <div
+        className="flex-1 overflow-auto"
+        data-testid="queue-drop-zone"
+        onDragOver={(e) => {
+          if (draggedEpisode) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (!draggedEpisode) return; // reorder drops are handled per item
+          e.preventDefault();
+          const ep = draggedEpisode;
+          setDraggedEpisode(null);
+          if (preferences?.queue_behavior === 'play_next') playNextItem(queueItemFromEpisode(ep));
+          else addItem(queueItemFromEpisode(ep));
+          addToast({ title: 'Queued', description: ep.title, variant: 'success' });
+        }}
+      >
         {items.length === 0 ? (
           isLoading ? (
             <div className="flex h-full items-center justify-center">

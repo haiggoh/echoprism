@@ -1,4 +1,5 @@
 import { Episode } from '../../types';
+import { useQueueStore } from '../../store/slices/queueSlice';
 import { Thumbnail } from '../ui/Thumbnail';
 import { HeadphonesIcon } from '../ui/HeadphonesIcon';
 import { useHoverPreview } from '../../hooks/useHoverPreview';
@@ -17,6 +18,8 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
   // Podcast-shaped episodes carry no video_id, so the hook stays idle for
   // them by construction.
   const { spec, frameIndex, onPointerEnter, onPointerLeave } = useHoverPreview(episode.video_id);
+  // F05: dragging the card carries the episode so the queue screen can drop it.
+  const setDraggedEpisode = useQueueStore((s) => s.setDraggedEpisode);
   const formatTime = (seconds?: number) => {
     if (!seconds) return '';
     const mins = Math.floor(seconds / 60);
@@ -29,8 +32,15 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
   const hasSmartLink = episode.smart_link_id;
 
   return (
-    <article 
+    <article
       className="group bg-surface border border-border rounded-xl overflow-hidden transition-all duration-200 hover:border-border-strong hover:shadow-md"
+      draggable
+      onDragStart={(e) => {
+        setDraggedEpisode(episode);
+        e.dataTransfer.setData('application/x-echoprism-episode', episode.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      onDragEnd={() => setDraggedEpisode(null)}
       onClick={onClick}
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); }}}
