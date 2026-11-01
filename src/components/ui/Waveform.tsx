@@ -92,6 +92,7 @@ export const Waveform = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- variant only selects the render branch; re-running on its change would restart the animation
   }, [waveformData, barCount]);
 
   // Static waveform (CSS-based)

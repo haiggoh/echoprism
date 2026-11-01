@@ -278,6 +278,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         resolvingRef.current = false;
       });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- queryClient is a stable provider singleton; adding it would re-run stream resolution on every render
   }, [isPlaying, streamUrl, setPlaying, addToast]);
 
   const pause = useCallback(() => setPlaying(false), [setPlaying]);
@@ -338,6 +339,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else if (!activeEl.paused) {
       activeEl.pause();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- videoEl is read through activeEl/playbackFormatRef; re-running when the element registers would restart playback
   }, [activeEl, streamUrl, isPlaying, playbackState, setPlaying]);
 
   // Media element -> store: time, duration, and queue advance on end.

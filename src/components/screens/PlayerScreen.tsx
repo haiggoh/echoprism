@@ -45,6 +45,7 @@ export function PlayerScreen() {
     if (episodeId) {
       loadEpisode();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadEpisode changes identity every render; the effect must run only when episodeId changes
   }, [episodeId]);
 
   const loadEpisode = async () => {

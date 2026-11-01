@@ -9,7 +9,7 @@ import { InstanceCard } from '../settings/InstanceCard';
 import { SmartLinksPanel } from '../smartlinks/SmartLinksPanel';
 import { useToasts } from '../ui/Toaster';
 import { useTheme } from '../../hooks/useTheme';
-import type { Channel, PlayModeRule } from '../../types';
+import type { Channel, PlayModeRule, UserPreferences } from '../../types';
 
 export function SettingsScreen() {
   const [activeTab, setActiveTab] = useState<'instances' | 'preferences' | 'podcasts' | 'smart-links' | 'play-modes' | 'shortcuts' | 'about'>('instances');
@@ -116,7 +116,7 @@ function InstanceSettingsTab() {
       {instances && instances.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {instances.map((instance) => (
-            <InstanceCard key={instance.id} instance={instance as any} />
+            <InstanceCard key={instance.id} instance={instance} />
           ))}
         </div>
       ) : (
@@ -176,7 +176,7 @@ function PreferencesTab() {
   const { theme: currentTheme, setTheme } = useTheme();
 
   const updateMutation = useMutation({
-    mutationFn: (prefs: Partial<any>) => settingsCommands.update(prefs),
+    mutationFn: (prefs: Partial<UserPreferences>) => settingsCommands.update(prefs),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
   });
 
@@ -185,7 +185,7 @@ function PreferencesTab() {
       <div>
         <h3 className="font-semibold mb-4">Default Format</h3>
         <div className="grid grid-cols-3 gap-3">
-          {['unified', 'video', 'audio'].map((format) => (
+          {(['unified', 'video', 'audio'] as const).map((format) => (
             <label key={format} className="relative cursor-pointer">
               <input
                 type="radio"
@@ -215,7 +215,7 @@ function PreferencesTab() {
       <div>
         <h3 className="font-semibold mb-4">Queue Behavior</h3>
         <div className="grid grid-cols-2 gap-3">
-          {['play_next', 'add_end'].map((behavior) => (
+          {(['play_next', 'add_end'] as const).map((behavior) => (
             <label key={behavior} className="relative cursor-pointer">
               <input
                 type="radio"

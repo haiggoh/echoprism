@@ -8,7 +8,7 @@ interface Toast {
   duration?: number;
 }
 
-let toastStore: { toasts: Toast[] } = { toasts: [] };
+const toastStore: { toasts: Toast[] } = { toasts: [] };
 let listeners: Array<() => void> = [];
 
 function notify() {

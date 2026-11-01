@@ -67,8 +67,8 @@ const config: Config = {
         xl: ['20px', { lineHeight: '28px', fontWeight: '500' }],
         '2xl': ['24px', { lineHeight: '32px', fontWeight: '600' }],
         '3xl': ['30px', { lineHeight: '36px', fontWeight: '600' }],
-        '4xl': ['36px', { lineHeight': '44px', fontWeight: '700' }],
-        '5xl': ['48px', { lineHeight': '56px', fontWeight: '700' }],
+        '4xl': ['36px', { lineHeight: '44px', fontWeight: '700' }],
+        '5xl': ['48px', { lineHeight: '56px', fontWeight: '700' }],
       },
       spacing: {
         0: '0',

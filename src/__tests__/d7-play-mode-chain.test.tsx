@@ -434,7 +434,7 @@ describe('queue advance consults the D7 chain (Phase 5)', () => {
 
   function QueueProbe() {
     const { addItem } = useQueueStore();
-    const advance = useQueueStore((st) => st.nextTrack); /* MUTATION */;
+    const advance = useQueueStore((st) => st.nextTrack); /* MUTATION */
     const { play } = usePlayer();
     return (
       <>

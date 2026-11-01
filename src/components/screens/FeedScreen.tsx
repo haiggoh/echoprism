@@ -106,7 +106,7 @@ export function FeedScreen() {
             <h2 className="text-lg font-semibold text-text mb-4">Channels</h2>
             <div className="grid grid-cols-2 gap-4">
               {channels.slice(0, 6).map((channel) => (
-                <ChannelCard key={channel.id} channel={channel as any} />
+                <ChannelCard key={channel.id} channel={channel} />
               ))}
             </div>
           </div>

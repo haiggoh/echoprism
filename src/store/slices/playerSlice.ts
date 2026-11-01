@@ -38,7 +38,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   currentInstanceId: undefined,
 
   setPlaybackState: (state) => set((prev) => ({
-    playbackState: { ...prev.playbackState, ...state, user_id: 'current-user' } as any,
+    playbackState: { ...prev.playbackState, ...state, user_id: 'current-user' } as PlaybackState,
   })),
   
   setPlaying: (playing) => set({ isPlaying: playing }),
