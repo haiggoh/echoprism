@@ -259,6 +259,15 @@ describe('handleCardClick consults the D7 chain (integration)', () => {
       expect(rulesMock).toHaveBeenCalled();
       expect(channelsMock).toHaveBeenCalled();
       expect(settingsMock).toHaveBeenCalled();
+      // 2026-10-31 flake root cause: waiting on the fetch CALLS is not
+      // enough — under a loaded machine one act flush can land before
+      // react-query writes the cache, and handleCardClick then reads
+      // preferences === undefined, falls back to 'auto' and play()s instead
+      // of load_paused (observed: stream called with 'video' in a test whose
+      // prefs say load_paused, 1-in-3 full-suite). Wait on the CACHE.
+      expect(client.getQueryData(['preferences'])).toBeDefined();
+      expect(client.getQueryData(['play-mode-rules'])).toBeDefined();
+      expect(client.getQueryData(['channels', 'for-play-mode'])).toBeDefined();
     });
     await act(async () => {}); // flush query resolutions into component state
     fireEvent.click(screen.getByText('click-card'));
