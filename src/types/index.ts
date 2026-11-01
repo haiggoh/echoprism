@@ -214,6 +214,12 @@ export interface PlaylistItemWithTitle extends PlaylistItem {
   episode_title?: string;
 }
 
+/** Retention policy status (retention.rs): hidden-channel count vs the cap. */
+export interface RetentionStats {
+  hidden_channels: number;
+  cap: number;
+}
+
 // ============================
 // PLAY MODE RULES (D7)
 // ============================

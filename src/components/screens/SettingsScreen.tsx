@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, podcastCommands, settingsCommands } from '../../hooks/useTauriCommands';
+import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, podcastCommands, retentionCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { crashIssueUrl } from '../../lib/crashIssue';
 import { Button } from '../ui/Button';
 import { Thumbnail } from '../ui/Thumbnail';
@@ -332,7 +332,62 @@ function PreferencesTab() {
         </p>
       </div>
 
+      <RetentionSection />
+
       <CrashReportsSection />
+    </div>
+  );
+}
+
+/**
+ * Storage / retention (owner decision 2026-10-31, waypoint
+ * echoprism-hidden-row-retention): hidden (unsubscribed) channels are capped
+ * at 2000; beyond the cap the oldest are pruned automatically by the daily
+ * background sweep, and channels that still have episodes are never pruned.
+ * This section shows the current count and offers an on-demand prune.
+ */
+function RetentionSection() {
+  const queryClient = useQueryClient();
+  const { addToast } = useToasts();
+  const { data: stats } = useQuery({
+    queryKey: ['retention-stats'],
+    queryFn: () => retentionCommands.stats(),
+  });
+  const pruneMutation = useMutation({
+    mutationFn: () => retentionCommands.prune(),
+    onSuccess: (dropped) => {
+      queryClient.invalidateQueries({ queryKey: ['retention-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      addToast({
+        title: dropped > 0 ? `Pruned ${dropped} hidden channel${dropped === 1 ? '' : 's'}` : 'Nothing to prune — under the cap',
+        variant: 'success',
+      });
+    },
+    onError: (err: unknown) =>
+      addToast({
+        title: 'Prune failed',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      }),
+  });
+
+  return (
+    <div>
+      <h3 className="font-semibold mb-4">Storage</h3>
+      <div className="rounded-lg border border-border p-4 flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm text-text">
+            Hidden channels: {stats ? `${stats.hidden_channels} / ${stats.cap}` : '…'}
+          </p>
+          <p className="text-xs text-text-muted mt-1">
+            Unsubscribed channels are hidden, never deleted by hand. Past the cap, the oldest are
+            pruned automatically; channels that still have episodes are never pruned.
+          </p>
+        </div>
+        <Button variant="ghost" disabled={pruneMutation.isPending} onClick={() => pruneMutation.mutate()}>
+          Prune now
+        </Button>
+      </div>
     </div>
   );
 }

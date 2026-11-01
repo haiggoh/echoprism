@@ -1,6 +1,6 @@
 import { invoke } from '../tauri-bridge';
 import {
-  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, LinkedChannelPair, Playlist, PlaylistItem, PlaylistItemWithTitle, PlayModeRule,
+  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, LinkedChannelPair, Playlist, PlaylistItem, PlaylistItemWithTitle, PlayModeRule, RetentionStats,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
   KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, NotificationSummary, StoryboardSpec,
@@ -132,6 +132,12 @@ export const playlistCommands = {
   saveAsQueue: (name: string, episodeIds: string[]) =>
     invoke<Playlist>('save_queue_as_playlist', { name, episodeIds }),
   play: (playlistId: string) => invoke<Episode[]>('play_playlist', { playlistId }),
+};
+
+// Retention commands (retention.rs)
+export const retentionCommands = {
+  stats: () => invoke<RetentionStats>('hidden_channel_stats'),
+  prune: () => invoke<number>('prune_hidden_channels'),
 };
 
 // Play-mode rule commands (play_mode_rules.rs) — D7 per-title-family

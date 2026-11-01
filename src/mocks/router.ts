@@ -439,6 +439,28 @@ const handlers: Record<string, Handler> = {
       .filter((e): e is Episode => Boolean(e));
   },
 
+  // Retention (commands/retention.rs). Mirrors the Rust policy: cap 2000
+  // hidden channels, oldest (created_at) pruned first, channels with any
+  // episode are never dropped (episodes.channel_id cascades in the real DB).
+  hidden_channel_stats: () => ({
+    hidden_channels: db.channels.filter((c) => !c.is_subscribed).length,
+    cap: 2000,
+  }),
+  prune_hidden_channels: () => {
+    const cap = 2000;
+    const hidden = db.channels.filter((c) => !c.is_subscribed);
+    const excess = hidden.length - cap;
+    if (excess <= 0) return 0;
+    const withEpisodes = new Set(db.episodes.map((e) => e.channel_id));
+    const candidates = hidden
+      .filter((c) => !withEpisodes.has(c.id))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const dropIds = new Set(candidates.slice(0, excess).map((c) => c.id));
+    const before = db.channels.length;
+    db.channels = db.channels.filter((c) => !dropIds.has(c.id));
+    return before - db.channels.length;
+  },
+
   // Smart-link review (2c wiring; mirrors the Rust commands from 1d):
   // confirm flips user_confirmed, unlink deletes, both ERROR on an unknown
   // id rather than silently succeeding.
