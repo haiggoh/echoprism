@@ -228,6 +228,29 @@ CREATE INDEX IF NOT EXISTS idx_queue_items_position ON queue_items(queue_id, pos
 CREATE INDEX IF NOT EXISTS idx_queue_items_episode ON queue_items(episode_id);
 
 -- ============================
+-- PLAYLISTS (dead-controls plan Phase 4)
+-- ============================
+-- A playlist snapshots a queue under a name and can be replayed. Items keep
+-- their position (stable under removal — ORDER BY position, gaps are fine);
+-- an episode appears at most once per playlist.
+CREATE TABLE IF NOT EXISTS playlists (
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS playlist_items (
+    id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+    playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(playlist_id, episode_id)
+);
+
+-- ============================
 -- PLAYBACK STATE
 -- ============================
 CREATE TABLE IF NOT EXISTS playback_state (

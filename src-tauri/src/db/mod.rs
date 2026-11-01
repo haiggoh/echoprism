@@ -212,6 +212,35 @@ impl Database {
         queries::list_linked_channels(&self.pool, min_confirmed).await
     }
 
+    // Playlists (Phase 4)
+    pub async fn list_playlists(&self) -> DbResult<Vec<Playlist>> {
+        queries::list_playlists(&self.pool).await
+    }
+    pub async fn create_playlist(&self, name: &str) -> DbResult<Playlist> {
+        queries::create_playlist(&self.pool, name).await
+    }
+    pub async fn rename_playlist(&self, id: &str, name: &str) -> DbResult<()> {
+        queries::rename_playlist(&self.pool, id, name).await
+    }
+    pub async fn delete_playlist(&self, id: &str) -> DbResult<()> {
+        queries::delete_playlist(&self.pool, id).await
+    }
+    pub async fn list_playlist_items(&self, playlist_id: &str) -> DbResult<Vec<queries::PlaylistItemRow>> {
+        queries::list_playlist_items(&self.pool, playlist_id).await
+    }
+    pub async fn add_episode_to_playlist(&self, playlist_id: &str, episode_id: &str) -> DbResult<PlaylistItem> {
+        queries::add_episode_to_playlist(&self.pool, playlist_id, episode_id).await
+    }
+    pub async fn remove_playlist_item(&self, item_id: &str) -> DbResult<()> {
+        queries::remove_playlist_item(&self.pool, item_id).await
+    }
+    pub async fn save_queue_as_playlist(&self, name: &str, episode_ids: &[String]) -> DbResult<Playlist> {
+        queries::save_queue_as_playlist(&self.pool, name, episode_ids).await
+    }
+    pub async fn playlist_episode_ids(&self, playlist_id: &str) -> DbResult<Vec<String>> {
+        queries::playlist_episode_ids(&self.pool, playlist_id).await
+    }
+
     // Play-mode rules (D7)
     pub async fn list_play_mode_rules(&self, channel_id: Option<String>) -> DbResult<Vec<PlayModeRule>> {
         queries::list_play_mode_rules(&self.pool, channel_id).await

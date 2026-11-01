@@ -534,6 +534,26 @@ pub struct LinkedChannelPair {
     pub confirmed_links: i64,
 }
 
+/// A named, ordered snapshot of queue items (dead-controls plan Phase 4).
+/// Items live in `PlaylistItem`; deleting the playlist cascades.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Playlist {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PlaylistItem {
+    pub id: String,
+    pub playlist_id: String,
+    pub episode_id: String,
+    pub position: i64,
+    pub added_at: DateTimeUtc,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]

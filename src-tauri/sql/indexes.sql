@@ -49,3 +49,6 @@ CREATE INDEX IF NOT EXISTS idx_sponsorblock_expires ON sponsorblock_segments(exp
 
 -- Keyboard shortcuts indexes
 CREATE INDEX IF NOT EXISTS idx_keyboard_shortcuts_user ON keyboard_shortcuts(user_id);
+
+-- Playlists indexes
+CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id, position);

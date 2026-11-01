@@ -192,6 +192,17 @@ pub fn run() {
             commands::smart_links::confirm_smart_link,
             commands::smart_links::unlink_smart_link,
 
+            // Playlist commands (Phase 4)
+            commands::playlists::list_playlists,
+            commands::playlists::create_playlist,
+            commands::playlists::rename_playlist,
+            commands::playlists::delete_playlist,
+            commands::playlists::list_playlist_items,
+            commands::playlists::add_episode_to_playlist,
+            commands::playlists::remove_playlist_item,
+            commands::playlists::save_queue_as_playlist,
+            commands::playlists::play_playlist,
+
             // Play-mode rule commands (D7)
             commands::play_mode_rules::list_play_mode_rules,
             commands::play_mode_rules::set_play_mode_rule,

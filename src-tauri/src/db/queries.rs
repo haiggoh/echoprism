@@ -1880,6 +1880,255 @@ pub async fn get_youtube_videos(pool: &SqlitePool) -> DbResult<Vec<YoutubeVideo>
         .collect())
 }
 
+// ---- Phase 4 (dead-controls plan): playlists ----
+// schema.sql's CREATE TABLE IF NOT EXISTS IS the migration for existing
+// installs (migrations::run applies schema.sql wholesale), so the tables
+// above are the receipt; these queries assume them present.
+
+#[derive(sqlx::FromRow)]
+struct PlaylistRow {
+    id: String,
+    user_id: String,
+    name: String,
+    created_at: DateTimeUtc,
+    updated_at: DateTimeUtc,
+}
+
+fn playlist_from_row(r: PlaylistRow) -> Playlist {
+    Playlist {
+        id: r.id,
+        user_id: r.user_id,
+        name: r.name,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+    }
+}
+
+pub async fn list_playlists(pool: &SqlitePool) -> DbResult<Vec<Playlist>> {
+    let rows = sqlx::query_as!(
+        PlaylistRow,
+        r#"SELECT id, user_id, name, created_at, updated_at
+           FROM playlists
+           ORDER BY created_at ASC, rowid ASC"#
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(playlist_from_row).collect())
+}
+
+/// Empty or whitespace-only names are rejected — a nameless playlist is a
+/// row the UI cannot tell apart from a bug.
+pub async fn create_playlist(pool: &SqlitePool, name: &str) -> DbResult<Playlist> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("playlist name must not be empty".into());
+    }
+    let now = DateTimeUtc::from(chrono::Utc::now());
+    let now_str = now.to_rfc3339();
+    let id = uuid::Uuid::new_v4().to_string();
+    sqlx::query!(
+        r#"INSERT INTO playlists (id, user_id, name, created_at, updated_at)
+           VALUES (?, 'current-user', ?, ?, ?)"#,
+        id,
+        name,
+        now_str,
+        now_str
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(Playlist {
+        id,
+        user_id: "current-user".into(),
+        name: name.into(),
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+pub async fn rename_playlist(pool: &SqlitePool, id: &str, name: &str) -> DbResult<()> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("playlist name must not be empty".into());
+    }
+    // rows_affected == 0 means the id is unknown — an ERROR, never a silent
+    // success (the UI only offers ids it listed).
+    let result = sqlx::query("UPDATE playlists SET name = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(name)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("no such playlist: {id}"));
+    }
+    Ok(())
+}
+
+pub async fn delete_playlist(pool: &SqlitePool, id: &str) -> DbResult<()> {
+    // The playlist_items cascade needs foreign_keys ON for THIS connection —
+    // the pool does not set it globally (history.rs sets it per command for
+    // the same reason).
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let result = sqlx::query("DELETE FROM playlists WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("no such playlist: {id}"));
+    }
+    Ok(())
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PlaylistItemRow {
+    pub id: String,
+    pub playlist_id: String,
+    pub episode_id: String,
+    pub position: i64,
+    pub added_at: DateTimeUtc,
+    pub episode_title: Option<String>,
+}
+
+pub async fn list_playlist_items(pool: &SqlitePool, playlist_id: &str) -> DbResult<Vec<PlaylistItemRow>> {
+    sqlx::query_as!(
+        PlaylistItemRow,
+        r#"SELECT pi.id, pi.playlist_id, pi.episode_id, pi.position, pi.added_at,
+                  e.title AS episode_title
+           FROM playlist_items pi
+           LEFT JOIN episodes e ON e.id = pi.episode_id
+           WHERE pi.playlist_id = ?
+           ORDER BY pi.position ASC, pi.rowid ASC"#,
+        playlist_id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+pub async fn add_episode_to_playlist(
+    pool: &SqlitePool,
+    playlist_id: &str,
+    episode_id: &str,
+) -> DbResult<PlaylistItem> {
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM playlists WHERE id = ?")
+        .bind(playlist_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Err(format!("no such playlist: {playlist_id}"));
+    }
+    let dup: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM playlist_items WHERE playlist_id = ? AND episode_id = ?",
+    )
+    .bind(playlist_id)
+    .bind(episode_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    if dup > 0 {
+        return Err("episode already in this playlist".into());
+    }
+    let position: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_items WHERE playlist_id = ?",
+    )
+    .bind(playlist_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let now = DateTimeUtc::from(chrono::Utc::now());
+    let now_str = now.to_rfc3339();
+    let id = uuid::Uuid::new_v4().to_string();
+    sqlx::query!(
+        r#"INSERT INTO playlist_items (id, playlist_id, episode_id, position, added_at)
+           VALUES (?, ?, ?, ?, ?)"#,
+        id,
+        playlist_id,
+        episode_id,
+        position,
+        now_str
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(PlaylistItem {
+        id,
+        playlist_id: playlist_id.into(),
+        episode_id: episode_id.into(),
+        position,
+        added_at: now,
+    })
+}
+
+pub async fn remove_playlist_item(pool: &SqlitePool, item_id: &str) -> DbResult<()> {
+    let result = sqlx::query("DELETE FROM playlist_items WHERE id = ?")
+        .bind(item_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err(format!("no such playlist item: {item_id}"));
+    }
+    Ok(())
+}
+
+/// Snapshot a queue (given as ordered episode ids) under a name — one
+/// transaction, so a failure mid-way cannot leave a half-written playlist.
+/// Order is the positions: 0..n in the given sequence.
+pub async fn save_queue_as_playlist(
+    pool: &SqlitePool,
+    name: &str,
+    episode_ids: &[String],
+) -> DbResult<Playlist> {
+    let playlist = create_playlist(pool, name).await?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    for (i, ep_id) in episode_ids.iter().enumerate() {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO playlist_items (id, playlist_id, episode_id, position, added_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&playlist.id)
+        .bind(ep_id)
+        .bind(i as i64)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(playlist)
+}
+
+/// The episodes of a playlist in play order. The queue itself is client-side
+/// (Zustand), so the command returns the ordered rows and the TS layer fills
+/// the queue and starts playback.
+pub async fn playlist_episode_ids(pool: &SqlitePool, playlist_id: &str) -> DbResult<Vec<String>> {
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM playlists WHERE id = ?")
+        .bind(playlist_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Err(format!("no such playlist: {playlist_id}"));
+    }
+    let ids = sqlx::query_scalar!(
+        r#"SELECT episode_id FROM playlist_items WHERE playlist_id = ?
+           ORDER BY position ASC, rowid ASC"#,
+        playlist_id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(ids)
+}
+
 pub async fn insert_episode_link(pool: &SqlitePool, link: &EpisodeLink) -> DbResult<()> {
     let matched_at = link.matched_at.to_rfc3339();
     let matched_by = link.matched_by.to_string();
@@ -2333,6 +2582,87 @@ mod d6_d7_tests {
         .execute(pool)
         .await
         .expect("insert link");
+    }
+
+    // ---- Phase 4 (dead-controls plan): playlists ----
+
+    #[tokio::test]
+    async fn create_playlist_rejects_empty_and_blank_names() {
+        let pool = fresh_pool().await;
+        assert!(create_playlist(&pool, "").await.is_err());
+        assert!(create_playlist(&pool, "   ").await.is_err());
+        let p = create_playlist(&pool, "  Morning commute  ").await.expect("create");
+        assert_eq!(p.name, "Morning commute", "the name is trimmed");
+        assert_eq!(list_playlists(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn save_queue_as_playlist_preserves_order() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-1", "ext-ch-1", "Chan", "video", None).await;
+        for (id, guid) in [("ep-a", "g-a"), ("ep-b", "g-b"), ("ep-c", "g-c")] {
+            insert_stream_episode(&pool, id, "ch-1", guid, &format!("Title {id}"), Some(&format!("vid-{id}")), None, None, None, None).await;
+        }
+        // Deliberately NOT alphabetical: order must come from the given ids.
+        let p = save_queue_as_playlist(&pool, "Queue snapshot", &[
+            "ep-b".to_string(), "ep-a".to_string(), "ep-c".to_string(),
+        ])
+        .await
+        .expect("save");
+
+        let items = list_playlist_items(&pool, &p.id).await.expect("items");
+        let order: Vec<&str> = items.iter().map(|r| r.episode_id.as_str()).collect();
+        assert_eq!(order, ["ep-b", "ep-a", "ep-c"], "positions must follow the queue order");
+        assert_eq!(items[0].episode_title.as_deref(), Some("Title ep-b"));
+        assert_eq!(items[0].position, 0);
+        assert_eq!(items[2].position, 2);
+    }
+
+    #[tokio::test]
+    async fn delete_playlist_cascades_its_items() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-1", "ext-ch-1", "Chan", "video", None).await;
+        insert_stream_episode(&pool, "ep-a", "ch-1", "g-a", "A", Some("vid-a"), None, None, None, None).await;
+        let p = create_playlist(&pool, "To delete").await.unwrap();
+        add_episode_to_playlist(&pool, &p.id, "ep-a").await.unwrap();
+        assert_eq!(list_playlist_items(&pool, &p.id).await.unwrap().len(), 1);
+
+        delete_playlist(&pool, &p.id).await.expect("delete");
+        assert!(list_playlists(&pool).await.unwrap().is_empty());
+        // The cascade must have removed the item row too (FK pragma is set
+        // inside delete_playlist; the test pool has max_connections(1), so
+        // it is the same connection).
+        let leftover: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM playlist_items WHERE playlist_id = ?")
+            .bind(&p.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(leftover, 0, "delete must cascade to playlist_items");
+    }
+
+    #[tokio::test]
+    async fn playlist_mutations_error_on_unknown_ids_and_duplicates() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-1", "ext-ch-1", "Chan", "video", None).await;
+        insert_stream_episode(&pool, "ep-a", "ch-1", "g-a", "A", Some("vid-a"), None, None, None, None).await;
+        let p = create_playlist(&pool, "P").await.unwrap();
+
+        assert!(rename_playlist(&pool, "no-such", "x").await.is_err(), "rename unknown id must error");
+        assert!(rename_playlist(&pool, &p.id, "  ").await.is_err(), "blank rename must error");
+        assert!(delete_playlist(&pool, "no-such").await.is_err(), "delete unknown id must error");
+        assert!(add_episode_to_playlist(&pool, "no-such", "ep-a").await.is_err(), "add to unknown playlist must error");
+        assert!(remove_playlist_item(&pool, "no-such-item").await.is_err(), "remove unknown item must error");
+        assert!(playlist_episode_ids(&pool, "no-such").await.is_err(), "play unknown playlist must error");
+
+        add_episode_to_playlist(&pool, &p.id, "ep-a").await.unwrap();
+        assert!(
+            add_episode_to_playlist(&pool, &p.id, "ep-a").await.is_err(),
+            "the same episode twice in one playlist must error"
+        );
+        let items = list_playlist_items(&pool, &p.id).await.unwrap();
+        assert_eq!(items.len(), 1);
+        remove_playlist_item(&pool, &items[0].id).await.unwrap();
+        assert!(list_playlist_items(&pool, &p.id).await.unwrap().is_empty());
     }
 
     // ---- Batch 2 Task 5: certain pairs are learned, not listed as awaiting ----

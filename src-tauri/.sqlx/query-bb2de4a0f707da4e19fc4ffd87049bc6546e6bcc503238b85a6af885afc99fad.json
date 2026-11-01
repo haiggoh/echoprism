@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT episode_id FROM playlist_items WHERE playlist_id = ?\n           ORDER BY position ASC, rowid ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "episode_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bb2de4a0f707da4e19fc4ffd87049bc6546e6bcc503238b85a6af885afc99fad"
+}
