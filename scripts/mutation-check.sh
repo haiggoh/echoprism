@@ -22,13 +22,18 @@
 #                        visible in the output
 #
 # Environment variables read:
-#   RUNNER   the test command (default: auto-detected — `cargo test --lib` under
+#   RUNNER   the test command, word-split (default: auto-detected — `cargo test
+#            --lib --manifest-path src-tauri/Cargo.toml` for files under
 #            src-tauri/, `./node_modules/.bin/vitest run` otherwise)
 #
 # Exit codes: 0 = the mutation was caught by a failing test AND the file was
 #             restored byte-identically; 1 = setup/mutation/restore failure;
-#             2 = usage error. Exit 3 = the mutation SURVIVED (the test passed
-#             against broken code — that is a finding, not a pass).
+#             2 = usage error; 3 = the mutation SURVIVED (the test passed
+#             against broken code — that is a finding, not a pass);
+#             4 = the BASELINE run failed before the mutation — the runner
+#             cannot prove anything red, so no verdict is given (added
+#             2026-10-31 after a review found a non-runnable runner was
+#             misreported as "MUTATION CAUGHT").
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,9 +59,11 @@ Arguments:
   <mutation-script.py>  python script editing <file> in place
 
 Environment:
-  RUNNER                override the test command
+  RUNNER                override the test command (word-split, e.g.
+                        RUNNER="cargo test --lib --manifest-path src-tauri/Cargo.toml")
 
-Exit codes: 0 = caught + restored, 1 = failure, 2 = usage, 3 = mutation survived
+Exit codes: 0 = caught + restored, 1 = failure, 2 = usage, 3 = mutation
+            survived, 4 = baseline run failed (no verdict)
 EOF
 }
 
@@ -103,21 +110,43 @@ cleanup_restore() {
 trap cleanup_restore EXIT
 
 echo "== snapshot taken: $SNAP"
+
+# Resolve the runner ONCE, before any verdict: a scalar RUNNER must word-split
+# (2026-10-31 review: `"${RUNNER[@]}"` on a scalar is ONE word, so an override
+# like RUNNER="cargo test --lib" never actually ran cargo), and a Rust target
+# must run with an explicit manifest path no matter how the path was given
+# (relative, absolute, or ../-prefixed — the repo root has no Cargo.toml).
+if [[ -n "${RUNNER:-}" ]]; then
+  # Intentional word-split: RUNNER is a command LINE, not a single word.
+  RUNNER_ARR=($RUNNER)
+else
+  case "$TARGET" in
+    src-tauri/*|*/src-tauri/*) RUNNER_ARR=(cargo test --lib --manifest-path "$REPO_ROOT/src-tauri/Cargo.toml") ;;
+    *)                          RUNNER_ARR=(./node_modules/.bin/vitest run) ;;
+  esac
+fi
+
+# Xs at the END: BSD mktemp randomises only trailing Xs, so a suffix after
+# them (".out") makes mkstemp fail with "File exists" (measured 2026-10-31).
+OUT="$(mktemp "${TMPDIR:-/tmp}/mutation-check.XXXXXX")"
+
+echo "== baseline run BEFORE the mutation ($FILTER) — the test must be green, or no verdict is possible"
+cd "$REPO_ROOT"
+if ! "${RUNNER_ARR[@]}" "$FILTER" >"$OUT" 2>&1; then
+  echo "BASELINE FAILED — the runner did not pass on the UNMUTATED file, so a red run" >&2
+  echo "after the mutation proves nothing. No verdict. Runner output:" >&2
+  tail -5 "$OUT" >&2
+  exit 4
+fi
+
 echo "== applying the mutation"
 python3 -I "$MUTATION" "$TARGET"
 
 echo "== running the test ($FILTER)"
-if [[ -z "${RUNNER:-}" ]]; then
-  case "$TARGET" in
-    src-tauri/*) RUNNER=(cargo test --lib) ;;
-    *)           RUNNER=(./node_modules/.bin/vitest run) ;;
-  esac
-fi
-cd "$REPO_ROOT"
-if "${RUNNER[@]}" "$FILTER" >/tmp/mutation-check.out 2>&1; then
+if "${RUNNER_ARR[@]}" "$FILTER" >"$OUT" 2>&1; then
   echo "MUTATION SURVIVED — the test passed against broken code."
   echo "This is a FINDING (an assertion that cannot fail), not a pass."
   exit 3
 fi
 echo "MUTATION CAUGHT — the test went red, as it must."
-grep -E "FAIL|AssertionError|expected|→" /tmp/mutation-check.out | head -5 || true
+grep -E "FAIL|AssertionError|expected|→" "$OUT" | head -5 || true

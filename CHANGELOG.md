@@ -14,7 +14,9 @@ this file is the release notes' single source.
 - `bin/echoprism` usage banner now leads with `📐 echoprism`; README h1 is
   `# 📐 EchoPrism`. App UI out of scope. Usage-error lines (`echoprism: unknown
   command`) stay unbranded. Pinned by src/__tests__/branding.test.ts (RED→GREEN,
-  mutation-checked). Version 0.1.0 → 0.1.1 (package.json + this file).
+  mutation-checked). Version 0.1.0 → 0.1.1 (package.json,
+  src-tauri/tauri.conf.json, src-tauri/Cargo.toml + this file — synced
+  2026-10-31; the release workflow derives the dmg name from tauri.conf.json).
 
 ## [0.1.0] - first public release
 

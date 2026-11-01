@@ -932,6 +932,18 @@ pub async fn search_episodes(
         return Ok(Vec::new());
     }
 
+    // Task 10 review (2026-10-31): the raw query string also went straight
+    // into MATCH, so user input containing FTS5 syntax (`*`, `NEAR(`, `c++`,
+    // `"unbalanced`) errored the whole search. Each term is now wrapped as a
+    // quoted phrase (internal quotes doubled) — user input is always literal
+    // text. Terms joined with spaces are an implicit AND in FTS5, which is
+    // also the desired multi-word semantics.
+    let match_expr = query_terms
+        .iter()
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" ");
+
     let mut qb = sqlx::QueryBuilder::new(
         "SELECT e.id, e.channel_id, e.external_id, e.title, e.description,
                 e.thumbnail_url, e.duration_seconds, e.published_at, e.url,
@@ -944,7 +956,7 @@ pub async fn search_episodes(
          JOIN episodes_fts fts ON e.rowid = fts.rowid
          WHERE episodes_fts MATCH ",
     );
-    qb.push_bind(query_str);
+    qb.push_bind(match_expr);
     if let Some(episode_type) = params.as_ref().and_then(|p| p.episode_type.as_deref()) {
         qb.push(" AND c.type = ").push_bind(episode_type.to_string());
     }
@@ -4199,9 +4211,10 @@ mod search_tests {
     //! The owner: "when I search for even more news instead of verge or
     //! vergecast is still keeps showing me many individual vergecast episodes
     //! rather than even more news". Measured cause: `episodes_fts MATCH ?` was
-    //! given the raw query string, and FTS5 treats a space-separated string as
-    //! an implicit OR — so "even more news" matched any row containing even,
-    //! more, or news, and every Vergecast episode title contains "news".
+    //! given the raw query string. CORRECTED 2026-10-31 (verified with sqlite3):
+    //! FTS5 barewords are an implicit AND, not OR — so "even more news" already
+    //! required every term; the over-matching the owner saw came from the
+    //! ORDER BY (recency over relevance), fixed separately by ORDER BY rank.
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
@@ -4318,14 +4331,23 @@ mod search_tests {
 
     #[tokio::test]
     async fn a_query_with_fts_operators_is_quoted_not_injected() {
-        // FTS5 would parse a raw `"` or `OR` in the term; each term is quoted,
-        // so a search for punctuation still searches for punctuation instead of
-        // erroring or becoming a boolean expression.
+        // 2026-10-31 review: the old version of this test passed WITHOUT the
+        // quoting existing (raw `"quoted"` is a valid FTS5 phrase) — vacuous.
+        // The discriminating case is syntax that ERRORS raw: `c++` and
+        // `NEAR(` raise `fts5: syntax error` unquoted. Quoted, they are
+        // literal text: `c++` still finds the seeded title, `NEAR(a b)`
+        // returns nothing instead of an Err.
         let pool = fresh_pool().await;
-        seed(&pool, "ep-1", "ch-1", "A \"quoted\" episode", "nothing").await;
+        seed(&pool, "ep-1", "ch-1", "Learn C++ today", "nothing").await;
+
+        let found = titles(&pool, "c++").await;
+        assert_eq!(found, vec!["Learn C++ today".to_string()], "c++ quoted must match literally, not error");
+
+        let found = titles(&pool, "NEAR(a b)").await;
+        assert!(found.is_empty(), "NEAR(a b) quoted is literal text — no error, no rows, got {found:?}");
 
         let found = titles(&pool, "\"quoted\"").await;
-        assert_eq!(found, vec!["A \"quoted\" episode".to_string()]);
+        assert!(found.is_empty(), "no seeded title contains the token quoted");
     }
 
     #[tokio::test]
