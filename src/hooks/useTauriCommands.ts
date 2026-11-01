@@ -1,6 +1,6 @@
 import { invoke } from '../tauri-bridge';
 import {
-  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, PlayModeRule,
+  Instance, InstanceHealthReport, Channel, Episode, EpisodeLink, LinkedChannelPair, PlayModeRule,
   Queue, QueueItem, PlaybackState, StreamInfo,
   UserPreferences, Download, HistoryEntry,
   KeyboardShortcut, PodcastSearchResult, SubscribedPodcast, CrashRecord, NotificationSummary, StoryboardSpec,
@@ -113,6 +113,7 @@ export const playbackCommands = {
 // Smart Links commands (smart_links.rs)
 export const smartLinkCommands = {
   list: (confidenceMin?: number) => invoke<EpisodeLink[]>('list_smart_links', { confidenceMin }),
+  linkedChannels: (minConfirmed?: number) => invoke<LinkedChannelPair[]>('list_linked_channels', { minConfirmed }),
   match: () => invoke<{ matched_count: number }>('match_episodes'),
   confirm: (linkId: string, confirmed: boolean) => invoke<void>('confirm_smart_link', { linkId, confirmed }),
   unlink: (linkId: string) => invoke<void>('unlink_smart_link', { linkId }),

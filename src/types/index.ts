@@ -178,6 +178,17 @@ export interface EpisodeLink {
   video_channel?: string;
 }
 
+/** A channel pair derived from user-confirmed episode links at read time
+ *  (batch 2 Task 4b) — nothing new is persisted. Mirrors the Rust
+ *  `LinkedChannelPair`. */
+export interface LinkedChannelPair {
+  podcast_channel_id: string;
+  podcast_channel_title: string;
+  video_channel_id: string;
+  video_channel_title: string;
+  confirmed_links: number;
+}
+
 // ============================
 // PLAY MODE RULES (D7)
 // ============================

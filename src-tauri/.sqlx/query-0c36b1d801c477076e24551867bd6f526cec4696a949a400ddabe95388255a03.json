@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT el.id AS link_id,\n                  pod_ch.id AS podcast_channel_id,\n                  pod_ch.title AS podcast_channel_title,\n                  vid_ch.id AS video_channel_id,\n                  vid_ch.title AS video_channel_title\n           FROM episode_links el\n           JOIN episodes pod\n                ON pod.id = (SELECT p.id FROM episodes p\n                              WHERE p.podcast_guid = el.podcast_guid LIMIT 1)\n           JOIN episodes vid\n                ON vid.id = (SELECT v.id FROM episodes v\n                              WHERE v.video_id = el.youtube_video_id LIMIT 1)\n           JOIN channels pod_ch ON pod_ch.id = pod.channel_id\n           JOIN channels vid_ch ON vid_ch.id = vid.channel_id\n           WHERE el.user_confirmed = 1 AND pod_ch.id != vid_ch.id\n           ORDER BY el.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "link_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_channel_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "podcast_channel_title",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "video_channel_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "video_channel_title",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0c36b1d801c477076e24551867bd6f526cec4696a949a400ddabe95388255a03"
+}

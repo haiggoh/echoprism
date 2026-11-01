@@ -10,7 +10,7 @@
  * mock handlers are the Rust semantics: flip user_confirmed / delete by id).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SmartLinksScreen } from '../components/screens/SmartLinksScreen';
 import { MemoryRouter } from 'react-router-dom';
@@ -22,7 +22,9 @@ function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SmartLinksScreen />
+      <MemoryRouter>
+        <SmartLinksScreen />
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -181,5 +183,54 @@ describe('Phase 6: Settings > Smart Links is the real panel', () => {
     fireEvent.click(screen.getByRole('button', { name: /^run matching$/i }));
     await waitFor(() => expect(spy).toHaveBeenCalled());
     spy.mockRestore();
+  });
+});
+
+/**
+ * Batch 2 Task 5 (owner, 2026-10-28): "I should now only see uncertain link
+ * candidates to confirm in the smart link tab — I should see which channels
+ * are already linked so I can explore there."
+ *
+ * Discriminants: the certain fixture (link-5, title_similarity 1.0,
+ * unconfirmed) must not render as a row; after confirming the two-stream
+ * pair, the linked-channels section must render both channels as links to
+ * /channels/:id with the evidence count.
+ */
+describe('Batch 2 Task 5: certain pairs hidden, linked channels listed', () => {
+  it('a title-identical unconfirmed pair is not listed as awaiting confirmation', async () => {
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByTestId('smart-link-row').length).toBeGreaterThan(0));
+
+    expect(screen.queryByText(/emn-guid-003/)).toBeNull();
+    expect(screen.queryByText(/85% confidence/)).toBeNull();
+  });
+
+  it('linked channels render as links into each channel screen once pairs are confirmed', async () => {
+    renderScreen();
+    await waitFor(() => expect(screen.getAllByTestId('smart-link-row').length).toBeGreaterThan(0));
+
+    // Confirm the two-stream pair (link-2, link-3 — the rows pairing the
+    // "Billionaires" story across Even More News ↔ Some More News). A
+    // confirmed row's button keeps its "Confirm link …" aria-label, so pick
+    // by row content and skip rows already confirmed (the mock lists in
+    // fixture order, not confidence order).
+    for (let i = 1; i <= 2; i++) {
+      const rows = screen
+        .getAllByTestId('smart-link-row')
+        .filter((r) => r.textContent?.includes('More News') && !r.textContent?.includes('confirmed'));
+      fireEvent.click(within(rows[0]).getByRole('button', { name: /^Confirm link /i }));
+      await waitFor(() =>
+        expect(
+          screen.getAllByTestId('smart-link-row').filter((r) => r.textContent?.includes('confirmed')).length,
+        ).toBe(i),
+      );
+    }
+
+    await waitFor(() => expect(screen.getByLabelText('Linked channels')).toBeTruthy());
+    const section = screen.getByLabelText('Linked channels');
+    const hrefs = Array.from(section.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('/channels/ch-3');
+    expect(hrefs).toContain('/channels/ch-4');
+    expect(section.textContent).toMatch(/2 confirmed links/);
   });
 });

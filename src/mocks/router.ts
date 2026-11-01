@@ -4,7 +4,7 @@
  * imported by screens directly. Unknown commands REJECT: a silently-resolved
  * undefined would mask command-name typos as empty UI.
  */
-import type { CrashRecord, Download, Episode, Instance, NewEpisodeItem, NotificationSummary, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
+import type { Channel, CrashRecord, Download, Episode, Instance, NewEpisodeItem, NotificationSummary, PlayModeRule, PodcastSearchResult, QueueItem, StreamInfo, SubscribedPodcast, UserPreferences } from '../types';
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
@@ -273,7 +273,12 @@ const handlers: Record<string, Handler> = {
     // with no local episode gets NO title — the UI falls back to the raw id.
     // One row per link either way (the Rust side uses LIMIT 1 subqueries for
     // the same reason a duplicate guid would fan out here).
-    db.smartLinks.map((link) => {
+    // Batch 2 Task 5: a title-identical pair (title_similarity 1.0 after the
+    // branding strip) that is NOT confirmed is certain — learned, so not
+    // listed as awaiting confirmation.
+    db.smartLinks
+      .filter((l) => l.user_confirmed || (l.title_similarity ?? 0) < 1.0)
+      .map((link) => {
       const podEp = db.episodes.find((e) => e.podcast_guid === link.podcast_guid);
       const vidEp = db.episodes.find((e) => e.video_id === link.youtube_video_id);
       const podChannel = podEp && db.channels.find((c) => c.id === podEp.channel_id);
@@ -286,6 +291,35 @@ const handlers: Record<string, Handler> = {
         video_channel: vidChannel?.title,
       };
     }),
+  list_linked_channels: (args) => {
+    // Mirrors queries::list_linked_channels: channel pairs with at least
+    // minConfirmed user-confirmed episode links, never a channel with itself.
+    // Derived at read time from the links, nothing persisted (grouping is in
+    // Rust on the real side because sqlx infers aggregates as NULL type).
+    const min = (args?.minConfirmed as number | undefined) ?? 2;
+    const pairs = new Map<string, { pod: Channel; vid: Channel; ids: Set<string> }>();
+    for (const link of db.smartLinks) {
+      if (!link.user_confirmed) continue;
+      const podEp = db.episodes.find((e) => e.podcast_guid === link.podcast_guid);
+      const vidEp = db.episodes.find((e) => e.video_id === link.youtube_video_id);
+      const podCh = podEp ? db.channels.find((c) => c.id === podEp.channel_id) : undefined;
+      const vidCh = vidEp ? db.channels.find((c) => c.id === vidEp.channel_id) : undefined;
+      if (!podCh || !vidCh || podCh.id === vidCh.id) continue;
+      const key = `${podCh.id} ${vidCh.id}`;
+      const cur = pairs.get(key);
+      if (cur) cur.ids.add(link.id);
+      else pairs.set(key, { pod: podCh, vid: vidCh, ids: new Set([link.id]) });
+    }
+    return [...pairs.values()]
+      .filter((p) => p.ids.size >= min)
+      .map((p) => ({
+        podcast_channel_id: p.pod.id,
+        podcast_channel_title: p.pod.title,
+        video_channel_id: p.vid.id,
+        video_channel_title: p.vid.title,
+        confirmed_links: p.ids.size,
+      }));
+  },
   list_history: () =>
     db.history.map((h) => {
       const ep = db.episodes.find((e) => e.id === h.episode_id);

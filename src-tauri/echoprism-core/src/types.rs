@@ -520,6 +520,20 @@ pub struct EpisodeLink {
     pub updated_at: DateTimeUtc,
 }
 
+/// A pair of channels whose episodes are confirmed to live on both streams
+/// (batch 2 Task 4b, owner: "the channels are linked because the podcast
+/// episodes live in both places"). DERIVED from confirmed episode_links at
+/// read time — nothing new is persisted. `confirmed_links` is the evidence
+/// count behind the pairing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinkedChannelPair {
+    pub podcast_channel_id: String,
+    pub podcast_channel_title: String,
+    pub video_channel_id: String,
+    pub video_channel_title: String,
+    pub confirmed_links: i64,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]

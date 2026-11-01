@@ -430,7 +430,10 @@ impl EpisodeMatcher {
             title_similarity: Some(pairing.title_similarity),
             date_diff_days: pairing.date_diff_days,
             duration_diff_seconds: pairing.duration_diff_seconds,
-            user_confirmed: false,
+            // Batch 2 Task 4a: a title-identical pair (after show-branding is
+            // stripped) is "absolute certain" in the owner's words — LEARN it
+            // (user_confirmed) instead of listing it for confirmation.
+            user_confirmed: pairing.title_similarity >= crate::db::queries::CERTAIN_TITLE_SIMILARITY,
             created_at: now,
             updated_at: now,
         }))

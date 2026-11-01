@@ -208,6 +208,10 @@ impl Database {
         queries::list_episode_links(&self.pool, confidence_min).await
     }
 
+    pub async fn list_linked_channels(&self, min_confirmed: i64) -> DbResult<Vec<LinkedChannelPair>> {
+        queries::list_linked_channels(&self.pool, min_confirmed).await
+    }
+
     // Play-mode rules (D7)
     pub async fn list_play_mode_rules(&self, channel_id: Option<String>) -> DbResult<Vec<PlayModeRule>> {
         queries::list_play_mode_rules(&self.pool, channel_id).await

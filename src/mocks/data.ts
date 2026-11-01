@@ -332,6 +332,20 @@ export const mockDb: MockDb = {
       created_at: now,
       updated_at: now,
     },
+    // Batch 2 Task 4a/5: title-identical after the show-branding strip
+    // (title_similarity 1.0) — certain, so NOT listed as awaiting confirmation.
+    {
+      id: 'link-5',
+      podcast_guid: 'emn-guid-003',
+      youtube_video_id: 'smn-vid-003',
+      confidence: 0.85,
+      matched_at: '2026-10-19T03:00:00Z',
+      matched_by: 'auto',
+      title_similarity: 1.0,
+      user_confirmed: false,
+      created_at: now,
+      updated_at: now,
+    },
   ],
   // D7: per-title-family play-mode rules (owner's example verbatim).
   playModeRules: [

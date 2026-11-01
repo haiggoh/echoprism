@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { smartLinkCommands } from '../../hooks/useTauriCommands';
 import type { EpisodeLink } from '../../types';
 import { Button } from '../ui/Button';
@@ -59,7 +60,20 @@ export function SmartLinksPanel({
     queryFn: () => smartLinkCommands.list(),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['smart-links'] });
+  // Batch 2 Task 5: the channels already linked (derived from confirmed
+  // episode links on the backend), each a link into that channel's screen.
+  const { data: linkedChannels } = useQuery({
+    queryKey: ['linked-channels'],
+    queryFn: () => smartLinkCommands.linkedChannels(),
+  });
+
+  const invalidate = () => {
+    // Confirming/unlinking changes the linked-channel pairs too, so both
+    // queries refresh together — invalidating only the list would leave the
+    // section showing stale (empty) pairs.
+    queryClient.invalidateQueries({ queryKey: ['smart-links'] });
+    queryClient.invalidateQueries({ queryKey: ['linked-channels'] });
+  };
 
   const matchMutation = useMutation({
     mutationFn: () => smartLinkCommands.match(),
@@ -103,6 +117,34 @@ export function SmartLinksPanel({
           </Button>
         </div>
       </div>
+
+      {!isLoading && !isError && linkedChannels && linkedChannels.length > 0 && (
+        <section aria-label="Linked channels" className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold text-text-muted">Linked channels</h3>
+          <ul className="space-y-2">
+            {linkedChannels.map((pair) => (
+              <li
+                key={`${pair.podcast_channel_id}↔${pair.video_channel_id}`}
+                data-testid="linked-channel-row"
+                className="flex items-center gap-2 bg-surface border border-border rounded-lg px-4 py-3 text-sm"
+              >
+                <Link to={`/channels/${pair.podcast_channel_id}`} className="text-accent hover:underline">
+                  {pair.podcast_channel_title}
+                </Link>
+                <span className="text-text-muted" aria-hidden="true">
+                  ↔
+                </span>
+                <Link to={`/channels/${pair.video_channel_id}`} className="text-accent hover:underline">
+                  {pair.video_channel_title}
+                </Link>
+                <span className="text-xs text-text-muted ml-auto">
+                  {pair.confirmed_links} confirmed link{pair.confirmed_links === 1 ? '' : 's'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {isLoading && <p className="text-text-muted">Loading smart links…</p>}
 

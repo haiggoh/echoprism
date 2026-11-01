@@ -1174,6 +1174,83 @@ pub async fn play_next(pool: &SqlitePool, episode_id: String) -> DbResult<()> {
     Ok(())
 }
 
+/// Batch 2 Task 4a/5: a pair whose title similarity is exactly 1.0 once the
+/// show-branding segment is stripped is the same story on both streams —
+/// "absolute certain" in the owner's words — so it is LEARNED at match time
+/// (user_confirmed) and never listed as awaiting confirmation.
+pub const CERTAIN_TITLE_SIMILARITY: f64 = 1.0;
+
+/// Batch 2 Task 4b/5: channel-level links DERIVED from confirmed episode
+/// links at read time — nothing new is persisted. Two channels are linked
+/// when they share at least `min_confirmed` user-confirmed episode pairs; a
+/// channel never pairs with itself. Same LIMIT-1 subquery pattern as
+/// list_episode_links, so a duplicate guid cannot fan one link into rows.
+pub async fn list_linked_channels(
+    pool: &SqlitePool,
+    min_confirmed: i64,
+) -> DbResult<Vec<LinkedChannelPair>> {
+    // Plain columns only — the COUNT is done in Rust below. sqlx-sqlite
+    // infers aggregate expressions (even CAST(COUNT(*) AS INTEGER)) as NULL
+    // type in a query! macro, which fails the compile gate; selecting el.id
+    // per confirmed link and grouping here keeps every column a real column.
+    #[derive(sqlx::FromRow)]
+    struct LinkChannelRow {
+        link_id: String,
+        podcast_channel_id: String,
+        podcast_channel_title: String,
+        video_channel_id: String,
+        video_channel_title: String,
+    }
+
+    let rows = sqlx::query_as!(
+        LinkChannelRow,
+        r#"SELECT el.id AS link_id,
+                  pod_ch.id AS podcast_channel_id,
+                  pod_ch.title AS podcast_channel_title,
+                  vid_ch.id AS video_channel_id,
+                  vid_ch.title AS video_channel_title
+           FROM episode_links el
+           JOIN episodes pod
+                ON pod.id = (SELECT p.id FROM episodes p
+                              WHERE p.podcast_guid = el.podcast_guid LIMIT 1)
+           JOIN episodes vid
+                ON vid.id = (SELECT v.id FROM episodes v
+                              WHERE v.video_id = el.youtube_video_id LIMIT 1)
+           JOIN channels pod_ch ON pod_ch.id = pod.channel_id
+           JOIN channels vid_ch ON vid_ch.id = vid.channel_id
+           WHERE el.user_confirmed = 1 AND pod_ch.id != vid_ch.id
+           ORDER BY el.id"#
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Group in Rust: (podcast_channel, video_channel) -> evidence count.
+    // The LIMIT-1 subquery joins make each link appear exactly once.
+    let mut groups: std::collections::HashMap<(String, String), (String, String, std::collections::HashSet<String>)> =
+        std::collections::HashMap::new();
+    for r in rows {
+        let entry = groups
+            .entry((r.podcast_channel_id.clone(), r.video_channel_id.clone()))
+            .or_insert_with(|| (r.podcast_channel_title, r.video_channel_title, std::collections::HashSet::new()));
+        entry.2.insert(r.link_id);
+    }
+
+    let mut out: Vec<LinkedChannelPair> = groups
+        .into_iter()
+        .filter(|(_, (_, _, ids))| ids.len() as i64 >= min_confirmed)
+        .map(|((pod_id, vid_id), (pod_title, vid_title, ids))| LinkedChannelPair {
+            podcast_channel_id: pod_id,
+            podcast_channel_title: pod_title,
+            video_channel_id: vid_id,
+            video_channel_title: vid_title,
+            confirmed_links: ids.len() as i64,
+        })
+        .collect();
+    out.sort_by(|a, b| b.confirmed_links.cmp(&a.confirmed_links));
+    Ok(out)
+}
+
 pub async fn list_episode_links(
     pool: &SqlitePool,
     confidence_min: Option<f64>,
@@ -1241,8 +1318,15 @@ pub async fn list_episode_links(
                               WHERE v.video_id = el.youtube_video_id LIMIT 1)
          LEFT JOIN channels vid_ch ON vid_ch.id = vid.channel_id
          WHERE el.confidence >= ?
+           -- Batch 2 Task 5: a pair the branding rules call certain (title
+           -- identical after the show-branding strip) and that is NOT yet
+           -- confirmed is learned, not listed as awaiting confirmation.
+           -- COALESCE so a NULL title_similarity (older rows) reads as "not
+           -- certain" instead of NULL-and-excluded by three-valued logic.
+           AND NOT (el.user_confirmed = 0 AND COALESCE(el.title_similarity, 0.0) >= ?)
          ORDER BY el.confidence DESC"#,
-        min_conf
+        min_conf,
+        CERTAIN_TITLE_SIMILARITY
     )
     .fetch_all(pool)
     .await
@@ -2224,6 +2308,95 @@ mod d6_d7_tests {
             .execute(pool)
             .await
             .expect("insert link");
+    }
+
+    /// Full-control variant for the Task 4/5 tests: confidence, title
+    /// similarity and the confirmation flag all matter there.
+    async fn insert_link_full(
+        pool: &SqlitePool,
+        id: &str,
+        guid: &str,
+        vid: &str,
+        confidence: f64,
+        title_sim: Option<f64>,
+        confirmed: bool,
+    ) {
+        query(
+            "INSERT OR IGNORE INTO episode_links (id, podcast_guid, youtube_video_id, confidence, matched_by, title_similarity, user_confirmed) VALUES (?, ?, ?, ?, 'auto', ?, ?)",
+        )
+        .bind(id)
+        .bind(guid)
+        .bind(vid)
+        .bind(confidence)
+        .bind(title_sim)
+        .bind(confirmed as i64)
+        .execute(pool)
+        .await
+        .expect("insert link");
+    }
+
+    // ---- Batch 2 Task 5: certain pairs are learned, not listed as awaiting ----
+
+    #[tokio::test]
+    async fn certain_unconfirmed_links_are_not_listed_but_confirmed_ones_are() {
+        let pool = fresh_pool().await;
+        // Title-identical after branding strip (title_sim 1.0): certain, even
+        // at 0.85 confidence — the owner's "85% items should be learned" case.
+        insert_link_full(&pool, "certain-1", "g-1", "v-1", 0.85, Some(1.0), false).await;
+        // Near-miss title: still a candidate awaiting confirmation.
+        insert_link_full(&pool, "near-1", "g-2", "v-2", 0.85, Some(0.95), false).await;
+
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        assert!(
+            !links.iter().any(|l| l.link.id == "certain-1"),
+            "a title-identical pair is certain — it must not sit on the confirm list"
+        );
+        assert!(
+            links.iter().any(|l| l.link.id == "near-1"),
+            "a near-miss stays on the confirm list"
+        );
+
+        // Once confirmed, the certain pair is listed again, marked confirmed.
+        set_episode_link_confirmation(&pool, "certain-1", true).await.expect("confirm");
+        let links = list_episode_links(&pool, None).await.expect("list links");
+        assert!(
+            links.iter().any(|l| l.link.id == "certain-1" && l.link.user_confirmed),
+            "a confirmed certain pair is listed as confirmed"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_linked_channels_needs_enough_confirmed_pairs_and_never_self() {
+        let pool = fresh_pool().await;
+        insert_channel(&pool, "ch-p", "feed-p", "Deep Dive", "podcast", None).await;
+        insert_channel(&pool, "ch-v", "UC-v", "Tech Talks", "video", None).await;
+        insert_stream_episode(&pool, "ep-p1", "ch-p", "ext-p1", "Pod one", None, Some("g-p1"), None, None, None).await;
+        insert_stream_episode(&pool, "ep-p2", "ch-p", "ext-p2", "Pod two", None, Some("g-p2"), None, None, None).await;
+        insert_stream_episode(&pool, "ep-v1", "ch-v", "ext-v1", "Vid one", Some("v-1"), None, None, None, None).await;
+        insert_stream_episode(&pool, "ep-v2", "ch-v", "ext-v2", "Vid two", Some("v-2"), None, None, None, None).await;
+        // A video-side episode that lives in the PODCAST channel, for the self-pair guard.
+        insert_stream_episode(&pool, "ep-pv", "ch-p", "ext-pv", "Pod vid", Some("v-p"), None, None, None, None).await;
+
+        // Two confirmed pairs between ch-p and ch-v: a linked channel pair.
+        insert_link_full(&pool, "l1", "g-p1", "v-1", 0.9, Some(1.0), true).await;
+        insert_link_full(&pool, "l2", "g-p2", "v-2", 0.9, Some(1.0), true).await;
+        // One UNconfirmed pair between the same channels must not count.
+        insert_link_full(&pool, "l3", "g-p2", "v-1", 0.8, Some(0.9), false).await;
+        // A confirmed SELF-pair (both sides in ch-p) must never link a channel to itself.
+        insert_link_full(&pool, "l4", "g-p1", "v-p", 0.95, Some(1.0), true).await;
+
+        let linked = list_linked_channels(&pool, 2).await.expect("linked channels");
+        assert_eq!(linked.len(), 1, "exactly the ch-p ↔ ch-v pair qualifies");
+        assert_eq!(linked[0].podcast_channel_id, "ch-p");
+        assert_eq!(linked[0].video_channel_id, "ch-v");
+        assert_eq!(linked[0].podcast_channel_title, "Deep Dive");
+        assert_eq!(linked[0].video_channel_title, "Tech Talks");
+        assert_eq!(linked[0].confirmed_links, 2, "only confirmed links count");
+
+        assert!(
+            list_linked_channels(&pool, 3).await.expect("linked channels").is_empty(),
+            "below the threshold nothing is reported"
+        );
     }
 
     /// The D6/D7 canonical two-stream show (owner example): YouTube-native

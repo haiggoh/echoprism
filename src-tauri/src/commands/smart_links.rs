@@ -42,6 +42,17 @@ pub async fn list_smart_links(
     db.list_episode_links(confidence_min).await
 }
 
+/// Batch 2 Task 4b: channel pairs derived from user-confirmed episode links.
+/// Nothing new is persisted — the links table is the only state. Default
+/// threshold 2: one confirmed pair can be coincidence, two is a pattern.
+#[command]
+pub async fn list_linked_channels(
+    db: State<'_,  Database>,
+    min_confirmed: Option<i64>,
+) -> std::result::Result<Vec<LinkedChannelPair>, String> {
+    db.list_linked_channels(min_confirmed.unwrap_or(2)).await
+}
+
 /// Run the matcher now. Returns the shared core MatchResult — its
 /// serialization key `matched_count` is the TS contract
 /// (src/hooks/useTauriCommands.ts:73), pinned by

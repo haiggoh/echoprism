@@ -218,14 +218,14 @@ After all tasks, dispatch an independent adversarial review of `git diff <batch-
 ## Progress
 
 - [x] Task 0 — document the batch
-- [ ] Task 1 — unwired play-bar buttons (owner question pending)
-- [ ] Task 2 — video fits the window
-- [ ] Task 3 — Audio only actually streams audio
-- [ ] Task 4 — smart links learn the certain matches
-- [ ] Task 5 — smart links tab: uncertain only + linked channels
-- [ ] Task 6 — podcast directory card clickable
-- [ ] Task 7 — search freshness
-- [ ] Task 8 — subscribe from the channel surface
+- [x] Task 1 — unwired play-bar buttons (b7c8e7aa, 4e0a68ba, 39566c66: speaker icon became a real mute toggle; shuffle got visible state)
+- [x] Task 2 — video fits the window (66d59f64)
+- [x] Task 3 — Audio only actually streams audio (1857bed5) + late-metadata duration adoption (96bd9052)
+- [x] Task 4 — smart links learn the certain matches (83617156: branding strip any divider, both placements; certain pairs auto-confirmed at match time)
+- [x] Task 5 — smart links tab: uncertain only + linked channels (this commit: list_linked_channels, panel section)
+- [x] Task 6 — podcast directory card clickable (00b8e28e)
+- [x] Task 7 — search freshness (4b20d41b)
+- [x] Task 8 — subscribe from the channel surface (592465f9)
 - [ ] Task 9 — regression fixtures sweep
 - [ ] Task 10 — whole-branch review
 

@@ -187,6 +187,7 @@ pub fn run() {
 
             // Smart Links commands
             commands::smart_links::list_smart_links,
+            commands::smart_links::list_linked_channels,
             commands::smart_links::match_episodes,
             commands::smart_links::confirm_smart_link,
             commands::smart_links::unlink_smart_link,
