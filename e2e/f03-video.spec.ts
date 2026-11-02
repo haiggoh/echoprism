@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 
 /**
  * F03-H1 (replica/test-plan.md): Play Video — the headless-testable subset:
- * feed card click (D2 'auto': nothing playing → play now) → player route →
+ * the card's Play now button (owner decision 2026-11-02: a plain card click
+ * QUEUES; playing now is explicit) → player route →
  * the engine resolves the stream and wires it to the video element.
  *
  * Deviation from the plan text: fullscreen S14, controls-hover and Esc
@@ -13,7 +14,10 @@ import { expect, test } from '@playwright/test';
 test('F03-H1 (subset): clicking a video card plays it in the player', async ({ page }) => {
   await page.goto('/feed');
 
-  await page.getByText('How Invidious pools actually work').click();
+  await page
+    .locator('article', { hasText: 'How Invidious pools actually work' })
+    .getByRole('button', { name: 'Play now' })
+    .click();
   await expect(page).toHaveURL(/\/player\/ep-video-1$/);
 
   // The unified resolve effect (PlayerProvider) requests stream_episode and
@@ -23,7 +27,7 @@ test('F03-H1 (subset): clicking a video card plays it in the player', async ({ p
   await expect(video).toBeVisible();
   await expect(video).toHaveAttribute('src', /\/mock-media\/ep-video-1\.webm$/, { timeout: 10_000 });
 
-  // D2 'auto' + nothing playing => play now: the engine started playback.
+  // Play now => the engine started playback.
   await expect
     .poll(async () => await video.evaluate((el) => (el as HTMLVideoElement).paused), { timeout: 10_000 })
     .toBe(false);

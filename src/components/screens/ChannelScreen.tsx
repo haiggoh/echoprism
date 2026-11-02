@@ -4,6 +4,7 @@ import { channelCommands, episodeCommands } from '../../hooks/useTauriCommands';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { EpisodeCard } from '../feed/EpisodeCard';
+import { useEpisodePlay } from '../../hooks/useEpisodePlay';
 
 /**
  * Live-test Task 10: "I'd like the channels liste there to be clickable to I
@@ -22,6 +23,9 @@ export function ChannelScreen() {
   const { channelId } = useParams<{ channelId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Batch 3: the channel page's cards had NO handlers — click, Next and End
+  // were all inert here. Same card behaviour as Feed and Search now.
+  const { handleCardClick, handleQueue, handlePlayNow } = useEpisodePlay();
 
   const { data: episodes, isLoading, isError } = useQuery({
     queryKey: ['channel-episodes', channelId],
@@ -107,7 +111,12 @@ export function ChannelScreen() {
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Channel episodes">
             {episodes.map((episode) => (
               <li key={episode.id}>
-                <EpisodeCard episode={episode} />
+                <EpisodeCard
+                  episode={episode}
+                  onClick={() => handleCardClick(episode)}
+                  onQueue={(action) => handleQueue(action, episode)}
+                  onPlayNow={() => handlePlayNow(episode)}
+                />
               </li>
             ))}
           </ul>

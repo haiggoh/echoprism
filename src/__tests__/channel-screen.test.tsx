@@ -18,16 +18,20 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChannelsScreen } from '../components/screens/ChannelsScreen';
 import { ChannelScreen } from '../components/screens/ChannelScreen';
 import { resetMockState } from '../mocks/router';
+import { PlayerProvider } from '../components/PlayerProvider';
 
 function renderApp(initial: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initial]}>
-        <Routes>
-          <Route path="/channels" element={<ChannelsScreen />} />
-          <Route path="/channels/:channelId" element={<ChannelScreen />} />
-        </Routes>
+        {/* Batch 3: channel-page cards play/queue through the player now. */}
+        <PlayerProvider>
+          <Routes>
+            <Route path="/channels" element={<ChannelsScreen />} />
+            <Route path="/channels/:channelId" element={<ChannelScreen />} />
+          </Routes>
+        </PlayerProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );

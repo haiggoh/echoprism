@@ -93,11 +93,16 @@ pub struct User {
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum CardClickAction {
-    /// Context-aware: play now when nothing is playing, queue when media is active.
-    #[default]
-    Auto,
     PlayNow,
     LoadPaused,
+    /// Owner decision 2026-11-02 (supersedes D2's 'auto' default): a card
+    /// click ADDS TO THE QUEUE at the queue_behavior position (Play next by
+    /// default); playing now is the card's explicit Play now button. The
+    /// retired 'auto' (play when idle, queue when busy — one click, two
+    /// behaviours) is read as this, so old rows never error.
+    #[default]
+    #[serde(alias = "auto")]
+    #[strum(to_string = "queue", serialize = "auto")]
     Queue,
 }
 

@@ -59,7 +59,7 @@ describe('db:seed script', () => {
       expect(sqlite(db, "SELECT play_mode FROM play_mode_rules WHERE title_pattern='Even More News';").trim()).toBe('audio');
       expect(
         sqlite(db, "SELECT card_click_action FROM user_preferences WHERE user_id='current-user';").trim()
-      ).toBe('auto'); // D2 default
+      ).toBe('queue'); // schema default since 2026-11-02 (was D2 'auto')
       expect(
         sqlite(db, "SELECT auto_download_wifi FROM user_preferences WHERE user_id='current-user';").trim()
       ).toBe('0'); // D1: no auto-download

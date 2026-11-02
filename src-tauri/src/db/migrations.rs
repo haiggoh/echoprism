@@ -40,7 +40,7 @@ async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
     // Idempotent column additions for databases created before a column
     // existed (CREATE TABLE IF NOT EXISTS does not alter existing tables).
     let alters = [
-        "ALTER TABLE user_preferences ADD COLUMN card_click_action TEXT NOT NULL DEFAULT 'auto'",
+        "ALTER TABLE user_preferences ADD COLUMN card_click_action TEXT NOT NULL DEFAULT 'queue'",
     ];
     for stmt in alters {
         // "duplicate column name" means this database already has the column.
@@ -51,6 +51,11 @@ async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
             }
         }
     }
+    // Batch 3 (owner decision 2026-11-02): 'auto' is retired in favour of
+    // 'queue'. Rewrite stored rows so the DB says what the app does.
+    pool.execute("UPDATE user_preferences SET card_click_action = 'queue' WHERE card_click_action = 'auto'")
+        .await
+        .map_err(|e| e.to_string())?;
     // The app is single-user: every channel (and so every stored search
     // result) FKs to this row. It used to exist only in scripts/seed.sql and
     // the test fixtures, so a real install could store nothing.

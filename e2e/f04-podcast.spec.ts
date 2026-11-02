@@ -12,7 +12,11 @@ import { expect, test } from '@playwright/test';
 test('F04-H1 (subset): clicking a podcast card resolves its audio stream', async ({ page }) => {
   await page.goto('/feed');
 
-  await page.getByText('RSS is winning again').click();
+  // Owner decision 2026-11-02: a plain click queues; Play now plays.
+  await page
+    .locator('article', { hasText: 'RSS is winning again' })
+    .getByRole('button', { name: 'Play now' })
+    .click();
   await expect(page).toHaveURL(/\/player\/ep-pod-1$/);
 
   // PlayerProvider renders one hidden <audio>; the resolve effect fills its src.
@@ -51,7 +55,11 @@ test('F04-H2 (2e): search shows the podcast directory and subscribing lists its 
 
   await page.getByRole('button', { name: /subscribe to the weekly signal/i }).click();
 
-  await expect(page.getByRole('button', { name: /subscribed to the weekly signal/i })).toBeVisible();
+  // Batch 2 Task 6 (00b8e28e) replaced the dead disabled "Subscribed ✓" with
+  // a working "Open show" (owner: "I should be able to click on the shows
+  // podcast directory card"); this spec still asserted the old label and had
+  // failed since — found by the batch-3 full e2e run.
+  await expect(page.getByRole('button', { name: /^open the weekly signal$/i })).toBeVisible();
   await expect(
     page.getByText(/Episode 118: The instance reliability problem, revisited/),
   ).toBeVisible();
@@ -75,6 +83,7 @@ test('F04-H3 (Phase A): subscribing then clicking an episode resolves its enclos
   await page
     .getByTestId('directory-episode-row')
     .filter({ hasText: /Episode 117/ })
+    .getByRole('button', { name: 'Play now' })
     .click();
 
   await expect(page).toHaveURL(/\/player\//, { timeout: 10_000 });

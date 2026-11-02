@@ -25,19 +25,24 @@ export function queueItemFromEpisode(episode: Episode): Omit<QueueItem, 'id' | '
 }
 
 /**
- * Card-click behavior, shared by Feed and Search (D2, design-decisions.md):
- * clicking a card is configurable. 'auto' (default) plays now when nothing
- * is playing and queues otherwise — never interrupting current media.
- * Queued items stream on demand (D1); nothing pre-downloads.
+ * Card-click behavior, shared by Feed, Search and Channel pages.
  *
- * D7: the play-now path resolves the per-title-family default first
- * (title rule → channel format_preference → none) and hands it to the
- * engine's mode override.
+ * Owner decision 2026-11-02 (supersedes D2's 'auto' default — "one click, two
+ * behaviours" depending on whether something was playing):
+ *   - 'queue' (default): add to the queue at the Queue-behavior position —
+ *     Play next by default — and never interrupt what is playing;
+ *   - 'play_now': play it now, WITHOUT discarding the queue;
+ *   - 'load_paused': open it in the player, paused.
+ * Every card also carries explicit Play now / Play next / Add to end buttons,
+ * so each style is one click away whichever is the click default.
+ *
+ * D7: the play paths resolve the per-title-family default first
+ * (title rule → channel format_preference → none) and hand it to the engine.
  */
 export function useEpisodePlay() {
   const navigate = useNavigate();
-  const { addItem, playNextItem } = useQueueStore();
-  const { play, load, isPlaying } = usePlayer();
+  const { addItem, playNextItem, playNowItem } = useQueueStore();
+  const { play, load } = usePlayer();
   const { addToast } = useToasts();
   const { data: preferences } = useQuery({
     queryKey: ['preferences'],
@@ -61,15 +66,20 @@ export function useEpisodePlay() {
     });
   };
 
+  /** Play now, keeping the rest of the queue ahead of it. */
+  const handlePlayNow = (episode: Episode) => {
+    playNowItem(queueItemFromEpisode(episode));
+    play(episode, resolveDefaultPlayMode(episode, playModeRules, channels));
+    navigate(`/player/${episode.id}`);
+  };
+
   const handleCardClick = (episode: Episode) => {
-    const action = preferences?.card_click_action ?? 'auto';
-    if (action === 'queue' || (action === 'auto' && isPlaying)) {
-      handleQueue('add_end', episode);
+    const action = preferences?.card_click_action ?? 'queue';
+    if (action === 'play_now') {
+      handlePlayNow(episode);
       return;
     }
     if (action === 'load_paused') {
-      // D2 'load_paused': the episode becomes the engine's current episode at
-      // its saved position; playback starts only when the user presses play.
       // The D7 chain mode travels with the load so the later play resolves
       // the rule's format rather than the global toggle's (D2×D7).
       load(episode, {
@@ -79,10 +89,8 @@ export function useEpisodePlay() {
       navigate(`/player/${episode.id}`);
       return;
     }
-    addItem(queueItemFromEpisode(episode));
-    play(episode, resolveDefaultPlayMode(episode, playModeRules, channels));
-    navigate(`/player/${episode.id}`);
+    handleQueue(preferences?.queue_behavior === 'add_end' ? 'add_end' : 'play_next', episode);
   };
 
-  return { handleCardClick, handleQueue };
+  return { handleCardClick, handleQueue, handlePlayNow };
 }

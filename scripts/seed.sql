@@ -7,7 +7,7 @@
 -- They need not be byte-identical, but the binding decisions must agree:
 --   D1: auto_download_wifi stays at the schema default (0) — queue-add never
 --       implies download; the preference row below inserts NO overrides.
---   D2: card_click_action stays at the schema default ('auto').
+--   card_click_action stays at the schema default ('queue' since 2026-11-02; was D2 'auto').
 -- Both defaults are asserted by src/__tests__/seed-script.test.ts.
 
 PRAGMA foreign_keys = ON;

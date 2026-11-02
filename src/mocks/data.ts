@@ -431,7 +431,7 @@ export const mockDb: MockDb = {
     keyboard_shortcuts_enabled: true,
     theme: 'system',
     cross_device_sync_enabled: false,
-    card_click_action: 'auto', // D2 default
+    card_click_action: 'queue', // owner decision 2026-11-02 (was D2 'auto')
     updated_at: now,
   },
 };

@@ -12,9 +12,8 @@ import { expect, test } from '@playwright/test';
  *
  * Deviations from the plan text: /search keeps its query in component state,
  so navigating back loses results — the spec re-searches after returning.
- * And because D2 'auto' queues a card click while something is playing, the
- * spec pauses on the player screen before going back (the click must happen
- * with nothing playing to reach the play-now path at all).
+ * Each card is played through its explicit Play now button (owner decision
+ * 2026-11-02: a plain card click queues).
  */
 test('F06-H1 (subset): both families linked at search; each plays its D7 default', async ({ page }) => {
   await page.goto('/search');
@@ -33,9 +32,8 @@ test('F06-H1 (subset): both families linked at search; each plays its D7 default
   await expect(smnCard.getByText('Link')).toBeVisible();
   await expect(emnCard.getByText('Link')).toBeVisible();
 
-  // D7: the SMN-titled episode plays VIDEO (seeded rule ch-3 → video; D2
-  // 'auto' + nothing playing → play now).
-  await smnCard.click();
+  // D7: the SMN-titled episode plays VIDEO (seeded rule ch-3 → video).
+  await smnCard.getByRole('button', { name: 'Play now' }).click();
   await expect(page).toHaveURL(/\/player\/ep-smn-1$/);
   const video = page.locator('video');
   await expect(video).toHaveAttribute('src', /\/mock-media\/ep-smn-1\.webm$/, { timeout: 10_000 });
@@ -43,10 +41,6 @@ test('F06-H1 (subset): both families linked at search; each plays its D7 default
     .poll(async () => await video.evaluate((el) => (el as HTMLVideoElement).paused), { timeout: 10_000 })
     .toBe(false);
 
-  // Pause before going back: with playback running, D2 'auto' would QUEUE the
-  // next click instead of playing it. Two Pause buttons exist (player screen
-  // + mini-player) — both drive the same engine toggle.
-  await page.getByRole('button', { name: 'Pause' }).first().click();
   await page.goBack();
 
   // Results live in component state — re-run the search.
@@ -61,6 +55,7 @@ test('F06-H1 (subset): both families linked at search; each plays its D7 default
   // the engine's hidden <audio> element.
   await page
     .locator('article', { hasText: 'Even More News: Why Billionaires Should Not Exist' })
+    .getByRole('button', { name: 'Play now' })
     .click();
   await expect(page).toHaveURL(/\/player\/ep-emn-1$/);
   const audio = page.locator('audio');

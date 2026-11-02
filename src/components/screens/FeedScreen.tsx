@@ -12,7 +12,7 @@ export function FeedScreen() {
   const navigate = useNavigate();
   // D2 card-click + queue actions live in the shared hook (also used by
   // SearchScreen so both surfaces behave identically).
-  const { handleCardClick, handleQueue } = useEpisodePlay();
+  const { handleCardClick, handleQueue, handlePlayNow } = useEpisodePlay();
   const [filter, setFilter] = useState<'all' | 'video' | 'podcast' | 'queue'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -95,6 +95,7 @@ export function FeedScreen() {
                 episode={episode}
                 onClick={() => handleCardClick(episode)}
                 onQueue={(action) => handleQueue(action, episode)}
+                onPlayNow={() => handlePlayNow(episode)}
               />
             ))}
           </div>

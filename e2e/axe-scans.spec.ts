@@ -29,7 +29,10 @@ test('axe: no critical/serious violations on feed, settings, player', async ({ p
   expect(await criticalSeriousCount(page)).toBe(0);
 
   await page.goto('/feed');
-  await page.getByText('How Invidious pools actually work').click();
+  await page
+    .locator('article', { hasText: 'How Invidious pools actually work' })
+    .getByRole('button', { name: 'Play now' })
+    .click();
   await expect(page).toHaveURL(/\/player\/ep-video-1$/);
   await expect(page.locator('video')).toBeVisible();
   expect(await criticalSeriousCount(page)).toBe(0);

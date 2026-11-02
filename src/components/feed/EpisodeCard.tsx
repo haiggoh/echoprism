@@ -10,9 +10,11 @@ interface EpisodeCardProps {
   variant?: 'video' | 'audio' | 'smart-link';
   onClick?: () => void;
   onQueue?: (mode: 'play_next' | 'add_end') => void;
+  /** Play it now without discarding the queue (owner decision 2026-11-02). */
+  onPlayNow?: () => void;
 }
 
-export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
+export function EpisodeCard({ episode, onClick, onQueue, onPlayNow }: EpisodeCardProps) {
   // Phase E: the hover preview hooks onto the thumbnail container — the
   // feature's ONLY call site (useHoverPreview.ts is the unplug boundary).
   // Podcast-shaped episodes carry no video_id, so the hook stays idle for
@@ -142,16 +144,33 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
           )}
         </div>
 
-        {/* Queue actions */}
+        {/* Card actions (owner decision 2026-11-02): Play now is the ONLY ▶;
+            the two queue actions wear queue glyphs, so a button never looks
+            like it plays when it only queues. */}
         <div className="flex items-center gap-2 pt-2 border-t border-border">
-          <button 
+          <button
             className="flex-1 btn-ghost btn-sm flex items-center justify-center gap-1"
+            onClick={(e) => { e.stopPropagation(); onPlayNow?.(); }}
+            aria-label="Play now"
+            disabled={!onPlayNow}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <span className="text-xs">Play</span>
+          </button>
+          <button
+            className="btn-ghost btn-sm flex items-center justify-center gap-1"
             onClick={(e) => { e.stopPropagation(); onQueue?.('play_next'); }}
             aria-label="Play next"
+            disabled={!onQueue}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              <line x1="19" y1="12" x2="19" y2="12"></line>
+            {/* queue-next: a list with an arrow into its first slot */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <polyline points="3 6 7 9 3 12"></polyline>
+              <line x1="11" y1="9" x2="21" y2="9"></line>
+              <line x1="3" y1="16" x2="21" y2="16"></line>
+              <line x1="3" y1="21" x2="21" y2="21"></line>
             </svg>
             <span className="text-xs">Next</span>
           </button>
@@ -159,6 +178,7 @@ export function EpisodeCard({ episode, onClick, onQueue }: EpisodeCardProps) {
             className="btn-ghost btn-sm flex items-center justify-center gap-1"
             onClick={(e) => { e.stopPropagation(); onQueue?.('add_end'); }}
             aria-label="Add to end"
+            disabled={!onQueue}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>

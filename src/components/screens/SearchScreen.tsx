@@ -13,7 +13,7 @@ export function SearchScreen() {
   // D6: search results are choice surfaces — cards are clickable with the
   // same D2 semantics as the feed (shared hook), so "the user's choice of an
   // episode IS the match signal" can actually happen here.
-  const { handleCardClick, handleQueue } = useEpisodePlay();
+  const { handleCardClick, handleQueue, handlePlayNow } = useEpisodePlay();
   // Phase B: Retry invalidates the failed search query — the button was a
   // dead `onClick={() => {}}` relic from 2c, more visible since 2f made real
   // store errors reach this state.
@@ -134,6 +134,7 @@ export function SearchScreen() {
                 episode={episode as Episode}
                 onClick={() => handleCardClick(episode as Episode)}
                 onQueue={(action) => handleQueue(action, episode as Episode)}
+                onPlayNow={() => handlePlayNow(episode as Episode)}
               />
             ))}
           </div>

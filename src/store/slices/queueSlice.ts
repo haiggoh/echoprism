@@ -19,6 +19,9 @@ interface QueueState {
   setItems: (items: QueueItem[]) => void;
   addItem: (item: Omit<QueueItem, 'id' | 'position'>) => void;
   playNextItem: (item: Omit<QueueItem, 'id' | 'position'>) => void;
+  /** Play now WITHOUT discarding the queue (owner, 2026-11-02): insert right
+   *  after the current item (index 0 when empty) and move the cursor onto it. */
+  playNowItem: (item: Omit<QueueItem, 'id' | 'position'>) => void;
   removeItem: (itemId: string) => void;
   reorderItems: (fromIndex: number, toIndex: number) => void;
   clearQueue: () => void;
@@ -63,6 +66,13 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     return { items: items.map((it, i) => ({ ...it, position: i })) };
   }),
   
+  playNowItem: (item) => set((state) => {
+    const at = state.items.length === 0 ? 0 : state.currentIndex + 1;
+    const items = [...state.items];
+    items.splice(at, 0, { ...item, id: crypto.randomUUID(), position: at });
+    return { items: items.map((it, i) => ({ ...it, position: i })), currentIndex: at };
+  }),
+
   // Removal is position-aware: the cursor must keep pointing at the PLAYING
   // episode, so a removal BEFORE it shifts the index down, a removal at it
   // keeps the slot (the next episode slides in — or the previous one when

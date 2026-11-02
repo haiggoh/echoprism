@@ -74,3 +74,43 @@ mod tests {
         assert_eq!(serde_json::to_value(&merged).unwrap(), serde_json::to_value(base()).unwrap());
     }
 }
+
+#[cfg(test)]
+mod card_click_tests {
+    //! Parity audit batch 3, Task 5 — owner decision 2026-11-02: the default
+    //! card click ADDS TO THE QUEUE (as Play next, per queue_behavior); 'auto'
+    //! (play when idle, queue when busy — one click, two behaviours) is retired.
+    //! The owner's own DB holds 'auto' (the old schema default), so a legacy
+    //! value must read as the new default, never as an error (Review Focus 4).
+    use crate::types::CardClickAction;
+    use std::str::FromStr;
+
+    #[test]
+    fn legacy_auto_reads_as_queue() {
+        assert_eq!(CardClickAction::from_str("auto").unwrap(), CardClickAction::Queue);
+        let v: CardClickAction = serde_json::from_str("\"auto\"").unwrap();
+        assert_eq!(v, CardClickAction::Queue);
+        assert_eq!(CardClickAction::Queue.to_string(), "queue", "always written back as queue");
+        assert_eq!(CardClickAction::default(), CardClickAction::Queue);
+    }
+
+    #[tokio::test]
+    async fn migration_rewrites_a_stored_auto_row() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::migrations::run(&pool).await.unwrap();
+        sqlx::query("INSERT OR REPLACE INTO user_preferences (user_id, card_click_action) VALUES ('current-user', 'auto')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        crate::db::migrations::run(&pool).await.unwrap();
+        let stored: String = sqlx::query_scalar("SELECT card_click_action FROM user_preferences WHERE user_id = 'current-user'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(stored, "queue");
+    }
+}

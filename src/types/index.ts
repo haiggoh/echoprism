@@ -18,7 +18,9 @@ export interface UserPreferences {
   keyboard_shortcuts_enabled: boolean;
   theme: 'dark' | 'light' | 'system';
   cross_device_sync_enabled: boolean;
-  card_click_action: 'auto' | 'play_now' | 'load_paused' | 'queue';
+  /** Owner decision 2026-11-02: 'queue' (default) adds at the queue_behavior
+   *  position; 'auto' is retired (the backend reads a stored 'auto' as 'queue'). */
+  card_click_action: 'queue' | 'play_now' | 'load_paused';
   updated_at: string;
 }
 

@@ -1414,7 +1414,7 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         keyboard_shortcuts_enabled: row.keyboard_shortcuts_enabled != 0,
         theme: Theme::from_str(&row.theme).unwrap_or(Theme::System),
         cross_device_sync_enabled: row.cross_device_sync_enabled != 0,
-        card_click_action: CardClickAction::from_str(&row.card_click_action).unwrap_or(CardClickAction::Auto),
+        card_click_action: CardClickAction::from_str(&row.card_click_action).unwrap_or_default(),
         updated_at: DateTimeUtc::from(row.updated_at),
     })
 }

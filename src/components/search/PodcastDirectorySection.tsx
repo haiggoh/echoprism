@@ -23,7 +23,7 @@ import type { Episode, PodcastSearchResult } from '../../types';
  * card-click chain.
  */
 export function PodcastDirectorySection({ query }: { query: string }) {
-  const { handleCardClick } = useEpisodePlay();
+  const { handleCardClick, handlePlayNow } = useEpisodePlay();
   const navigate = useNavigate();
   const { addToast } = useToasts();
   const queryClient = useQueryClient();
@@ -149,11 +149,14 @@ export function PodcastDirectorySection({ query }: { query: string }) {
               {expanded && feedEpisodes && feedEpisodes.length > 0 && (
                 <ul className="border-t border-border" aria-label={`${result.title} episodes`}>
                   {feedEpisodes.map((episode: Episode) => (
-                    <li key={episode.id}>
+                    // Batch 3: same click model as the cards — the row click
+                    // follows the Card-click setting (queues by default), and
+                    // Play now is its own button (a row is a <button>, so the
+                    // two sit side by side rather than nested).
+                    <li key={episode.id} data-testid="directory-episode-row" className="flex items-center">
                       <button
                         type="button"
-                        data-testid="directory-episode-row"
-                        className="w-full text-left px-3 py-2 hover:bg-surface-hover transition-colors"
+                        className="flex-1 min-w-0 text-left px-3 py-2 hover:bg-surface-hover transition-colors"
                         onClick={() => handleCardClick(episode)}
                       >
                         <span className="block text-sm text-text line-clamp-1">{episode.title}</span>
@@ -163,6 +166,16 @@ export function PodcastDirectorySection({ query }: { query: string }) {
                             : ''}
                           {episode.published_at ? ` · ${episode.published_at.slice(0, 10)}` : ''}
                         </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm mx-2 flex-shrink-0"
+                        aria-label="Play now"
+                        onClick={() => handlePlayNow(episode)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
                       </button>
                     </li>
                   ))}

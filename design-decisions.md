@@ -24,6 +24,14 @@ default is 0. Guard surface: `sql/schema.sql` column defaults + the migration-sq
 
 ## D2 — Card click behavior: configurable, smart default (2026-10-15, owner)
 
+> **Superseded in part 2026-11-02 (owner):** the `auto` default ("play when idle,
+> queue when busy" — one click, two behaviours) is retired. The default click now
+> ADDS TO THE QUEUE at the Queue-behavior position (Play next by default); every
+> card carries explicit **Play now** (plays immediately, the queue is kept and
+> continues after it), **Play next** and **Add to end** buttons; Settings offers
+> Add to queue / Play now / Open paused. A stored `auto` reads as `queue` and is
+> rewritten by the migration. Plan: docs/plans/2026-11-02-parity-audit-batch-3.md.
+
 **Decision:** What clicking an episode card does is a user preference with four values:
 `auto` (default), `play_now`, `load_paused`, `queue`. The `auto` default is context-aware:
 - Nothing currently playing → play it NOW (video or podcast — the user most likely wants it).
