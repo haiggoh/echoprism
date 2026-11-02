@@ -1360,7 +1360,8 @@ mod tests {
         let config = MatchingConfig::default();
         let mut links = 0usize;
         for pod in &podcasts {
-            if let Some(pairing) = scorer.best_pairing(pod, &candidates, &config) {
+            // Offline extraction has no DB, so no linked-channel set — empty.
+            if let Some(pairing) = scorer.best_pairing(pod, &candidates, &config, &std::collections::HashSet::new()) {
                 let video = candidates
                     .iter()
                     .find(|v| v.id == pairing.video_id)

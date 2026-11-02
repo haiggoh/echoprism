@@ -268,6 +268,7 @@ impl Scorer {
         podcast: &PodcastEpisode,
         video: &YoutubeVideo,
         config: &MatchingConfig,
+        channels_linked: bool,
     ) -> f64 {
         // Channel-aware: a trailing "| <the other side's channel>" segment is
         // the shared show's own branding, corroboration, not extra content.
@@ -277,6 +278,13 @@ impl Scorer {
             podcast.channel_title.as_deref(),
             video.channel_title.as_deref(),
         );
+        // Batch 4 item 10 (owner 2026-11-02): identical content words after the
+        // show-branding strip = the same story on the same show, behind ANY
+        // divider, suffix OR prefix — that is 100% certain, full stop. Unknown
+        // dates/durations must not cost it certainty.
+        if title_sim >= 1.0 {
+            return 1.0;
+        }
         let date_score = self.date_score(podcast.published_at, video.published_at, config);
         let duration_score = self.duration_score(
             podcast.duration_seconds.unwrap_or(0),
@@ -298,8 +306,16 @@ impl Scorer {
             + config.date_weight * date_score
             + config.duration_weight * duration_score
             + config.channel_weight * channel_score;
+        let confidence = (weighted / total).clamp(0.0, 1.0);
 
-        (weighted / total).clamp(0.0, 1.0)
+        // Batch 4 follow-up (owner 2026-11-02): when the two CHANNELS are
+        // already linked (they share confirmed episode pairs), near-identical
+        // episode titles are no longer in doubt — floor them at 0.95. The
+        // hard title gate below still applies; this only raises confidence.
+        if channels_linked && title_sim >= config.min_title_similarity {
+            return confidence.max(0.95);
+        }
+        confidence
     }
 
     pub(crate) fn date_diff(&self, d1: Option<DateTimeUtc>, d2: Option<DateTimeUtc>) -> Option<i64> {
@@ -324,8 +340,9 @@ impl Scorer {
         podcast: &PodcastEpisode,
         youtube_videos: &[YoutubeVideo],
         config: &MatchingConfig,
+        linked: &std::collections::HashSet<(String, String)>,
     ) -> Option<BestPairing> {
-        let mut best: Option<(f64, f64, &YoutubeVideo)> = None; // (confidence, title_sim, video)
+        let mut best: Option<(f64, f64, bool, &YoutubeVideo)> = None; // (confidence, title_sim, certain, video)
         for video in youtube_videos {
             let title_sim = self.title_similarity_for_pairing(
                 &podcast.title,
@@ -339,15 +356,26 @@ impl Scorer {
             if title_sim < config.min_title_similarity {
                 continue;
             }
-            let confidence = self.confidence(podcast, video, config);
-            if confidence > config.min_confidence && best.as_ref().is_none_or(|(c, _, _)| confidence > *c) {
-                best = Some((confidence, title_sim, video));
+            // Batch 4 item 10 follow-up: linked CHANNELS (shared confirmed
+            // pairs) remove doubt from the episode titles — checked per pair.
+            let channels_linked = match (podcast.channel_id.as_deref(), video.channel_id.as_deref()) {
+                (Some(p), Some(v)) => {
+                    linked.contains(&(p.to_string(), v.to_string()))
+                        || linked.contains(&(v.to_string(), p.to_string()))
+                }
+                _ => false,
+            };
+            let confidence = self.confidence(podcast, video, config, channels_linked);
+            let certain = title_sim >= 1.0 || (channels_linked && confidence >= 0.95);
+            if confidence > config.min_confidence && best.as_ref().is_none_or(|(c, _, _, _)| confidence > *c) {
+                best = Some((confidence, title_sim, certain, video));
             }
         }
-        best.map(|(confidence, title_similarity, video)| BestPairing {
+        best.map(|(confidence, title_similarity, certain, video)| BestPairing {
             video_id: video.id.clone(),
             confidence,
             title_similarity,
+            certain,
             date_diff_days: self.date_diff(podcast.published_at, video.published_at),
             duration_diff_seconds: self.duration_diff(podcast.duration_seconds, video.duration_seconds),
         })
@@ -360,6 +388,9 @@ pub(crate) struct BestPairing {
     pub video_id: String,
     pub confidence: f64,
     pub title_similarity: f64,
+    /// Certain = learned without confirmation: identical-after-branding titles
+    /// (1.0), or linked channels with a title-passing pair at ≥0.95.
+    pub certain: bool,
     pub date_diff_days: Option<i64>,
     pub duration_diff_seconds: Option<i64>,
 }
@@ -384,16 +415,28 @@ impl EpisodeMatcher {
         }
     }
 
+    /// Channel pairs that are already linked (share confirmed episode pairs) —
+    /// batch 4 item 10 follow-up (owner 2026-11-02): linked channels remove
+    /// doubt from episode titles. Computed once per match run.
+    async fn linked_channel_pairs(&self) -> std::collections::HashSet<(String, String)> {
+        let pairs = self.db.list_linked_channels(2).await.unwrap_or_default();
+        pairs
+            .into_iter()
+            .map(|p| (p.podcast_channel_id, p.video_channel_id))
+            .collect()
+    }
+
     /// Match all unlinked podcast episodes to YouTube videos
     pub async fn match_all(&self) -> Result<MatchResult, String> {
         let unmatched_podcasts = self.db.get_unmatched_podcasts().await?;
         let youtube_videos = self.db.get_youtube_videos().await?;
+        let linked = self.linked_channel_pairs().await;
 
         let mut matched = 0;
         let mut errors: Vec<String> = Vec::new();
 
         for podcast in unmatched_podcasts {
-            match self.find_best_match(&podcast, &youtube_videos).await {
+            match self.find_best_match(&podcast, &youtube_videos, &linked).await {
                 Ok(Some(link)) => {
                     self.db.insert_episode_link(&link).await?;
                     matched += 1;
@@ -415,8 +458,12 @@ impl EpisodeMatcher {
         &self,
         podcast: &PodcastEpisode,
         youtube_videos: &[YoutubeVideo],
+        linked: &std::collections::HashSet<(String, String)>,
     ) -> Result<Option<EpisodeLink>, String> {
-        let Some(pairing) = self.scorer.best_pairing(podcast, youtube_videos, &self.matching_config) else {
+        let Some(pairing) = self
+            .scorer
+            .best_pairing(podcast, youtube_videos, &self.matching_config, linked)
+        else {
             return Ok(None);
         };
         let now = DateTimeUtc::from(chrono::Utc::now());
@@ -433,7 +480,7 @@ impl EpisodeMatcher {
             // Batch 2 Task 4a: a title-identical pair (after show-branding is
             // stripped) is "absolute certain" in the owner's words — LEARN it
             // (user_confirmed) instead of listing it for confirmation.
-            user_confirmed: pairing.title_similarity >= crate::db::queries::CERTAIN_TITLE_SIMILARITY,
+            user_confirmed: pairing.certain,
             created_at: now,
             updated_at: now,
         }))
@@ -485,15 +532,18 @@ mod scorer_tests {
         assert_eq!(sc.channel_similarity(&Some("Some More News".into()), &None), 0.5);
         assert_eq!(sc.channel_similarity(&None, &Some("Some More News".into())), 0.5);
 
-        // And the effect: identical titles, no channel metadata, nothing else
-        // known. Was 0.800 (0.10 lost to the punishment); now 0.850 — the
-        // remaining gap is the neutral date and duration, which is honest.
+        // And the effect: identical titles are 1.0 now — batch 4 item 10 (owner
+        // 2026-11-02): same words after the branding strip = the same story,
+        // 100% certain, and absent date/duration/channel metadata must not cost
+        // it. WRONG PREMISE RETIRED: this test used to pin 0.850 (the 2026-10-28
+        // measurement that missing metadata diluted identical pairs); the
+        // owner ruled that identical titles are certain, full stop.
         let p = pod("Why Billionaires Should Not Exist");
         let v = vid("Why Billionaires Should Not Exist");
-        let confidence = sc.confidence(&p, &v, &cfg);
+        let confidence = sc.confidence(&p, &v, &cfg, false);
         assert!(
-            (confidence - 0.85).abs() < 1e-9,
-            "expected 0.850 (title 1.0 + neutral date/duration/channel). Got {confidence:.3}"
+            (confidence - 1.0).abs() < 1e-9,
+            "identical titles with no metadata must read as 1.0. Got {confidence:.3}"
         );
     }
 
@@ -510,7 +560,7 @@ mod scorer_tests {
         v.channel_title = Some("Some More News".into());
         v.duration_seconds = Some(1600);
 
-        let confidence = sc.confidence(&p, &v, &cfg);
+        let confidence = sc.confidence(&p, &v, &cfg, false);
         assert!(
             confidence >= 0.9,
             "the same episode, same show, same length must read as near-certain. \
@@ -543,7 +593,7 @@ mod scorer_tests {
             1.0,
             "a trailing '| <the same channel>' segment must not lower title similarity"
         );
-        let confidence = sc.confidence(&p, &v, &cfg);
+        let confidence = sc.confidence(&p, &v, &cfg, false);
         assert!(
             confidence >= 0.9,
             "the same episode on two streams must score as a near-certain match. \
@@ -606,11 +656,85 @@ mod scorer_tests {
         v.channel_title = Some("Some More News".into());
         v.duration_seconds = Some(1600);
 
-        let confidence = sc.confidence(&p, &v, &cfg);
+        let confidence = sc.confidence(&p, &v, &cfg, false);
         assert!(
             confidence >= 0.9,
             "a branded prefix spelling the same show must read as near-certain. Got {confidence:.3}"
         );
+    }
+
+    /// Batch 4 item 10 (owner 2026-11-02, verbatim example): the same title
+    /// followed by a divider and the podcast channel name — suffix OR prefix,
+    /// ANY divider — is the same story on the same show: 100% confidence.
+    /// "… | The Vergecast" is the canonical shape; dash/slash/en-dash variants
+    /// and the prefix form must all score the same.
+    #[test]
+    fn a_branded_title_with_any_divider_is_100_percent_certain() {
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        let mut p = pod("The touchscreen MacBook Apple said it wouldn't make");
+        p.channel_title = Some("The Vergecast".into());
+        p.duration_seconds = Some(3600);
+        p.published_at = None; // unknown date is neutral, must not cost certainty
+
+        for divider in [" | ", " - ", " / ", " – ", " — ", ": "] {
+            for branded in [
+                format!("The touchscreen MacBook Apple said it wouldn't make{divider}The Vergecast"),
+                format!("The Vergecast{divider}The touchscreen MacBook Apple said it wouldn't make"),
+            ] {
+                let mut v = vid(&branded);
+                v.channel_title = Some("The Verge".into());
+                v.duration_seconds = Some(3600);
+                v.published_at = None;
+                let sim = sc.title_similarity_for_pairing(
+                    &p.title,
+                    &v.title,
+                    p.channel_title.as_deref(),
+                    v.channel_title.as_deref(),
+                );
+                assert_eq!(sim, 1.0, "branded title {branded:?} must strip to identical words");
+                let confidence = sc.confidence(&p, &v, &cfg, false);
+                assert!(
+                    confidence >= 1.0,
+                    "same title + show branding + any divider ({divider:?}) must read as 100% certain. Got {confidence:.3}"
+                );
+            }
+        }
+    }
+
+    /// Batch 4 follow-up (owner 2026-11-02): when the CHANNELS are already
+    /// linked, near-identical episode titles lose their doubt — confidence
+    /// floors at 0.95 and the pair is certain. Unlinked, the same pair is not.
+    #[test]
+    fn linked_channels_floor_near_identical_titles_at_0_95_and_mark_certain() {
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        // (words proven kept by content_words_split_on_punctuation...: apple/homeview/app)
+        let mut p = pod("apple homeview quantum");
+        p.channel_id = Some("ch-pod".into());
+        p.channel_title = Some("The Vergecast".into());
+        let mut v = vid("apple homeview quantum app"); // near-identical (3/4 words), below 1.0
+        v.channel_id = Some("ch-vid".into());
+        v.channel_title = Some("The Verge".into());
+
+        let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
+        assert!(sim >= cfg.min_title_similarity && sim < 1.0, "premise: near-identical but not exact, got {sim}");
+
+        let unlinked = sc.confidence(&p, &v, &cfg, false);
+        assert!(unlinked < 0.95, "unlinked channels must not get the floor. Got {unlinked:.3}");
+
+        let linked = sc.confidence(&p, &v, &cfg, true);
+        assert!((linked - 0.95).abs() < 1e-9, "linked channels floor near-identical titles at 0.95. Got {linked:.3}");
+
+        // And best_pairing marks the pair certain only when linked.
+        let empty = std::collections::HashSet::new();
+        let mut linked_set = std::collections::HashSet::new();
+        linked_set.insert(("ch-pod".to_string(), "ch-vid".to_string()));
+        let pair_linked = sc.best_pairing(&p, &[v.clone()], &cfg, &linked_set).expect("pairs");
+        assert!(pair_linked.certain, "linked near-identical pair must be certain");
+        assert!(pair_linked.confidence >= 0.95);
+        let pair_unlinked = sc.best_pairing(&p, &[v], &cfg, &empty).expect("still pairs at the gate");
+        assert!(!pair_unlinked.certain, "unlinked near-identical pair is NOT certain");
     }
 
     /// Guard for the prefix half: only a segment spelling the OTHER side's
@@ -769,7 +893,7 @@ mod scorer_tests {
         let mut video = vid("Apple's HomeView has an app problem | The Vergecast");
         video.channel_title = Some("The Verge".into());
         video.duration_seconds = Some(5911);
-        let confidence = s.confidence(&podcast, &video, &config);
+        let confidence = s.confidence(&podcast, &video, &config, false);
         assert!(
             confidence >= config.min_confidence,
             "real Vergecast pair must reach min_confidence, scored {:.3}",
@@ -784,7 +908,7 @@ mod scorer_tests {
         let mut video = vid("JD Vance’s Town Hall Was a Disaster");
         video.channel_title = Some("Some More News".into());
         video.duration_seconds = Some(2000);
-        let confidence = s.confidence(&podcast, &video, &config);
+        let confidence = s.confidence(&podcast, &video, &config, false);
         assert!(
             confidence >= config.min_confidence,
             "real SMN pair must reach min_confidence, scored {:.3}",
@@ -800,7 +924,7 @@ mod scorer_tests {
         let mut video = vid("Even More News: JD Vance’s Town Hall Was a Disaster");
         video.channel_title = Some("Some More News".into());
         video.duration_seconds = Some(2000);
-        let confidence = s.confidence(&podcast, &video, &config);
+        let confidence = s.confidence(&podcast, &video, &config, false);
         assert!(
             confidence < config.min_confidence,
             "cross-show pair must stay below min_confidence, scored {:.3}",
@@ -825,7 +949,7 @@ mod scorer_tests {
         video.channel_title = Some("Channel Creator".into());
         video.published_at = Some(published);
         video.duration_seconds = Some(1000);
-        let confidence = s.confidence(&podcast, &video, &config);
+        let confidence = s.confidence(&podcast, &video, &config, false);
         assert!(
             (confidence - 1.0).abs() < 1e-9,
             "perfect candidate must score exactly 1.0, scored {:.6}",
@@ -848,14 +972,14 @@ mod scorer_tests {
         v2.id = "vid-2".into();
         v2.video_id = "vid-2".into();
         let videos = vec![v1, v2];
-        let pairing = s.best_pairing(&podcast, &videos, &config).expect("a pairing exists");
+        let pairing = s.best_pairing(&podcast, &videos, &config, &std::collections::HashSet::new()).expect("a pairing exists");
         assert_eq!(pairing.video_id, "vid-1");
         assert!(pairing.confidence >= config.min_confidence);
         assert!(pairing.title_similarity >= config.min_title_similarity);
 
         // Only gated-out candidates: no pairing.
         let unrelated = vec![vid("Billionaires Are Funding 'Anti AI' Content")];
-        assert!(s.best_pairing(&podcast, &unrelated, &config).is_none());
+        assert!(s.best_pairing(&podcast, &unrelated, &config, &std::collections::HashSet::new()).is_none());
     }
 
     /// Calibration matrix printer: run with
@@ -884,3 +1008,4 @@ mod scorer_tests {
         }
     }
 }
+
