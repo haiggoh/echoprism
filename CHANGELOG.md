@@ -7,6 +7,23 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.2] - 2026-11-02
+
+### Changed — parity-audit batch 3 (branch fix/parity-audit-2026-11-02, 7 commits)
+
+Owner decisions 2026-11-02 implemented: ONE global play bar (MiniPlayer is the
+whole transport; PlayerScreen keeps stage + title; real Picture-in-Picture via
+requestPictureInPicture), ONE audio-only state with exactly two controls (bar +
+Header) persisted across launches via audio_only_default, and a predictable
+card-click model (default: queue as play-next; real Play now inserts after the
+cursor; legacy 'auto' rows migrate to 'queue'; style choosable in Settings).
+Plus: update_settings accepts partial patches (the real app can now save a
+preference), smart-link badge with one-tap switch to the linked version at the
+same position, dead ui/EpisodeCard.tsx removed, two pre-existing e2e failures
+fixed, playlists (0.1.1 work), hidden-channel retention cap (2000, oldest
+pruned), real eslint gate. Gates: vitest 321/321, cargo 160, e2e 33/33, lint 0,
+tsc clean. Parity re-audit: 100% scored rows, 5/5 must-haves (replica/parity.md).
+
 ## [0.1.1] - 2026-10-31
 
 ### Changed — credit-moment mark 📐 (emoji branding rollout, Task 18)
