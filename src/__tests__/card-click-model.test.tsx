@@ -109,15 +109,18 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
     await waitFor(() => expect(queueIds()).toEqual(['a', 'b', 'c', 'ep-video-1']));
   });
 
-  it('Play now plays it immediately WITHOUT discarding the queue: inserted after the current item', async () => {
+  it('Play now plays it immediately WITHOUT discarding the queue: inserted AT the cursor, in front of the current item', async () => {
+    // Premise updated 2026-11-02 batch 4 (owner answer): play now inserts at
+    // the cursor (before the current item), not after it — the old
+    // currentIndex+1 insert was the previous contract.
     renderFeed();
     const c = await card();
     await act(async () => {
       fireEvent.click(within(c).getByRole('button', { name: 'Play now' }));
     });
     await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(true));
-    expect(queueIds()).toEqual(['a', 'ep-video-1', 'b', 'c']);
-    expect(useQueueStore.getState().currentIndex).toBe(1);
+    expect(queueIds()).toEqual(['ep-video-1', 'a', 'b', 'c']);
+    expect(useQueueStore.getState().currentIndex).toBe(0);
   });
 
   it('Play now with an EMPTY queue makes it the only item and plays it (Review Focus 3)', async () => {
@@ -144,7 +147,7 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
       fireEvent.click(within(c).getByText(/How Invidious pools actually work/));
     });
     await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(true));
-    expect(queueIds()).toEqual(['a', 'ep-video-1', 'b', 'c']);
+    expect(queueIds()).toEqual(['ep-video-1', 'a', 'b', 'c']);
   });
 
   it('"Play next" is a queue action and no longer wears the ▶ play glyph', async () => {
