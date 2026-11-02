@@ -25,7 +25,7 @@ export function ChannelScreen() {
   const queryClient = useQueryClient();
   // Batch 3: the channel page's cards had NO handlers — click, Next and End
   // were all inert here. Same card behaviour as Feed and Search now.
-  const { handleCardClick, handleQueue, handlePlayNow } = useEpisodePlay();
+  const { handleCardClick, handleQueue, handlePlayNow, queueBehavior } = useEpisodePlay();
 
   const { data: episodes, isLoading, isError } = useQuery({
     queryKey: ['channel-episodes', channelId],
@@ -116,6 +116,7 @@ export function ChannelScreen() {
                   onClick={() => handleCardClick(episode)}
                   onQueue={(action) => handleQueue(action, episode)}
                   onPlayNow={() => handlePlayNow(episode)}
+                  queueBehavior={queueBehavior}
                 />
               </li>
             ))}

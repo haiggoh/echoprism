@@ -161,4 +161,29 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
     expect(queueIds()).toEqual(['a', 'ep-video-1', 'b', 'c']);
     expect(usePlayerStore.getState().isPlaying).toBe(false);
   });
+
+  it('the card has exactly two equal-width action buttons: Play now + the queue button (batch 4 item 7)', async () => {
+    renderFeed();
+    const c = await card();
+    const actionButtons = within(c)
+      .getAllByRole('button')
+      .filter((b) => /^(Play now|Play next|Add to end)$/.test(b.getAttribute('aria-label') ?? ''));
+    expect(actionButtons).toHaveLength(2);
+    expect(actionButtons.every((b) => b.className.includes('flex-1'))).toBe(true);
+    // Default preference: the queue button reads "Play next".
+    expect(within(c).getByRole('button', { name: 'Play next' })).toBeTruthy();
+    expect(within(c).queryByRole('button', { name: 'Add to end' })).toBeNull();
+  });
+
+  it('the queue button follows the Settings choice: add_end relabels it and appends (batch 4 item 7)', async () => {
+    await withPrefs({ queue_behavior: 'add_end' });
+    renderFeed();
+    const c = await card();
+    const end = within(c).getByRole('button', { name: 'Add to end' });
+    await act(async () => {
+      fireEvent.click(end);
+    });
+    expect(queueIds()).toEqual(['a', 'b', 'c', 'ep-video-1']);
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
+  });
 });

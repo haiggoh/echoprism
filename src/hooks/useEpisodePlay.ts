@@ -66,7 +66,8 @@ export function useEpisodePlay() {
     });
   };
 
-  /** Play now, keeping the rest of the queue ahead of it. */
+  /** Play now: the clip is inserted AT the cursor (batch 4, owner answer) —
+   *  in front of the current item — and the rest of the queue keeps its order. */
   const handlePlayNow = (episode: Episode) => {
     playNowItem(queueItemFromEpisode(episode));
     play(episode, resolveDefaultPlayMode(episode, playModeRules, channels));
@@ -92,5 +93,11 @@ export function useEpisodePlay() {
     handleQueue(preferences?.queue_behavior === 'add_end' ? 'add_end' : 'play_next', episode);
   };
 
-  return { handleCardClick, handleQueue, handlePlayNow };
+  return {
+    handleCardClick,
+    handleQueue,
+    handlePlayNow,
+    /** The single queue button on cards follows this Settings choice. */
+    queueBehavior: preferences?.queue_behavior === 'add_end' ? ('add_end' as const) : ('play_next' as const),
+  };
 }
