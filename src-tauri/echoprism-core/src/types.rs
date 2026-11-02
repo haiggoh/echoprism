@@ -119,6 +119,45 @@ pub struct UserPreferences {
     pub updated_at: DateTimeUtc,
 }
 
+/// Parity audit batch 3 (A2): what `update_settings` actually receives. Every
+/// Settings control sends ONE field (`settingsCommands.update({ theme })`), so
+/// the command must accept a partial and merge it over the stored row — the
+/// full struct rejected every real update while the mock merged happily.
+/// `user_id` and `updated_at` are owned by the backend, never patched.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct UserPreferencesPatch {
+    pub default_instance_id: Option<Option<String>>,
+    pub default_format: Option<Format>,
+    pub queue_behavior: Option<QueueBehavior>,
+    pub audio_only_default: Option<bool>,
+    pub auto_download_wifi: Option<bool>,
+    pub sponsorblock_enabled: Option<bool>,
+    pub sponsorblock_categories: Option<Vec<String>>,
+    pub keyboard_shortcuts_enabled: Option<bool>,
+    pub theme: Option<Theme>,
+    pub cross_device_sync_enabled: Option<bool>,
+    pub card_click_action: Option<CardClickAction>,
+}
+
+impl UserPreferencesPatch {
+    /// The stored preferences with every field this patch carries replaced.
+    pub fn apply(self, mut base: UserPreferences) -> UserPreferences {
+        if let Some(v) = self.default_instance_id { base.default_instance_id = v; }
+        if let Some(v) = self.default_format { base.default_format = v; }
+        if let Some(v) = self.queue_behavior { base.queue_behavior = v; }
+        if let Some(v) = self.audio_only_default { base.audio_only_default = v; }
+        if let Some(v) = self.auto_download_wifi { base.auto_download_wifi = v; }
+        if let Some(v) = self.sponsorblock_enabled { base.sponsorblock_enabled = v; }
+        if let Some(v) = self.sponsorblock_categories { base.sponsorblock_categories = v; }
+        if let Some(v) = self.keyboard_shortcuts_enabled { base.keyboard_shortcuts_enabled = v; }
+        if let Some(v) = self.theme { base.theme = v; }
+        if let Some(v) = self.cross_device_sync_enabled { base.cross_device_sync_enabled = v; }
+        if let Some(v) = self.card_click_action { base.card_click_action = v; }
+        base
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, strum::Display, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
