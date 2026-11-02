@@ -16,6 +16,7 @@ import { ChannelScreen } from './components/screens/ChannelScreen';
 import { SmartLinksScreen } from './components/screens/SmartLinksScreen';
 import { OnboardingScreen } from './components/screens/OnboardingScreen';
 import { PlayerProvider } from './components/PlayerProvider';
+import { SplashScreen } from './components/SplashScreen';
 import { settingsCommands } from './hooks/useTauriCommands';
 
 function AppRoutes() {
@@ -41,14 +42,8 @@ function AppRoutes() {
   }, [navigate]);
 
   if (!initialized) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-bg">
-        <div className="convergence-loader" role="status" aria-label="Loading EchoPrism">
-          <div className="convergence-loader-beams" />
-          <div className="convergence-loader-prism" />
-        </div>
-      </div>
-    );
+    // Batch 4 item 9 (owner 2026-11-02): a real splash — pulsing logo + version.
+    return <SplashScreen />;
   }
 
   return (
