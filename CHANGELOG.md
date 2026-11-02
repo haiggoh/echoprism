@@ -7,6 +7,19 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.3] - 2026-11-02
+
+### Changed — live-test batch 4 (branch fix/live-test-batch-4-2026-11-02)
+
+- Queue never holds the same episode twice — re-queuing moves it (play-next/end); Play now inserts AT the cursor.
+- Two equal-size card buttons: Play now + a queue button following the Settings queue-behavior choice.
+- Audio-only app icon is the headphones mark; the player stage shows cover art (podcast image or YouTube thumbnail) in audio-only mode.
+- Smart-link switch relabelled: "Podcast version" / "YouTube version" — never "audio version" (podcasts carry baked-in ads).
+- Matcher: same title + any divider + show branding (suffix or prefix) = 100% confidence; linked channels floor near-titles at 0.95.
+- Seek errors during a timeline skip no longer kill playback; media preload="metadata" (podcast CDNs verified Range-capable: HTTP 206 + accept-ranges on a live 161 MB enclosure).
+- Loading splash screen with pulsing logo + version.
+- Gates: vitest 337/337, cargo 162, e2e 33/33, lint 0, tsc clean.
+
 ## [0.1.2] - 2026-11-02
 
 ### Changed — parity-audit batch 3 (branch fix/parity-audit-2026-11-02, 7 commits)
