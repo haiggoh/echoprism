@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useUIStore } from '../store/slices/uiSlice';
-import { useQueueStore } from '../store/slices/queueSlice';
+import { usePlayerStore } from '../store/slices/playerSlice';
 import { PrismAppIcon } from './ui/PrismAppIcon';
 
 const navItems = [
@@ -16,7 +16,9 @@ const navItems = [
 
 export function Sidebar() {
   const { sidebarOpen, sidebarCollapsed, setSidebarCollapsed } = useUIStore();
-  const { audioOnlyMode, setAudioOnlyMode } = useQueueStore();
+  // Display-only read of the ONE audio-only state; writes go through the
+  // engine (AudioOnlyToggle), which re-resolves the stream.
+  const isAudioMode = usePlayerStore((s) => s.isAudioMode);
   // react-router Link + useLocation: a raw <a href> would do a full page
   // load on every navigation, resetting all in-memory state (the local-first
   // queue, the player). useLocation keeps the active-item highlight honest
@@ -44,7 +46,7 @@ export function Sidebar() {
           {/* The app icon itself: the same component the dock icon is built
               from, so the two can never drift. Doubles as the audio-only
               legend (the video stream pales while audio-only is on). */}
-          <PrismAppIcon size={36} audioOnly={audioOnlyMode} />
+          <PrismAppIcon size={36} audioOnly={isAudioMode} />
           {!sidebarCollapsed && (
             <div className="min-w-0 leading-tight">
               <p className="font-semibold text-text truncate">EchoPrism</p>
@@ -87,19 +89,6 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Bottom section */}
-      <div className="p-2 border-t border-border">
-        {/* Audio mode toggle */}
-        <label className="flex items-center justify-between p-2 rounded-lg bg-surface hover:bg-surface-hover cursor-pointer">
-          <span className="text-sm text-text-muted">Audio only mode</span>
-          <input
-            type="checkbox"
-            checked={audioOnlyMode}
-            onChange={(e) => setAudioOnlyMode(e.target.checked)}
-            className="w-4 h-4 accent-accent rounded border-border"
-          />
-        </label>
-      </div>
   </aside>
   );
 }

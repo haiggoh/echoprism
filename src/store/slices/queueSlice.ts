@@ -7,7 +7,6 @@ interface QueueState {
   currentIndex: number;
   repeatMode: 'off' | 'one' | 'all';
   shuffle: boolean;
-  audioOnlyMode: boolean;
   isLoading: boolean;
   error: string | null;
   /** F05: the feed episode currently being dragged, so a queue drop target
@@ -28,7 +27,6 @@ interface QueueState {
   decrementIndex: () => void;
   setRepeatMode: (mode: 'off' | 'one' | 'all') => void;
   setShuffle: (shuffle: boolean) => void;
-  setAudioOnlyMode: (mode: boolean) => void;
   setPlayMode: (itemId: string, mode: 'video' | 'audio' | 'unified') => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -43,7 +41,6 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   currentIndex: 0,
   repeatMode: 'off',
   shuffle: false,
-  audioOnlyMode: false,
   isLoading: false,
   error: null,
   draggedEpisode: null,
@@ -127,7 +124,6 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   
   setRepeatMode: (mode) => set({ repeatMode: mode }),
   setShuffle: (shuffle) => set({ shuffle }),
-  setAudioOnlyMode: (mode) => set({ audioOnlyMode: mode }),
   
   setPlayMode: (itemId, mode) => set((state) => ({
     items: state.items.map(item => 
@@ -176,4 +172,3 @@ export const selectQueueItems = (state: QueueState) => state.items;
 export const selectCurrentIndex = (state: QueueState) => state.currentIndex;
 export const selectRepeatMode = (state: QueueState) => state.repeatMode;
 export const selectShuffle = (state: QueueState) => state.shuffle;
-export const selectAudioOnlyMode = (state: QueueState) => state.audioOnlyMode;

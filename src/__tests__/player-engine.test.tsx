@@ -101,7 +101,6 @@ function resetStores() {
     currentIndex: 0,
     repeatMode: 'off',
     shuffle: false,
-    audioOnlyMode: false,
   });
 }
 

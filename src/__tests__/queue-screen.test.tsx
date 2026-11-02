@@ -68,7 +68,6 @@ beforeEach(() => {
     currentIndex: 0,
     repeatMode: 'off',
     shuffle: false,
-    audioOnlyMode: false,
     isLoading: false,
     error: null,
   });

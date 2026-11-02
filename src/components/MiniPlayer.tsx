@@ -2,11 +2,10 @@ import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { usePlayer } from './PlayerProvider';
-import { PrismConvergeToggle } from './player/PrismConvergeToggle';
+import { AudioOnlyToggle } from './player/AudioOnlyToggle';
 import { ShuffleButton } from './ui/ShuffleButton';
 import { MuteButton } from './ui/MuteButton';
 import { SpeedControl } from './player/SpeedControl';
-import { useConvergence } from '../hooks/useConvergence';
 import { Thumbnail } from './ui/Thumbnail';
 
 /**
@@ -27,13 +26,10 @@ export function MiniPlayer() {
     currentIndex,
     shuffle,
     setShuffle,
-    audioOnlyMode,
-    setAudioOnlyMode,
     nextTrack,
     previousTrack,
   } = useQueueStore();
   const { isPlaying, togglePlay, volume, setVolume, currentTime, duration, seek, restart, hasNext, hasPrevious } = usePlayer();
-  const { state, setMode } = useConvergence();
   const navigate = useNavigate();
   const seekStripRef = useRef<HTMLDivElement>(null);
 
@@ -201,18 +197,8 @@ export function MiniPlayer() {
             <SpeedControl />
           </div>
 
-          <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="sm" />
-
-          <label className="flex items-center gap-2 cursor-pointer hidden md:flex">
-            <input
-              type="checkbox"
-              checked={audioOnlyMode}
-              onChange={(e) => setAudioOnlyMode(e.target.checked)}
-              className="w-4 h-4 accent-accent rounded border-border"
-              aria-label="Audio only mode"
-            />
-            <span className="text-sm text-text-muted">Audio</span>
-          </label>
+          {/* One of the TWO audio-only controls (owner decision 2026-11-02). */}
+          <AudioOnlyToggle label="Audio" hideLabelBelow="md" />
 
           {/* Volume — live-test batch 2 Task 1, mini player.
               This was the SAME dead <button aria-label="Volume"> the full player

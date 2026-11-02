@@ -9,6 +9,7 @@ import { useQueueStore } from '../../store/slices/queueSlice';
 import { queueItemFromEpisode } from '../../hooks/useEpisodePlay';
 import { playlistCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { useNavigate } from 'react-router-dom';
+import { usePlayerStore } from '../../store/slices/playerSlice';
 
 export function QueueScreen() {
   const {
@@ -16,8 +17,6 @@ export function QueueScreen() {
     currentIndex,
     isLoading,
     error,
-    audioOnlyMode,
-    setAudioOnlyMode,
     reorderItems,
     removeItem,
     setCurrentIndex,
@@ -27,6 +26,9 @@ export function QueueScreen() {
     draggedEpisode,
     setDraggedEpisode,
   } = useQueueStore();
+  // Display-only read of the ONE audio-only state; writes go through the
+  // engine (AudioOnlyToggle), which re-resolves the stream.
+  const isAudioMode = usePlayerStore((s) => s.isAudioMode);
   const navigate = useNavigate();
   const { addToast } = useToasts();
   const { data: preferences } = useQuery({
@@ -62,17 +64,6 @@ export function QueueScreen() {
       <div className="px-4 py-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-semibold text-text">Queue</h1>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={audioOnlyMode}
-                onChange={(e) => setAudioOnlyMode(e.target.checked)}
-                className="w-4 h-4 accent-accent rounded border-border"
-              />
-              <span className="text-sm text-text-muted">Audio only</span>
-            </label>
-          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -193,7 +184,7 @@ export function QueueScreen() {
             </div>
           ) : (
             <QueueEmptyState
-              audioMode={audioOnlyMode}
+              audioMode={isAudioMode}
               onAction={() => navigate('/feed')}
             />
           )

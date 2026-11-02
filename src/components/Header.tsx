@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../store/slices/uiSlice';
-import { useQueueStore } from '../store/slices/queueSlice';
 import { PrismConvergeToggle } from './player/PrismConvergeToggle';
-import { useConvergence } from '../hooks/useConvergence';
+import { usePlayer } from './PlayerProvider';
+import { AudioOnlyToggle } from './player/AudioOnlyToggle';
 import { notificationCommands } from '../hooks/useTauriCommands';
 
 /**
@@ -20,8 +20,8 @@ import { notificationCommands } from '../hooks/useTauriCommands';
  */
 export function Header() {
   const { toggleSidebar } = useUIStore();
-  const { audioOnlyMode, setAudioOnlyMode } = useQueueStore();
-  const { state, setMode } = useConvergence();
+  // Audio only: the engine's one state (parity audit batch 3).
+  const { isAudioMode } = usePlayer();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -96,20 +96,15 @@ export function Header() {
 
       {/* Right: Audio mode toggle + PrismConvergeToggle */}
       <div className="flex items-center gap-4">
-        <label className="flex items-center gap-2 cursor-pointer hidden sm:flex">
-          <input
-            type="checkbox"
-            checked={audioOnlyMode}
-            onChange={(e) => setAudioOnlyMode(e.target.checked)}
-            className="w-4 h-4 accent-accent rounded border-border"
-            aria-label="Audio only mode"
-          />
-          <span className="text-sm text-text-muted hidden md:inline">Audio only</span>
-        </label>
+        {/* One of the TWO audio-only controls (owner decision 2026-11-02:
+            the bottom bar and here). */}
+        <div className="hidden sm:flex">
+          <AudioOnlyToggle hideLabelBelow="md" />
+        </div>
 
         {/* PrismConvergeToggle — audioOnly reflects the actual playback
             preference: the video stream pales whenever audio-only is on */}
-        <PrismConvergeToggle mode={state.mode} onModeChange={setMode} size="md" audioOnly={audioOnlyMode} />
+        <PrismConvergeToggle mode={isAudioMode ? 'audio' : 'unified'} size="md" audioOnly={isAudioMode} />
 
         {/* The REAL bell (episode notifications): count = episodes published
             since the last seen instant across subscribed channels. */}

@@ -2,13 +2,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
-import { PrismConvergeToggle } from '../player/PrismConvergeToggle';
 import { ShuffleButton } from '../ui/ShuffleButton';
 import { MuteButton } from '../ui/MuteButton';
 import { SpeedControl } from '../player/SpeedControl';
 import { usePlayer } from '../PlayerProvider';
 import { useQueueStore } from '../../store/slices/queueSlice';
-import { useConvergence } from '../../hooks/useConvergence';
 import { Episode } from '../../types';
 
 export function PlayerScreen() {
@@ -19,7 +17,6 @@ export function PlayerScreen() {
   const {
     isPlaying,
     playbackFormat,
-    isAudioMode,
     isPip,
     volume,
     currentEpisode,
@@ -28,7 +25,6 @@ export function PlayerScreen() {
     togglePlay,
     seek,
     setVolume,
-    setAudioMode,
     togglePip,
     nextTrack,
     previousTrack,
@@ -38,7 +34,6 @@ export function PlayerScreen() {
     registerVideoElement,
   } = usePlayer();
   const { shuffle, setShuffle, repeatMode, setRepeatMode } = useQueueStore();
-  const { state, setMode } = useConvergence();
   const progressBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -306,25 +301,7 @@ export function PlayerScreen() {
         {/* Secondary Controls */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <PrismConvergeToggle
-              mode={state.mode}
-              onModeChange={(m) => {
-                setMode(m);
-                setAudioMode(m === 'audio');
-              }}
-            />
-
-            <div className="flex items-center gap-2 ml-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isAudioMode}
-                  onChange={(e) => setAudioMode(e.target.checked)}
-                  className="w-4 h-4 accent-accent rounded border-border"
-                />
-                <span className="text-sm text-text-muted">Audio only</span>
-              </label>
-            </div>
+            {/* Audio only moved to the bottom bar + Header (batch 3). */}
           </div>
 
           <div className="flex items-center gap-4">

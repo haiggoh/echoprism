@@ -8,7 +8,9 @@ import {
 
 interface PrismConvergeToggleProps {
   mode: 'unified' | 'audio' | 'video';
-  onModeChange: (mode: 'unified' | 'audio' | 'video') => void;
+  /** Absent = a pure status indicator (parity audit batch 3: audio only has
+   *  exactly two controls, and this mark is not one of them). */
+  onModeChange?: (mode: 'unified' | 'audio' | 'video') => void;
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   loading?: boolean;
@@ -41,7 +43,12 @@ export function PrismConvergeToggle({
   const audioPale = mode === 'video';
 
   return (
-    <div className="relative inline-flex items-center justify-center" role="group" aria-label="Format toggle">
+    <div
+      className="relative inline-flex items-center justify-center"
+      {...(onModeChange
+        ? { role: 'group', 'aria-label': 'Format toggle' }
+        : { role: 'img', 'aria-label': audioOnly ? 'Playing audio only' : 'Playing video and audio' })}
+    >
       <svg width={width} height={height} viewBox="0 0 120 64" className="block" aria-hidden="true">
         {/* The mark itself, one geometry shared with PrismLogo. The beams
             run to the edge (no end dots): streams continue to infinity. */}
@@ -68,8 +75,8 @@ export function PrismConvergeToggle({
 
       </svg>
 
-      {/* Hidden radio buttons for accessibility */}
-      <div className="sr-only" role="radiogroup" aria-label="Playback format">
+      {/* Hidden radio buttons for accessibility — only when this is a control */}
+      {onModeChange && <div className="sr-only" role="radiogroup" aria-label="Playback format">
         {(['unified', 'audio', 'video'] as const).map((m) => (
           <label key={m} className="sr-only">
             <input
@@ -83,7 +90,7 @@ export function PrismConvergeToggle({
             <span>{m.charAt(0).toUpperCase() + m.slice(1)}</span>
           </label>
         ))}
-      </div>
+      </div>}
 
     </div>
   );
