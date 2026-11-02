@@ -354,3 +354,17 @@ Every screen must pass:
 ## Next Step
 
 `/replica-diff` — Compare clone against original
+
+---
+
+## Latest run — 2026-11-02 (branch fix/parity-audit-2026-11-02 @ 041cdb6e)
+
+Full Playwright suite: **33 passed / 0 failed / 8 skipped** in 19.5 s.
+The 8 skips are all in `e2e/screenshots.spec.ts` (capture-only utility, gated
+on `CAPTURE_SCREENSHOTS=1`) — intentional.
+
+⚠️ Cold-start trap (measured): on a cold vite cache the first `page.goto`
+takes >30 s (`/src/main.tsx` transform) and tests time out at the 30 s
+default — a cold run shows 8 spurious failures. Start `npm run dev` first,
+wait for `curl localhost:1420` to return 200, then run Playwright:
+`reuseExistingServer: !CI` makes it reuse the warm server.

@@ -1,13 +1,34 @@
 # EchoPrism Parity Report
 
-Generated: 2026-10-15
+Generated: 2026-11-02 — re-audit on branch `fix/parity-audit-2026-11-02`
+@ `041cdb6e` (original report: 2026-10-15).
 
-Every score number below comes from running this exact command on 2026-10-15
-(exit code 0):
+Every score number below comes from running these exact commands on
+2026-11-02 (both exit 0):
 
 ```bash
-python3 check_parity.py features.csv
+python3 check_parity.py features.csv          # scored matrix
+python3 /tmp/ep-audit/parity/evidence.py . /tmp/ep-audit/parity2   # per-row code hits
 ```
+
+## 2026-11-02 re-audit (batch 3)
+
+| Metric | 2026-10-15 | 2026-11-02 |
+|--------|-----------|------------|
+| Feature Parity (original=yes rows) | 100.0% (45/45) | **100.0% (45/45)** |
+| Must-haves done (scored) | 5/5 | **5/5** |
+| Problems | 0 | **0** |
+| Extras (clone-only, unscored) | 32 | 32 |
+| Per-row code evidence | — | **52/52 rows have non-test hits** (batch1-3.md) |
+| e2e (Playwright, warm server) | — | **33 passed / 0 failed / 8 skipped** (skips = capture-only screenshots) |
+
+Batch 3 (parity-audit plan, Tasks 1-6) closed the measured gaps A1-A7: one
+audio-only state with two real controls, partial `update_settings`, persisted
+audio-only, one global play bar with real PiP, the queue/play-now card-click
+model (legacy `auto` migrates to `queue`), and the smart-link badge + one-tap
+switch. The three free-model cross-judgements dispatched for this re-audit
+failed (Gemini 503 + wall-clock cap), so the numbers above are deterministic
+grep evidence only — which is the stronger basis anyway.
 
 A reader can reproduce all of them by running it again.
 

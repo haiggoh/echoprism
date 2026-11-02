@@ -1,6 +1,6 @@
 # Parity audit batch 3 (2026-11-02) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Close the gap between what batches 1–2 promised and what the real app does, and apply the owner's three 2026-11-02 design decisions (one play bar, one audio-only state, a predictable card click).
 
@@ -52,8 +52,8 @@
 
 **Interfaces:** Produces `pub struct UserPreferencesPatch` — every `UserPreferences` field except `user_id`/`updated_at` as `Option<T>`, `#[serde(default)]`; `fn apply(self, base: UserPreferences) -> UserPreferences`. `update_settings(db, prefs: UserPreferencesPatch)` reads current prefs, applies, writes. TS signature unchanged (`Partial<UserPreferences>`).
 
-- [ ] Test `partial_patch_deserializes_and_merges`: `serde_json::from_value::<UserPreferencesPatch>(json!({"card_click_action":"play_now"}))` is Ok and `apply` changes only that field. Test `full_struct_rejects_partial_json` documents the measured defect (`UserPreferences` from the same JSON is Err).
-- [ ] Fail → implement → pass → commit.
+- [x] Test `partial_patch_deserializes_and_merges`: `serde_json::from_value::<UserPreferencesPatch>(json!({"card_click_action":"play_now"}))` is Ok and `apply` changes only that field. Test `full_struct_rejects_partial_json` documents the measured defect (`UserPreferences` from the same JSON is Err).
+- [x] Fail → implement → pass → commit.
 
 ### Task 2: One audio-only state, two controls (A1, decision 2)
 
@@ -61,8 +61,8 @@
 
 **Interfaces:** `AudioOnlyToggle({ compact?: boolean })` — a checkbox labelled "Audio only mode" bound to `usePlayer().isAudioMode` / `setAudioMode`. Rendered in exactly two places: MiniPlayer and Header. Prism toggles become display-only (`PrismConvergeToggle` with `audioOnly={isAudioMode}` and no `onModeChange` in Header; removed from the bar). Sidebar's `PrismAppIcon audioOnly` and QueueItem's `audioMode` read `usePlayer().isAudioMode`.
 
-- [ ] Test: render the app shell (Header + MiniPlayer + PlayerProvider) with a playing video; exactly TWO elements are labelled "Audio only mode"; clicking EACH re-resolves `episodeCommands.stream` with `'audio'`, and both reflect the new state. Paused toggle: format switches, `stream` NOT called, `isPlaying` stays false (Review Focus 1).
-- [ ] Fail → implement → pass → mutation-check (point one control at a local state: red) → commit.
+- [x] Test: render the app shell (Header + MiniPlayer + PlayerProvider) with a playing video; exactly TWO elements are labelled "Audio only mode"; clicking EACH re-resolves `episodeCommands.stream` with `'audio'`, and both reflect the new state. Paused toggle: format switches, `stream` NOT called, `isPlaying` stays false (Review Focus 1).
+- [x] Fail → implement → pass → mutation-check (point one control at a local state: red) → commit.
 
 ### Task 3: Remember audio only; retire the dead Default-format setting (decision 4, A3)
 
@@ -70,7 +70,7 @@
 
 **Interfaces:** on mount the provider reads `settingsCommands.get()` once and applies `audio_only_default` to the store UNLESS the user toggled first (ref guard, Review Focus 2); `setAudioMode` writes `settingsCommands.update({ audio_only_default: mode })` best-effort (failure logged) and invalidates `['preferences']`. Settings' "Default format" radio is removed (the column stays; nothing read it — the visible audio-only toggle is now its remembered form).
 
-- [ ] Tests: stored `true` ⇒ starts in audio mode; toggle writes the pref; toggle-before-hydration keeps the toggled value. Fail → implement → pass → commit.
+- [x] Tests: stored `true` ⇒ starts in audio mode; toggle writes the pref; toggle-before-hydration keeps the toggled value. Fail → implement → pass → commit.
 
 ### Task 4: One play bar (decision 1, A5, A6)
 
@@ -78,7 +78,7 @@
 
 **Interfaces:** the bar shows `usePlayer().currentEpisode` (not the queue item) and renders whenever an episode is loaded. It carries: seek strip + times, Shuffle, Previous, Play/Pause, Next, Restart (enabled when an episode is loaded), Repeat, Speed, Mute + Volume, AudioOnlyToggle, Fullscreen, Picture-in-Picture, Open full player. `togglePip()` calls `videoEl.requestPictureInPicture()` / `document.exitPictureInPicture()` and is disabled when there is no video element or the API is absent; `isPip` follows the element's `enterpictureinpicture`/`leavepictureinpicture` events.
 
-- [ ] Tests: on `/player/:id` exactly ONE control named "Play"/"Pause", ONE "Next", ONE "Previous", ONE "Seek"; Repeat/Fullscreen/PiP live in the bar; the bar shows the engine's episode when the queue is empty; Restart enabled with a one-item queue; PiP calls `requestPictureInPicture` on the registered video. Fail → implement → pass → commit.
+- [x] Tests: on `/player/:id` exactly ONE control named "Play"/"Pause", ONE "Next", ONE "Previous", ONE "Seek"; Repeat/Fullscreen/PiP live in the bar; the bar shows the engine's episode when the queue is empty; Restart enabled with a one-item queue; PiP calls `requestPictureInPicture` on the registered video. Fail → implement → pass → commit.
 
 ### Task 5: Card click = play next by default, a real Play now, choosable in Settings (decision 3, A3, A4)
 
@@ -86,21 +86,21 @@
 
 **Interfaces:** `card_click_action: 'queue' | 'play_now' | 'load_paused'`. `'queue'` honours `queue_behavior` (`play_next` default, `add_end`). `playNowItem(item): void` inserts at `currentIndex + 1` (index 0 when empty) and moves the cursor onto it; `handlePlayNow(episode)` = `playNowItem` + `play(episode, chainMode)`. Card buttons: **Play now** (▶), **Play next** (queue-next glyph), **Add to end** (+). Settings "Card click" options: Add to queue (default; follows Queue behavior), Play now, Open paused; the Queue-behavior radio is labelled as the queue position for clicks AND drops.
 
-- [ ] Tests: default click on a card queues it right after the current item and does NOT start playback; Play now with a 3-item queue at cursor 0 plays the episode, puts it at index 1, and items 2–3 remain after it (Review Focus 3, both cases); `add_end` behaviour honoured; Rust: `auto` row ⇒ `Queue` (Review Focus 4). Fail → implement → pass → commit.
+- [x] Tests: default click on a card queues it right after the current item and does NOT start playback; Play now with a 3-item queue at cursor 0 plays the episode, puts it at index 1, and items 2–3 remain after it (Review Focus 3, both cases); `add_end` behaviour honoured; Rust: `auto` row ⇒ `Queue` (Review Focus 4). Fail → implement → pass → commit.
 
 ### Task 6: Smart-link badge on cards (A7, matrix must-have)
 
 **Files:** `src/components/feed/EpisodeCard.tsx` (badge from the existing smart-links data when the episode has a confirmed link; click plays the linked version in the other format), delete `src/components/ui/EpisodeCard.tsx`; test `src/__tests__/episode-card-smart-link.test.tsx`. Exact data source is decided at implementation time from the existing smart-link commands (read them first; no new command if one already answers "linked counterpart of episode X").
 
-- [ ] Test: a linked episode shows a badge naming the other format; clicking it plays the counterpart; unlinked shows none. Fail → implement → pass → commit.
+- [x] Test: a linked episode shows a badge naming the other format; clicking it plays the counterpart; unlinked shows none. Fail → implement → pass → commit.
 
 ### Task 7: Replica re-runs and the two never-run skills
 
-- [ ] `replica-test` against the current app → `docs/test-plan.md`/`docs/bugs.md` refreshed; `replica-diff` → `docs/parity.md` regenerated against `features.csv` (verified per feature by code, not by claim).
-- [ ] `replica-launch` and `replica-deploy` (never run on this repo) → their documents only; nothing published.
+- [x] `replica-test` against the current app → `docs/test-plan.md`/`docs/bugs.md` refreshed; `replica-diff` → `docs/parity.md` regenerated against `features.csv` (verified per feature by code, not by claim).
+- [x] `replica-launch` and `replica-deploy` (never run on this repo) → their documents only; nothing published.
 
 ### Task 8: Ship
 
-- [ ] Version bump on every surface (package.json, tauri.conf.json, Cargo.toml ×2, Cargo.lock), CHANGELOG entry, merge to `master`, tag `v0.1.2`, verify the tag on the host.
+- [x] Version bump on every surface (package.json, tauri.conf.json, Cargo.toml ×2, Cargo.lock), CHANGELOG entry, merge to `master`, tag `v0.1.2`, verify the tag on the host.
 
 **Zero local-offload steps, stated at plan level:** every task edits live multi-layer code against this repo's toolchain; the plan-doc promise extraction for the audit WAS offloaded (free dispatch, 4 batches).
