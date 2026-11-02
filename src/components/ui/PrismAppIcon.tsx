@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { PrismMark, PRISM_PALE_FILTER, PRISM_PALE_OPACITY, PRISM_VIEW_H, PRISM_VIEW_W } from './PrismLogo';
+import { HeadphonesIcon } from './HeadphonesIcon';
 
 /**
  * PrismAppIcon — THE app icon, in one place.
@@ -112,6 +113,14 @@ export function PrismAppIcon({
       <path d={outer} fill={`url(#${ids.brand})`} />
       <path d={inner} fill={panel} />
       <g clipPath={`url(#${ids.clip})`}>
+        {audioOnly ? (
+          // Batch 4 item 2 (owner 2026-11-02): in audio-only mode the app icon
+          // shows the headphones silhouette — the consciously chosen mark —
+          // not a paled-down prism glyph (which read as an undecipherable blob).
+          <g transform={`translate(${(C - markW) / 2} ${(C - markH) / 2}) scale(${markW / 24})`}>
+            <HeadphonesIcon size={24} className="text-white" {...{ 'data-testid': 'headphones-mark' } as object} />
+          </g>
+        ) : (
         <svg
           x={(C - markW) / 2}
           y={(C - markH) / 2}
@@ -128,6 +137,7 @@ export function PrismAppIcon({
             videoFilter={audioOnly ? PRISM_PALE_FILTER : undefined}
           />
         </svg>
+        )}
       </g>
     </svg>
   );

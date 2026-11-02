@@ -9,7 +9,7 @@
  *  - the sidebar stops using the shared component (a private badge again).
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, within } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 // @ts-expect-error the repo does not ship @types/node (same as tauri-command-contract.test.ts)
 import { readFileSync } from 'node:fs';
@@ -60,5 +60,23 @@ describe('app icon sync', () => {
       </MemoryRouter>
     );
     expect(getAllByTestId('prism-app-icon').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('audioOnly mode renders the headphones mark, not a paled prism glyph (batch 4 item 2)', () => {
+    // Owner 2026-11-02: switching to audio showed an undecipherable pale glyph;
+    // the consciously chosen replacement is the headphones silhouette.
+    const { container } = render(<PrismAppIcon size={64} audioOnly />);
+    // Scope to this render's container — a second render appends to document.body.
+    const within1 = within(container);
+    expect(within1.getByTestId('headphones-mark')).toBeTruthy();
+    // The prism mark paths are gone in audio mode.
+    expect(within1.queryByTestId('mark-combined')).toBeNull();
+    expect(within1.queryByTestId('mark-video-beam')).toBeNull();
+
+    // Video mode keeps the prism mark and no headphones.
+    const { container: c2 } = render(<PrismAppIcon size={64} />);
+    const within2 = within(c2);
+    expect(within2.queryByTestId('headphones-mark')).toBeNull();
+    expect(within2.queryByTestId('mark-combined')).toBeTruthy();
   });
 });
