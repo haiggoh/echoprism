@@ -44,6 +44,7 @@ export function MiniPlayer() {
     isPip,
     canPip,
     togglePip,
+    switchToLinked,
   } = usePlayer();
   const navigate = useNavigate();
   const seekStripRef = useRef<HTMLDivElement>(null);
@@ -238,6 +239,20 @@ export function MiniPlayer() {
           <div className="w-24 hidden md:block">
             <SpeedControl />
           </div>
+
+          {/* Smart-link one-tap switch: only when this episode has a twin.
+              The label names what you get: the OTHER stream's version. */}
+          {episode.linked_episode_id && (
+            <button
+              className="px-2 py-1 rounded-lg text-sm text-accent hover:bg-surface-hover transition-colors flex items-center gap-1"
+              onClick={() => void switchToLinked()}
+              aria-label={episode.video_id || episode.video_url ? 'Switch to audio version' : 'Switch to video version'}
+              title="Smart link: switch to the other version, same position"
+            >
+              <span aria-hidden="true">🔗</span>
+              <span className="hidden md:inline">{episode.video_id || episode.video_url ? 'Audio version' : 'Video version'}</span>
+            </button>
+          )}
 
           {/* One of the TWO audio-only controls (owner decision 2026-11-02). */}
           <AudioOnlyToggle label="Audio" hideLabelBelow="md" />

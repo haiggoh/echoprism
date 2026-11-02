@@ -97,11 +97,6 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow }: EpisodeCar
           </button>
         </div>
 
-        {/* Smart Link badge */}
-        <div className="absolute top-2 left-2 flex gap-1">
-          {/* Smart Link badge would go here */}
-        </div>
-
         {/* Format badges */}
         <div className="absolute bottom-2 left-2 flex gap-1">
           {isAudio && (
@@ -114,8 +109,14 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow }: EpisodeCar
               Video
             </span>
           )}
+          {/* The Smart-link badge (the two empty "badge would go here" stubs
+              that sat beside it are gone — batch 3). Switching versions is
+              the bottom bar's one-tap "🔗 Video/Audio version". */}
           {hasSmartLink && (
-            <span className="px-1.5 py-0.5 text-xs font-medium bg-accent-soft text-accent rounded-full flex items-center gap-1">
+            <span
+              className="px-1.5 py-0.5 text-xs font-medium bg-accent-soft text-accent rounded-full flex items-center gap-1"
+              title={isVideo ? 'Also available as a podcast episode' : 'Also available as a video'}
+            >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
@@ -188,10 +189,6 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow }: EpisodeCar
           </button>
         </div>
 
-        {/* Smart Link badge */}
-        <div className="mt-2 flex items-center gap-1">
-          {/* Smart link badge would go here */}
-        </div>
       </div>
     </article>
   );

@@ -27,8 +27,7 @@ export { ConvergenceEmptyState } from './ConvergenceEmptyState';
 export type { ConvergenceEmptyStateProps } from './ConvergenceEmptyState';
 
 // Content Components
-export { EpisodeCard } from './EpisodeCard';
-export type { EpisodeCardProps } from './EpisodeCard';
+// (ui/EpisodeCard removed in batch 3: no consumer; the live card is feed/EpisodeCard.)
 
 export { ChannelCard } from './ChannelCard';
 export type { ChannelCardProps } from './ChannelCard';

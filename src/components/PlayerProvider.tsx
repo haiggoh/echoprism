@@ -49,6 +49,10 @@ interface PlayerContextType {
   /** False at the queue's ends — the buttons disable rather than no-op. */
   hasNext: boolean;
   hasPrevious: boolean;
+  /** Smart-link one-tap switch (features.csv must-have; fixes_combined §6):
+   *  play the current episode's cross-stream twin at the same RELATIVE
+   *  position. No-op when the episode has no linked twin. */
+  switchToLinked: () => Promise<void>;
   /** PlayerScreen registers its <video> element here; the engine picks the active media element. */
   registerVideoElement: (el: HTMLVideoElement | null) => void;
 }
@@ -537,6 +541,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, [activeEl, currentEpisode, playbackState, setPlaybackState]);
 
+  // Smart-link one-tap switch. The twin comes from the backend (every read
+  // path attaches linked_episode_id); position carries by PERCENTAGE because
+  // the podcast and video cuts of one episode rarely share a length (intros,
+  // ads), which is the spec's "rough sync via timestamp %". The playing queue
+  // slot is repointed at the twin so the queue shows what actually plays.
+  const switchToLinked = useCallback(async () => {
+    const from = currentEpisodeRef.current;
+    if (!from?.linked_episode_id) return;
+    const twin = await episodeCommands.get(from.linked_episode_id);
+    const state = usePlayerStore.getState().playbackState;
+    const pos = state?.position_seconds ?? 0;
+    const fromLen = state?.duration_seconds || from.duration_seconds || 0;
+    const ratio = fromLen > 0 ? Math.min(1, Math.max(0, pos / fromLen)) : 0;
+    const startAt = twin.duration_seconds ? ratio * twin.duration_seconds : pos;
+    const { items, currentIndex } = useQueueStore.getState();
+    if (items[currentIndex]?.episode?.id === from.id) {
+      useQueueStore.setState({
+        items: items.map((it, i) =>
+          i === currentIndex ? { ...it, episode: twin, episode_id: twin.id } : it,
+        ),
+      });
+    }
+    const hasVideoStream = !!twin.video_id || !!twin.video_url;
+    playRef.current({ ...twin, progress_seconds: startAt }, hasVideoStream ? 'video' : 'audio');
+  }, []);
+
   // Review Focus 4: the ends are no-ops, and the BUTTONS must be disabled so
   // the state is visible instead of a press that silently does nothing.
   // Forward is available at the last item only under repeat 'all', which really
@@ -573,6 +603,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     restart,
     hasNext,
     hasPrevious,
+    switchToLinked,
     registerVideoElement,
   };
 
