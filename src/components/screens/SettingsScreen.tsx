@@ -182,36 +182,11 @@ function PreferencesTab() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div>
-        <h3 className="font-semibold mb-4">Default Format</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {(['unified', 'video', 'audio'] as const).map((format) => (
-            <label key={format} className="relative cursor-pointer">
-              <input
-                type="radio"
-                name="default_format"
-                value={format}
-                checked={preferences?.default_format === format}
-                onChange={() => updateMutation.mutate({ default_format: format })}
-                className="sr-only peer"
-              />
-              <div className={`p-4 rounded-lg border-2 text-center transition-colors ${
-                preferences?.default_format === format
-                  ? 'border-accent bg-accent-soft text-accent'
-                  : 'border-border hover:border-input'
-              }`}>
-                <p className="font-medium capitalize">{format}</p>
-                <p className="text-sm text-text-muted mt-1">
-                  {format === 'unified' && 'Video + audio unified'}
-                  {format === 'video' && 'Video only'}
-                  {format === 'audio' && 'Audio only'}
-                </p>
-              </div>
-            </label>
-          ))}
-        </div>
-      </div>
-
+      {/* Parity audit batch 3: the "Default Format" radio that stood here was
+          written but never READ by anything — a dead setting. Its meaning (start
+          in audio only) is now the remembered Audio-only toggle in the bottom
+          bar and Header (owner decision 2026-11-02: exactly two controls). The
+          default_format column stays; nothing is migrated away. */}
       <div>
         <h3 className="font-semibold mb-4">Queue Behavior</h3>
         <div className="grid grid-cols-2 gap-3">

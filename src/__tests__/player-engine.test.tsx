@@ -27,6 +27,12 @@ vi.mock('../hooks/useTauriCommands', () => ({
   // Phase (live-test pass): the resolve effect now also records history —
   // the engine tests must not break on it (and can assert it).
   historyCommands: { record: vi.fn().mockResolvedValue(undefined) },
+  // Batch 3 Task 3: the engine reads the remembered Audio-only preference
+  // at mount and writes it on toggle.
+  settingsCommands: {
+    get: vi.fn().mockResolvedValue({ audio_only_default: false }),
+    update: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 const streamMock = vi.mocked(episodeCommands.stream);

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, Re
 import { useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { episodeCommands, historyCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands, settingsCommands } from '../hooks/useTauriCommands';
 import { resolveDefaultPlayMode } from '../lib/playModeChain';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
@@ -214,9 +214,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // The user's audio toggle: writes the standing preference AND switches the
   // current playback over. Distinct from the D7 chain's per-play mode, which
   // flows through play()/load() into playbackFormat without touching this.
+  // Parity audit batch 3 (owner decision 2026-11-02): Audio only is
+  // REMEMBERED. The stored value is read once at mount; a toggle the user makes
+  // before that read lands wins (the late read must not overwrite it).
+  const audioModeTouched = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    settingsCommands
+      .get()
+      .then((prefs) => {
+        if (cancelled || audioModeTouched.current || !prefs) return;
+        if (prefs.audio_only_default) {
+          setStoreAudioMode(true);
+          applyPlaybackFormat('audio');
+        }
+      })
+      .catch((err) => console.warn('preferences: reading audio-only failed', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [setStoreAudioMode]);
+
   const setAudioMode = useCallback(
     (mode: boolean) => {
+      audioModeTouched.current = true;
       setStoreAudioMode(mode);
+      // Remember it (best-effort: a failed write must not block the switch).
+      settingsCommands
+        .update({ audio_only_default: mode })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['preferences'] }))
+        .catch((err) => console.warn('preferences: saving audio-only failed', err));
       applyPlaybackFormat(mode ? 'audio' : 'video');
       // Live-test batch 2 Task 3: dropping the CURRENT stream is the whole fix.
       // Without it the resolve effect bails on `streamUrl` already being set,
@@ -228,7 +255,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // store on the new src (the F06 format-switch sync).
       setStreamUrl(null);
     },
-    [setStoreAudioMode, setStreamUrl]
+    [setStoreAudioMode, setStreamUrl, queryClient]
   );
 
   // Resolve the stream for the current episode once playback is requested.

@@ -15,6 +15,12 @@ import type { Episode } from '../types';
 
 vi.mock('../hooks/useTauriCommands', () => ({
   episodeCommands: { stream: vi.fn(() => new Promise(() => {})) },
+  // Batch 3 Task 3: the engine reads the remembered Audio-only preference
+  // at mount and writes it on toggle.
+  settingsCommands: {
+    get: vi.fn().mockResolvedValue({ audio_only_default: false }),
+    update: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 type Listener = (event: { payload: string }) => void;
