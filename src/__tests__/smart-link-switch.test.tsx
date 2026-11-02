@@ -2,7 +2,10 @@
 /**
  * Parity audit batch 3, Task 6 — features.csv (must): "Smart Episode Link
  * badge + one-tap switch"; fixes_combined.md §6: "In queue/player, show
- * '🔗 Video version' or '🔗 Audio version' button when match exists. One-tap
+ * '🔗 YouTube version' (from a podcast) or '🔗 Podcast version' (from a video)
+ * button when a match exists — batch 4 relabel: the podcast version is NOT the
+ * "audio version" (podcasts carry baked-in ads; audio-only YouTube audio is
+ * usually the preferred listen). One-tap
  * switch: preserves playback position (rough sync via timestamp %)".
  *
  * Measured before: every read path attaches linked_episode_id (feed, episode,
@@ -58,7 +61,7 @@ afterEach(() => {
 });
 
 describe('Smart link one-tap switch (features.csv must-have)', () => {
-  it('a linked podcast offers the Video version, and one tap plays the twin at the same relative position', async () => {
+  it('a linked podcast offers the YouTube version, and one tap plays the twin at the same relative position', async () => {
     // The fixture link-1 pairs ep-pod-1 (podcast) with ep-video-1 (video).
     const pod = await episodeCommands.get('ep-pod-1');
     expect(pod.linked_episode_id, 'fixture premise: ep-pod-1 is linked').toBe('ep-video-1');
@@ -75,7 +78,7 @@ describe('Smart link one-tap switch (features.csv must-have)', () => {
     });
 
     const bar = screen.getByLabelText('Mini player');
-    const sw = await within(bar).findByRole('button', { name: /video version/i });
+    const sw = await within(bar).findByRole('button', { name: /youtube version/i });
     await act(async () => {
       fireEvent.click(sw);
     });
@@ -96,7 +99,24 @@ describe('Smart link one-tap switch (features.csv must-have)', () => {
       api.play(lone);
     });
     const bar = screen.getByLabelText('Mini player');
-    expect(within(bar).queryByRole('button', { name: /(video|audio) version/i })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: /(youtube|podcast) version/i })).toBeNull();
+  });
+
+  it('a linked VIDEO episode offers the Podcast version — never called "audio version" (batch 4 relabel)', async () => {
+    // link-1 pairs ep-video-1 (video) with ep-pod-1 (podcast).
+    const vid = await episodeCommands.get('ep-video-1');
+    expect(vid.linked_episode_id).toBe('ep-pod-1');
+    renderBar();
+    await act(async () => {
+      api.play(vid);
+    });
+    const bar = screen.getByLabelText('Mini player');
+    const sw = await within(bar).findByRole('button', { name: /podcast version/i });
+    expect(within(bar).queryByRole('button', { name: /audio version/i })).toBeNull();
+    await act(async () => {
+      fireEvent.click(sw);
+    });
+    await waitFor(() => expect(api.currentEpisode?.id).toBe('ep-pod-1'));
   });
 
   it('switching replaces the playing queue slot, so the queue shows what plays', async () => {
@@ -111,7 +131,7 @@ describe('Smart link one-tap switch (features.csv must-have)', () => {
     });
     const bar = screen.getByLabelText('Mini player');
     await act(async () => {
-      fireEvent.click(await within(bar).findByRole('button', { name: /video version/i }));
+      fireEvent.click(await within(bar).findByRole('button', { name: /youtube version/i }));
     });
     await waitFor(() => expect(useQueueStore.getState().items[0].episode?.id).toBe('ep-video-1'));
     expect(useQueueStore.getState().items).toHaveLength(1);

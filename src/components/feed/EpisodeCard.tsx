@@ -113,7 +113,7 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
           )}
           {/* The Smart-link badge (the two empty "badge would go here" stubs
               that sat beside it are gone — batch 3). Switching versions is
-              the bottom bar's one-tap "🔗 Video/Audio version". */}
+              the bottom bar's one-tap "🔗 YouTube version" / "🔗 Podcast version". */}
           {hasSmartLink && (
             <span
               className="px-1.5 py-0.5 text-xs font-medium bg-accent-soft text-accent rounded-full flex items-center gap-1"

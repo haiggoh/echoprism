@@ -246,11 +246,11 @@ export function MiniPlayer() {
             <button
               className="px-2 py-1 rounded-lg text-sm text-accent hover:bg-surface-hover transition-colors flex items-center gap-1"
               onClick={() => void switchToLinked()}
-              aria-label={episode.video_id || episode.video_url ? 'Switch to audio version' : 'Switch to video version'}
-              title="Smart link: switch to the other version, same position"
+              aria-label={episode.video_id || episode.video_url ? 'Switch to podcast version' : 'Switch to YouTube version'}
+              title="Smart link: switch to the linked version (podcast vs YouTube — not the same as audio-only), same position"
             >
               <span aria-hidden="true">🔗</span>
-              <span className="hidden md:inline">{episode.video_id || episode.video_url ? 'Audio version' : 'Video version'}</span>
+              <span className="hidden md:inline">{episode.video_id || episode.video_url ? 'Podcast version' : 'YouTube version'}</span>
             </button>
           )}
 
