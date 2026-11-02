@@ -100,6 +100,7 @@ export function PlayerScreen() {
                 title="video-surface"
                 className="absolute inset-0 h-full w-full object-contain bg-black"
                 poster={episode.thumbnail_url}
+                preload="metadata"
                 playsInline
               />
             ) : (

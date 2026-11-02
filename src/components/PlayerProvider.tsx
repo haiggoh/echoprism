@@ -318,8 +318,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const togglePlay = useCallback(() => setPlaying(!isPlaying), [isPlaying, setPlaying]);
 
+  // Batch 4 item 6: a seek can make a media element fire `error` while the
+  // server catches up to the requested position (seen on long podcasts whose
+  // CDN is slow to range). That must NOT kill playback — tracked via this ref.
+  const seekingRef = useRef(false);
   const seek = useCallback(
     (position: number) => {
+      seekingRef.current = true;
       setPlaybackState({ position_seconds: position });
       const el = playbackFormatRef.current === 'video' && videoEl ? videoEl : audioRef.current;
       if (el) el.currentTime = position;
@@ -424,6 +429,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queueNext();
     };
     const onError = () => {
+      // Batch 4 item 6: an error right after a seek is the server catching up
+      // to the requested position — downgrade to a warning, keep playing.
+      if (seekingRef.current) {
+        addToast({
+          title: 'Seeking…',
+          description: 'This stream is slow to jump in — playback continues.',
+          variant: 'warning',
+        });
+        return;
+      }
       setPlaying(false);
       addToast({
         title: 'Stream error',
@@ -431,13 +446,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         variant: 'danger',
       });
     };
+    const onSeeked = () => {
+      seekingRef.current = false;
+    };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('seeked', onSeeked);
     el.addEventListener('ended', onEnded);
     el.addEventListener('error', onError);
     return () => {
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('seeked', onSeeked);
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
     };
