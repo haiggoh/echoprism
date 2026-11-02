@@ -98,7 +98,7 @@ export function SmartLinksPanel({
       <div className="flex items-center justify-between gap-3">
         {showHeading && (
           <Heading className={headingLevel === 1 ? 'text-2xl font-semibold text-text' : 'text-lg font-semibold text-text'}>
-            Smart Episode Links
+            Smart Links
           </Heading>
         )}
         <div className="flex items-center gap-3 ml-auto">

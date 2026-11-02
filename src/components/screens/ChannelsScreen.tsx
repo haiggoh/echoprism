@@ -110,9 +110,13 @@ export function ChannelsScreen() {
                 <button
                   type="button"
                   className="flex items-center gap-3 min-w-0 text-left rounded-lg"
-                  aria-label={`Explore ${channel.title}`}
+                  // WCAG 2.5.3 label-in-name (axe label-content-name-mismatch,
+                  // found by the batch-3 e2e run): an aria-label of "Explore X"
+                  // hid the visible "X <format>" text from the name. The visible
+                  // text IS the name now; "Explore" is a screen-reader prefix.
                   onClick={() => navigate(`/channels/${channel.id}`)}
                 >
+                  <span className="sr-only">Explore </span>
                   <Thumbnail
                     src={channel.thumbnail_url}
                     alt=""
