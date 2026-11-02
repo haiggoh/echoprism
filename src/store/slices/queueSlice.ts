@@ -38,6 +38,32 @@ interface QueueState {
   previousTrack: () => void;
 }
 
+/**
+ * Batch 4 item 1 (owner 2026-11-02): an episode appears at most once in the
+ * queue — re-queuing an existing episode MOVES it to the target slot instead
+ * of inserting a duplicate. The cursor keeps pointing at the episode that was
+ * playing (`moveCursor` — used by playNowItem — moves it onto the new clip).
+ */
+function moveOrInsert(
+  state: QueueState,
+  item: Omit<QueueItem, 'id' | 'position'>,
+  target: number,
+  moveCursor: boolean,
+): { items: QueueItem[]; currentIndex: number } {
+  const cursorEpisodeId = state.items[state.currentIndex]?.episode_id;
+  const items = [...state.items];
+  const existing = items.findIndex((it) => it.episode_id === item.episode_id);
+  if (existing !== -1) items.splice(existing, 1);
+  const at = Math.max(0, Math.min(target, items.length));
+  items.splice(at, 0, { ...item, id: crypto.randomUUID(), position: at });
+  const withPositions = items.map((it, i) => ({ ...it, position: i }));
+  let currentIndex = moveCursor
+    ? at
+    : withPositions.findIndex((it) => it.episode_id === cursorEpisodeId);
+  if (currentIndex < 0) currentIndex = Math.max(0, Math.min(state.currentIndex, withPositions.length - 1));
+  return { items: withPositions, currentIndex };
+}
+
 export const useQueueStore = create<QueueState>((set, get) => ({
   queue: null,
   items: [],
@@ -51,27 +77,14 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   setQueue: (queue) => set({ queue }),
   setItems: (items) => set({ items }),
   
-  addItem: (item) => set((state) => ({
-    items: [...state.items, {
-      ...item,
-      id: crypto.randomUUID(),
-      position: state.items.length
-    }],
-  })),
+  addItem: (item) => set((state) => moveOrInsert(state, item, state.items.length, false)),
 
-  playNextItem: (item) => set((state) => {
-    const next = { ...item, id: crypto.randomUUID(), position: state.currentIndex + 1 };
-    const items = [...state.items];
-    items.splice(state.currentIndex + 1, 0, next);
-    return { items: items.map((it, i) => ({ ...it, position: i })) };
-  }),
-  
-  playNowItem: (item) => set((state) => {
-    const at = state.items.length === 0 ? 0 : state.currentIndex + 1;
-    const items = [...state.items];
-    items.splice(at, 0, { ...item, id: crypto.randomUUID(), position: at });
-    return { items: items.map((it, i) => ({ ...it, position: i })), currentIndex: at };
-  }),
+  playNextItem: (item) => set((state) => moveOrInsert(state, item, state.currentIndex + 1, false)),
+
+  // Owner 2026-11-02 (batch 4 item 7): play now inserts AT the cursor — the
+  // new clip goes in front of the current item, the rest of the queue keeps
+  // its order — and the cursor moves onto the new clip.
+  playNowItem: (item) => set((state) => moveOrInsert(state, item, state.currentIndex, true)),
 
   // Removal is position-aware: the cursor must keep pointing at the PLAYING
   // episode, so a removal BEFORE it shifts the index down, a removal at it
