@@ -19,6 +19,8 @@ interface PlayerContextType {
   playbackFormat: 'video' | 'audio';
   isAudioMode: boolean;
   isPip: boolean;
+  /** True when a video element is registered and the platform offers PiP. */
+  canPip: boolean;
   volume: number;
   playbackRate: number;
   progress: number;
@@ -321,7 +323,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [setPlaybackState, videoEl]
   );
 
-  const togglePip = useCallback(() => setPip(!isPip), [isPip, setPip]);
+  // Parity audit batch 3 (A6): PiP was a flag nothing consumed. It now asks the
+  // registered <video> for real Picture-in-Picture, and the flag FOLLOWS the
+  // element's own enter/leave events (so the system's close button is honoured).
+  const canPip =
+    !!videoEl &&
+    typeof document !== 'undefined' &&
+    (document as Document & { pictureInPictureEnabled?: boolean }).pictureInPictureEnabled === true &&
+    typeof (videoEl as HTMLVideoElement & { requestPictureInPicture?: unknown }).requestPictureInPicture === 'function';
+  const togglePip = useCallback(() => {
+    if (!videoEl) return;
+    const doc = document as Document & { pictureInPictureElement?: Element | null; exitPictureInPicture?: () => Promise<void> };
+    const request = doc.pictureInPictureElement === videoEl
+      ? doc.exitPictureInPicture?.()
+      : videoEl.requestPictureInPicture?.();
+    void request?.catch((err: unknown) => console.warn('picture-in-picture failed', err));
+  }, [videoEl]);
+  useEffect(() => {
+    if (!videoEl) return;
+    const enter = () => setPip(true);
+    const leave = () => setPip(false);
+    videoEl.addEventListener('enterpictureinpicture', enter);
+    videoEl.addEventListener('leavepictureinpicture', leave);
+    return () => {
+      videoEl.removeEventListener('enterpictureinpicture', enter);
+      videoEl.removeEventListener('leavepictureinpicture', leave);
+    };
+  }, [videoEl, setPip]);
 
   const nextTrack = useCallback(() => queueNext(), [queueNext]);
   const previousTrack = useCallback(() => queuePrev(), [queuePrev]);
@@ -524,6 +552,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playbackFormat,
     isAudioMode,
     isPip,
+    canPip,
     volume,
     playbackRate,
     progress: duration > 0 ? (position / duration) * 100 : 0,

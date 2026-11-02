@@ -9,7 +9,14 @@ import { SpeedControl } from './player/SpeedControl';
 import { Thumbnail } from './ui/Thumbnail';
 
 /**
- * Live-test pass (2026-10-23): the owner counted THREE playbars — this
+ * Parity audit batch 3 (owner, 2026-11-02): "we need only one main play bar
+ * at the bottom." This bar is now THE transport everywhere — the player
+ * screen's own control block is gone, and its Repeat, Fullscreen and
+ * Picture-in-Picture live here. It shows what the ENGINE has loaded
+ * (currentEpisode), not the queue's cursor item, so an episode played from
+ * outside the queue still has its bar.
+ *
+ * History — live-test pass (2026-10-23): the owner counted THREE playbars — this
  * component's collapsed row, its hover-expanded panel (which rendered a
  * SECOND, duplicate set of transport controls: the "two queue bars"), and
  * the full player's own. ONE player engine exists; it gets exactly TWO
@@ -21,20 +28,25 @@ import { Thumbnail } from './ui/Thumbnail';
  * playing (playing is not an error).
  */
 export function MiniPlayer() {
+  const { shuffle, setShuffle, repeatMode, setRepeatMode, nextTrack, previousTrack } = useQueueStore();
   const {
-    items,
-    currentIndex,
-    shuffle,
-    setShuffle,
-    nextTrack,
-    previousTrack,
-  } = useQueueStore();
-  const { isPlaying, togglePlay, volume, setVolume, currentTime, duration, seek, restart, hasNext, hasPrevious } = usePlayer();
+    currentEpisode: episode,
+    isPlaying,
+    togglePlay,
+    volume,
+    setVolume,
+    currentTime,
+    duration,
+    seek,
+    restart,
+    hasNext,
+    hasPrevious,
+    isPip,
+    canPip,
+    togglePip,
+  } = usePlayer();
   const navigate = useNavigate();
   const seekStripRef = useRef<HTMLDivElement>(null);
-
-  const currentItem = items[currentIndex];
-  const episode = currentItem?.episode;
 
   const totalDuration = duration || episode?.duration_seconds || 0;
   const progressPct =
@@ -49,6 +61,18 @@ export function MiniPlayer() {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const cycleRepeat = () => {
+    setRepeatMode(repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off');
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen?.();
+    }
   };
 
   const seekFromPointer = (clientX: number) => {
@@ -122,7 +146,8 @@ export function MiniPlayer() {
             active={shuffle}
             onToggle={() => setShuffle(!shuffle)}
             size={18}
-            showLabel={false}
+            // The ONLY shuffle now (batch 3): it keeps the visible label the
+            // owner needed to recognise it (batch 2 Task 1c, 4e0a68ba).
           />
 
           <button
@@ -174,13 +199,30 @@ export function MiniPlayer() {
           <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Restart"
-            disabled={!hasNext && !hasPrevious}
+            // Enabled whenever something is loaded — it was tied to the queue
+            // having neighbours, so a single episode could not be restarted.
             onClick={restart}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M3 12a9 9 0 1 1 9 9"></path>
               <polyline points="3 12 3 6 9 6"></polyline>
             </svg>
+          </button>
+
+          <button
+            className={`p-2 rounded-lg transition-colors hover:bg-surface-hover ${repeatMode !== 'off' ? 'text-accent' : 'text-text-muted hover:text-text'}`}
+            aria-label={`Repeat: ${repeatMode}`}
+            aria-pressed={repeatMode !== 'off'}
+            title={`Repeat: ${repeatMode}`}
+            onClick={cycleRepeat}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <polyline points="17 1 21 5 17 9"></polyline>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+              <polyline points="7 23 3 19 7 15"></polyline>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+            </svg>
+            {repeatMode === 'one' && <span className="sr-only">one</span>}
           </button>
         </div>
 
@@ -224,7 +266,31 @@ export function MiniPlayer() {
             </div>
           </div>
 
-          {/* Open the full player — the deep control surface */}
+          <button
+            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label={isPip ? 'Exit Picture in Picture' : 'Picture in Picture'}
+            // Needs the player screen's <video>: audio and other screens have
+            // nothing to float, so the button says so instead of no-op'ing.
+            disabled={!canPip}
+            onClick={togglePip}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M21 15V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path>
+              <rect x="1" y="1" width="10" height="10" rx="1"></rect>
+            </svg>
+          </button>
+
+          <button
+            className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            aria-label="Fullscreen"
+            onClick={toggleFullscreen}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+          </button>
+
+          {/* Open the full player — the video stage */}
           <button
             className="p-2 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
             onClick={() => navigate(`/player/${episode.id}`)}

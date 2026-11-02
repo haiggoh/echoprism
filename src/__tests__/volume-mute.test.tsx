@@ -48,6 +48,8 @@ function renderPlayer() {
             <Routes>
               <Route path="/player/:episodeId" element={<PlayerScreen />} />
             </Routes>
+            {/* Batch 3 Task 4: the transport lives in the ONE bottom bar now. */}
+            <MiniPlayer />
           </ConvergenceProvider>
         </PlayerProvider>
       </MemoryRouter>

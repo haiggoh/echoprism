@@ -1,40 +1,20 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
-import { ShuffleButton } from '../ui/ShuffleButton';
-import { MuteButton } from '../ui/MuteButton';
-import { SpeedControl } from '../player/SpeedControl';
 import { usePlayer } from '../PlayerProvider';
-import { useQueueStore } from '../../store/slices/queueSlice';
 import { Episode } from '../../types';
 
+/**
+ * The video/artwork STAGE plus the title/channel line. Since parity audit
+ * batch 3 (owner, 2026-11-02: "only one main play bar at the bottom") every
+ * transport control lives in the bottom bar (MiniPlayer).
+ */
 export function PlayerScreen() {
   const { episodeId } = useParams<{ episodeId: string }>();
   const navigate = useNavigate();
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const {
-    isPlaying,
-    playbackFormat,
-    isPip,
-    volume,
-    currentEpisode,
-    currentTime,
-    duration,
-    togglePlay,
-    seek,
-    setVolume,
-    togglePip,
-    nextTrack,
-    previousTrack,
-    restart,
-    hasNext,
-    hasPrevious,
-    registerVideoElement,
-  } = usePlayer();
-  const { shuffle, setShuffle, repeatMode, setRepeatMode } = useQueueStore();
-  const progressBarRef = useRef<HTMLDivElement>(null);
+  const { playbackFormat, currentEpisode, load, registerVideoElement } = usePlayer();
 
   useEffect(() => {
     if (episodeId) {
@@ -56,33 +36,14 @@ export function PlayerScreen() {
     }
   };
 
-  const formatTime = (seconds?: number) => {
-    if (!seconds) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleSeek = (e: MouseEvent<HTMLDivElement>) => {
-    if (duration <= 0 || !progressBarRef.current) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    seek(ratio * duration);
-  };
-
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  const cycleRepeat = () => {
-    setRepeatMode(repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off');
-  };
-
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void document.documentElement.requestFullscreen();
-    }
-  };
+  // One bar: opening /player/:id with NOTHING loaded puts that episode in the
+  // bar, paused — otherwise the stage would show an episode the transport
+  // knows nothing about. An engine that already has an episode is left alone
+  // (the user navigated here to watch what is playing).
+  useEffect(() => {
+    if (episode && !currentEpisode) load(episode, { paused: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load is recreated per render; react only to the fetched episode
+  }, [episode]);
 
   if (isLoading) {
     return (
@@ -107,7 +68,9 @@ export function PlayerScreen() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-bg">
+    // pb-[76px]: the fixed bottom bar is 64px + its seek strip; the stage
+    // must never sit underneath it (Review Focus 5).
+    <div className="h-screen flex flex-col bg-bg pb-[76px]" data-testid="player-screen">
       {/* Video Player Area */}
       {/* A testid here is what makes the video stage assertable: jsdom does not
           lay out, so "does the video fit the window" can only be pinned as a
@@ -145,19 +108,6 @@ export function PlayerScreen() {
               </div>
             )}
 
-            {/* Picture-in-Picture */}
-            <div className="absolute bottom-4 right-4 z-10">
-              <button
-                onClick={togglePip}
-                className="btn-ghost btn-sm"
-                aria-label={isPip ? 'Exit Picture in Picture' : 'Picture in Picture'}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path>
-                  <rect x="1" y="1" width="10" height="10" rx="1"></rect>
-                </svg>
-              </button>
-            </div>
           </>
         )}
       </div>
@@ -191,161 +141,10 @@ export function PlayerScreen() {
         )}
       </div>
 
-      {/* Player Controls */}
-      <div className="p-4 border-t border-border bg-bg-elevated">
-        {/* Progress Bar */}
-        <div className="mb-4">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-sm text-text-muted w-12 text-right">{formatTime(currentTime)}</span>
-            <div
-              ref={progressBarRef}
-              className="flex-1 h-1.5 bg-surface rounded-full relative overflow-hidden cursor-pointer"
-              onClick={handleSeek}
-              // The seek target. A testid here is what makes the seek path
-              // drivable at all — without one, no test could click the
-              // timeline, which is how "the podcast timeline is dead" shipped
-              // behind a fully green suite (live-test 2026-10-28).
-              data-testid="progress-bar"
-            >
-              <div
-                className="bg-accent h-full rounded-full transition-all duration-100"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-            <span className="text-sm text-text-muted w-12">{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        {/* Main Controls */}
-        <div className="flex items-center justify-center gap-6 mb-4">
-          {/* Live-test batch 2 Task 1b/1c: the leftmost button is SHUFFLE. It was
-              already wired but showed no state (reading as "not wired"), and its
-              glyph was too thin to recognise — both fixed in the shared
-              ShuffleButton, so the two surfaces cannot drift apart again. */}
-          <ShuffleButton active={shuffle} onToggle={() => setShuffle(!shuffle)} />
-
-          <button
-            className="btn-ghost p-2 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Previous"
-            // Disabled at the first item rather than a silent no-op
-            // (Review Focus 4). Previous ALWAYS means the previous item —
-            // restarting is its own button below.
-            disabled={!hasPrevious}
-            onClick={previousTrack}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="19 20 9 12 19 4 19 20"></polygon>
-              <line x1="5" y1="19" x2="5" y2="5"></line>
-            </svg>
-          </button>
-
-          <button
-            className={`btn-unified p-3 rounded-full ${isPlaying ? 'bg-danger' : ''}`}
-            onClick={togglePlay}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16"></rect>
-                <rect x="14" y="4" width="4" height="16"></rect>
-              </svg>
-            ) : (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              </svg>
-            )}
-          </button>
-
-          <button
-            className="btn-ghost p-2 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Next"
-            disabled={!hasNext}
-            onClick={nextTrack}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 4 15 12 5 20 5 4"></polygon>
-              <line x1="19" y1="5" x2="19" y2="19"></line>
-            </svg>
-          </button>
-
-          {/* Live-test Task 8: RESTART is its own button, so Previous can
-              always mean Previous (owner decision 2026-10-27 11:20). Enabled
-              whenever anything is loaded. */}
-          <button
-            className="btn-ghost p-2 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Restart"
-            disabled={!currentEpisode}
-            onClick={restart}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12a9 9 0 1 1 9 9"></path>
-              <polyline points="3 12 3 6 9 6"></polyline>
-            </svg>
-          </button>
-
-          <button
-            className="btn-ghost p-2"
-            aria-label={`Repeat: ${repeatMode}`}
-            aria-pressed={repeatMode !== 'off'}
-            title={`Repeat: ${repeatMode}`}
-            onClick={cycleRepeat}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="1 4 1 10 7 10"></polyline>
-              <polyline points="23 20 23 14 17 14"></polyline>
-              <path d="M10 4v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2"></path>
-            </svg>
-          </button>
-        </div>
-
-        {/* Secondary Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {/* Audio only moved to the bottom bar + Header (batch 3). */}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Live-test batch 2 Task 1: this was a speaker icon with NO
-                handler, sitting beside a live volume slider that carried the
-                SAME accessible name — two controls named "Volume", one inert.
-                The owner's instruction was to find out why it was there rather
-                than delete it: a speaker icon beside an always-visible slider
-                is a mute toggle, so that is what it now is. Its own label keeps
-                the slider the only control named "Volume".
-                Shared with the mini player, which carried the SAME dead icon —
-                fixing only this surface left that one inert. */}
-            <MuteButton />
-            {/* Live-test Task 7: playback speed, beside the volume slider. */}
-            <div className="w-28">
-              <SpeedControl />
-            </div>
-
-            <div className="w-32">
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={volume}
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
-                aria-label="Volume"
-                className="w-full h-1.5 bg-surface rounded-full appearance-none accent-accent"
-              />
-            </div>
-            <button className="btn-ghost p-2" aria-label="Fullscreen" onClick={toggleFullscreen}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3m0-18V9a2 2 0 0 1 2-2h3"></path>
-              </svg>
-            </button>
-            <button className="btn-ghost p-2" aria-label="Picture in Picture" onClick={togglePip}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"></path>
-                <rect x="1" y="1" width="10" height="10" rx="1"></rect>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Parity audit batch 3 (owner, 2026-11-02): "we need only one main
+          play bar at the bottom." The transport that stood here — timeline,
+          prev/play/next/restart/repeat, shuffle, mute, speed, volume,
+          fullscreen, PiP, audio-only — is the bottom bar (MiniPlayer) now. */}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { PlayerScreen } from '../components/screens/PlayerScreen';
+import { MiniPlayer } from '../components/MiniPlayer';
 import { PlayerProvider, usePlayer as usePlayerContext } from '../components/PlayerProvider';
 import { ConvergenceProvider } from '../hooks/useConvergence';
 import { useQueueStore } from '../store/slices/queueSlice';
@@ -45,6 +46,8 @@ function renderPlayer() {
             <Routes>
               <Route path="/player/:episodeId" element={<PlayerScreen />} />
             </Routes>
+            {/* Batch 3 Task 4: the transport lives in the ONE bottom bar now. */}
+            <MiniPlayer />
           </ConvergenceProvider>
         </PlayerProvider>
       </MemoryRouter>
