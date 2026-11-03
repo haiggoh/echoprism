@@ -213,7 +213,7 @@ impl Scorer {
     /// branding. `content_words` splits on every non-alphanumeric, so the
     /// divider itself never reaches the word list — segment splitting has to
     /// happen on the raw title first.
-    const BRANDING_DIVIDERS: &[char] = &['|', '-', '–', '—', ':', '/'];
+    const BRANDING_DIVIDERS: &[char] = &['|', '-', '–', '—', ':', '/', '(', ')', '[', ']'];
 
     /// Does a divider-delimited segment look like show/site BRANDING rather
     /// than content? Owner pattern rule (2026-11-03 live run, handover batch-2
@@ -228,6 +228,13 @@ impl Scorer {
             return false;
         }
         if seg_words.len() == 1 {
+            return true;
+        }
+        // Owner 2026-11-03 round 2: livestream flags live in the TITLE on one
+        // side only ("… | Livestream", "… (Livestream)") — clearly the same
+        // episode to a human, so tag-only segments are branding.
+        const TAG_WORDS: &[&str] = &["livestream", "live"];
+        if seg_words.iter().all(|w| TAG_WORDS.contains(&w.as_str())) {
             return true;
         }
         for ch in channels.iter().flatten() {
@@ -779,6 +786,57 @@ mod scorer_tests {
                     "same title + show branding + any divider ({divider:?}) must read as 100% certain. Got {confidence:.3}"
                 );
             }
+        }
+    }
+
+    /// Owner live-run round 2, harder shapes: parenthesized "(Livestream)"
+    /// (parens are dividers now, not just pipes) and a tag-only multi-word
+    /// segment.
+    #[test]
+    fn parenthesized_livestream_and_tag_segments_are_1_0() {
+        let sc = scorer();
+        for (base, branded) in [
+            (
+                "How we really feel about the iPhone Duo",
+                "How we really feel about the iPhone Duo (Livestream)",
+            ),
+            (
+                "How we really feel about the iPhone Duo",
+                "How we really feel about the iPhone Duo | Livestream",
+            ),
+        ] {
+            let sim = sc.title_similarity_for_pairing(base, branded, None, None);
+            assert_eq!(sim, 1.0, "pair ({base:?} vs {branded:?}) must be 1.0. Got {sim}");
+        }
+        // Multi-word segment that is pure tag language ("Live Replay" would
+        // need all words in the tag set) plus show name WITH channel stem.
+        let sim = sc.title_similarity_for_pairing(
+            "The folding iPhone Duo is finally here",
+            "The folding iPhone Duo is finally here | The Vergecast Livestream",
+            Some("The Verge"),
+            Some("The Vergecast"),
+        );
+        assert_eq!(sim, 1.0, "channel-stem affinity strips 'The Vergecast Livestream'. Got {sim}");
+    }
+
+    /// Owner live-run 2026-11-03, round 2: these obvious pairs must NOT ask for
+    /// confirmation. (a) "… | The Vergecast" suffix; (b) "… | Livestream"
+    /// suffix — livestream flag lives in the title on one side only.
+    #[test]
+    fn obvious_branded_and_livestream_suffixes_are_1_0() {
+        let sc = scorer();
+        for (base, branded) in [
+            (
+                "Apple's HomeView has an app problem",
+                "Apple's HomeView has an app problem | The Vergecast",
+            ),
+            (
+                "How we really feel about the iPhone Duo",
+                "How we really feel about the iPhone Duo | Livestream",
+            ),
+        ] {
+            let sim = sc.title_similarity_for_pairing(base, branded, None, None);
+            assert_eq!(sim, 1.0, "pair ({base:?} vs {branded:?}) must be 1.0. Got {sim}");
         }
     }
 
