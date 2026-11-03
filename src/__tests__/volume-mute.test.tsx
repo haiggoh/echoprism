@@ -186,4 +186,20 @@ describe('Live-test batch 2 Task 1 (mini player): the speaker icon mutes too', (
     expect(screen.getByRole('slider', { name: 'Volume' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Volume' })).toBeNull();
   });
+
+  it('the hover volume bar is VERTICAL and pops above the play bar, never across it (owner 2026-11-03)', async () => {
+    renderMini();
+    await waitFor(() => screen.getByRole('button', { name: /^mute$/i }));
+    const slider = screen.getByRole('slider', { name: 'Volume' }) as HTMLInputElement;
+    // Vertical track (native -webkit-appearance on WKWebView), not horizontal.
+    expect(slider.className).toContain('slider-vertical');
+    const popup = slider.parentElement as HTMLElement;
+    // Above the controls row (bottom-full), compact — the old w-32 horizontal
+    // panel stretched across the bar and overlapped the seek strip.
+    expect(popup.className).toContain('bottom-full');
+    expect(popup.className).not.toContain('w-32');
+    // The seek strip (the play bar) is a separate element outside the popup.
+    const seek = screen.getByRole('slider', { name: 'Seek' });
+    expect(popup.contains(seek)).toBe(false);
+  });
 });

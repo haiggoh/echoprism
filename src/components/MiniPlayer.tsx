@@ -267,7 +267,11 @@ export function MiniPlayer() {
               store action), so the two surfaces cannot drift apart again. */}
           <div className="relative group flex items-center">
             <MuteButton size={18} />
-            <div className="absolute bottom-full right-0 mb-2 w-32 opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible">
+            {/* Owner 2026-11-03: the volume bar is VERTICAL and pops up above
+                the mute button — clear of the seek strip (the play bar at the
+                bar's top edge) — instead of a wide horizontal panel across
+                the bar. Native vertical slider on WKWebView. */}
+            <div className="absolute bottom-full right-0 mb-2 h-28 w-10 flex items-center justify-center opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible">
               <input
                 type="range"
                 min="0"
@@ -276,7 +280,7 @@ export function MiniPlayer() {
                 value={volume}
                 onChange={(e) => setVolume(parseFloat(e.target.value))}
                 aria-label="Volume"
-                className="w-full h-1.5 bg-surface rounded-full appearance-none accent-accent"
+                className="h-24 w-6 accent-accent bg-surface rounded-full [-webkit-appearance:slider-vertical]"
               />
             </div>
           </div>
