@@ -80,7 +80,10 @@ describe('Live-test batch 2 Task 1: the speaker icon is a mute toggle', () => {
     renderPlayer();
     await waitFor(() => expect(api).toBeDefined());
 
-    fireEvent.click(screen.getByRole('button', { name: /^mute$/i }));
+    // findByRole, not sync getByRole: under the parallel ship gate the bar can
+    // render a beat after the probe — flake observed 2026-11-03 in the rtc-ship
+    // full-suite run (passed standalone, failed under load).
+    fireEvent.click(await screen.findByRole('button', { name: /^mute$/i }));
 
     await waitFor(() => expect(api.volume).toBe(0));
     const slider = screen.getByRole('slider', { name: 'Volume' }) as HTMLInputElement;
@@ -91,7 +94,7 @@ describe('Live-test batch 2 Task 1: the speaker icon is a mute toggle', () => {
     renderPlayer();
     await waitFor(() => expect(api).toBeDefined());
 
-    const mute = screen.getByRole('button', { name: /^mute$/i });
+    const mute = await screen.findByRole('button', { name: /^mute$/i });
     fireEvent.click(mute);
     await waitFor(() => expect(api.volume).toBe(0));
 
@@ -107,7 +110,7 @@ describe('Live-test batch 2 Task 1: the speaker icon is a mute toggle', () => {
     renderPlayer();
     await waitFor(() => expect(api).toBeDefined());
 
-    fireEvent.click(screen.getByRole('button', { name: /^mute$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^mute$/i }));
     await waitFor(() => expect(api.volume).toBe(0));
     fireEvent.click(screen.getByRole('button', { name: /^unmute$/i }));
 
