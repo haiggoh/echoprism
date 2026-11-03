@@ -100,9 +100,9 @@ describe('batch 4 item 6: seek errors must not kill playback', () => {
     expect(await screen.findByText('Seeking…')).toBeTruthy();
     expect(screen.queryByText('Stream error')).toBeNull();
 
-    // Once the seek lands, the flag clears: a LATER genuine error still pauses.
+    // Review 2026-11-03: the flag clears on the error path too — a SECOND error
+    // with no new seek must hit the danger path, not stay downgraded forever.
     await act(async () => {
-      fireEvent(audio, new Event('seeked'));
       fireEvent(audio, new Event('error'));
     });
     await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(false));

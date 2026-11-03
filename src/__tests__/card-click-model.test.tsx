@@ -116,7 +116,7 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
     renderFeed();
     const c = await card();
     await act(async () => {
-      fireEvent.click(within(c).getByRole('button', { name: 'Play now' }));
+      fireEvent.click(within(c).getAllByRole('button', { name: 'Play now' })[0]);
     });
     await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(true));
     expect(queueIds()).toEqual(['ep-video-1', 'a', 'b', 'c']);
@@ -128,7 +128,7 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
     renderFeed();
     const c = await card();
     await act(async () => {
-      fireEvent.click(within(c).getByRole('button', { name: 'Play now' }));
+      fireEvent.click(within(c).getAllByRole('button', { name: 'Play now' })[0]);
     });
     await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(true));
     expect(queueIds()).toEqual(['ep-video-1']);
@@ -165,14 +165,29 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
   it('the card has exactly two equal-width action buttons: Play now + the queue button (batch 4 item 7)', async () => {
     renderFeed();
     const c = await card();
+    // The center overlay is also "Play now" — count only the action-bar buttons.
     const actionButtons = within(c)
       .getAllByRole('button')
-      .filter((b) => /^(Play now|Play next|Add to end)$/.test(b.getAttribute('aria-label') ?? ''));
+      .filter((b) => b.className.includes('btn-sm') && /^(Play now|Play next|Add to end)$/.test(b.getAttribute('aria-label') ?? ''));
     expect(actionButtons).toHaveLength(2);
     expect(actionButtons.every((b) => b.className.includes('flex-1'))).toBe(true);
     // Default preference: the queue button reads "Play next".
     expect(within(c).getByRole('button', { name: 'Play next' })).toBeTruthy();
     expect(within(c).queryByRole('button', { name: 'Add to end' })).toBeNull();
+  });
+
+  it('the big center ▶ on the thumbnail means PLAY NOW, not play-next (batch 4 follow-up)', async () => {
+    renderFeed();
+    const c = await card();
+    // The center overlay button (not the action-bar one) also says Play now.
+    const overlay = within(c).getAllByRole('button', { name: 'Play now' })
+      .find((b) => !b.className.includes('btn-sm'));
+    expect(overlay).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(overlay as HTMLElement);
+    });
+    await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(true));
+    expect(queueIds()).toEqual(['ep-video-1', 'a', 'b', 'c']);
   });
 
   it('the queue button follows the Settings choice: add_end relabels it and appends (batch 4 item 7)', async () => {

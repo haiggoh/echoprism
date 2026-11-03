@@ -90,10 +90,17 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
           </span>
         )}
 
-        {/* Playing indicator */}
+        {/* Center overlay on the thumbnail: the big ▶ means PLAY NOW (owner
+            2026-11-02 batch 4 follow-up), never play-next/queue. */}
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <button className="p-3 rounded-full bg-white/90 text-bg hover:bg-white transition-colors" aria-label="Play">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <button
+            type="button"
+            className="p-3 rounded-full bg-white/90 text-bg hover:bg-white transition-colors"
+            aria-label="Play now"
+            onClick={(e) => { e.stopPropagation(); onPlayNow?.(); }}
+            disabled={!onPlayNow}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
           </button>

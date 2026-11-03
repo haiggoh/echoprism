@@ -108,4 +108,30 @@ describe('batch 4 item 1: queue never holds the same episode twice', () => {
     expect(useQueueStore.getState().currentIndex).toBe(1);
     expect(useQueueStore.getState().items).toHaveLength(3);
   });
+
+  // Adversarial review 2026-11-03 (cross-family validator): the target index is
+  // computed BEFORE the twin is removed — a twin sitting before the cursor must
+  // not shift the insert one slot too late.
+  it('playNextItem of a twin BEFORE the cursor lands right after the cursor, not at the end', () => {
+    seed(['A', 'B', 'C', 'D'], 2); // cursor on C
+    useQueueStore.getState().playNextItem(itemOf(ep('A')));
+    expect(order()).toEqual(['B', 'C', 'A', 'D']);
+    expect(useQueueStore.getState().currentIndex).toBe(1);
+  });
+
+  it('playNowItem of a twin before the cursor inserts AT the cursor (before the current item)', () => {
+    seed(['A', 'B'], 1); // cursor on B
+    useQueueStore.getState().playNowItem(itemOf(ep('A')));
+    expect(order()).toEqual(['A', 'B']);
+    expect(useQueueStore.getState().currentIndex).toBe(0);
+    expect(useQueueStore.getState().items[0].episode_id).toBe('A');
+  });
+
+  it('a moved twin keeps its queue-item id (React keys / DnD identity survive)', () => {
+    seed(['A', 'B', 'C'], 0);
+    const idBefore = useQueueStore.getState().items[1].id;
+    useQueueStore.getState().addItem(itemOf(ep('B')));
+    const moved = useQueueStore.getState().items.find((i) => i.episode_id === 'B');
+    expect(moved?.id).toBe(idBefore);
+  });
 });

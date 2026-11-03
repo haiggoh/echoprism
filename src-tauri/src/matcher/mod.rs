@@ -310,8 +310,10 @@ impl Scorer {
 
         // Batch 4 follow-up (owner 2026-11-02): when the two CHANNELS are
         // already linked (they share confirmed episode pairs), near-identical
-        // episode titles are no longer in doubt — floor them at 0.95. The
-        // hard title gate below still applies; this only raises confidence.
+        // episode titles are no longer in doubt — floor confidence at 0.95.
+        // (Review 2026-11-03: the AUTO-CONFIRM bar is much higher — see
+        // `certain` in best_pairing — so barely-passing titles never get
+        // learned without confirmation.)
         if channels_linked && title_sim >= config.min_title_similarity {
             return confidence.max(0.95);
         }
@@ -366,7 +368,12 @@ impl Scorer {
                 _ => false,
             };
             let confidence = self.confidence(podcast, video, config, channels_linked);
-            let certain = title_sim >= 1.0 || (channels_linked && confidence >= 0.95);
+            // Auto-confirm (learn without asking) only for near-CERTAIN pairs:
+            // identical-after-branding titles, or linked channels with a
+            // strongly-similar title (>= 0.9, NOT the 0.7 gate) — review
+            // 2026-11-03: a barely-gate-passing title on a linked channel must
+            // stay a confirmation candidate.
+            let certain = title_sim >= 1.0 || (channels_linked && title_sim >= 0.9 && confidence >= 0.95);
             if confidence > config.min_confidence && best.as_ref().is_none_or(|(c, _, _, _)| confidence > *c) {
                 best = Some((confidence, title_sim, certain, video));
             }
@@ -419,7 +426,14 @@ impl EpisodeMatcher {
     /// batch 4 item 10 follow-up (owner 2026-11-02): linked channels remove
     /// doubt from episode titles. Computed once per match run.
     async fn linked_channel_pairs(&self) -> std::collections::HashSet<(String, String)> {
-        let pairs = self.db.list_linked_channels(2).await.unwrap_or_default();
+        // Review 2026-11-03: never swallow a DB error into "no linked channels".
+        let pairs = match self.db.list_linked_channels(2).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("linked-channel lookup failed, continuing without the floor: {e}");
+                Vec::new()
+            }
+        };
         pairs
             .into_iter()
             .map(|p| (p.podcast_channel_id, p.video_channel_id))
@@ -710,10 +724,11 @@ mod scorer_tests {
         let sc = scorer();
         let cfg = MatchingConfig::default();
         // (words proven kept by content_words_split_on_punctuation...: apple/homeview/app)
-        let mut p = pod("apple homeview quantum");
+        // 9 shared content words + 1 extra → title_sim 0.9, at the certain bar.
+        let mut p = pod("apple homeview app vergecast rss feed stream queue player");
         p.channel_id = Some("ch-pod".into());
         p.channel_title = Some("The Vergecast".into());
-        let mut v = vid("apple homeview quantum app"); // near-identical (3/4 words), below 1.0
+        let mut v = vid("apple homeview app vergecast rss feed stream queue player extra"); // near-identical, below 1.0
         v.channel_id = Some("ch-vid".into());
         v.channel_title = Some("The Verge".into());
 

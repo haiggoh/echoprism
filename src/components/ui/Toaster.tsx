@@ -65,8 +65,10 @@ export function Toaster() {
   
   if (toasts.length === 0) return null;
   
+  // bottom clears the fixed mini-player bar (72px, 80px on lg) so an infobox
+  // never covers the transport (owner 2026-11-02 batch 4 follow-up).
   return (
-    <div className="fixed bottom-4 right-4 z-[800] flex flex-col gap-2 w-80">
+    <div className="fixed bottom-24 right-4 z-[800] flex flex-col gap-2 w-80">
       {toasts.map(toast => (
         <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
       ))}

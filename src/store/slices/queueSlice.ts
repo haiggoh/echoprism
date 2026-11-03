@@ -53,9 +53,22 @@ function moveOrInsert(
   const cursorEpisodeId = state.items[state.currentIndex]?.episode_id;
   const items = [...state.items];
   const existing = items.findIndex((it) => it.episode_id === item.episode_id);
-  if (existing !== -1) items.splice(existing, 1);
+  // Adversarial review 2026-11-03: the target is computed in PRE-removal index
+  // space — when the twin sat before the target, removal shifts everything down
+  // and the insert lands one slot too late. Adjust after the splice, and keep
+  // the moved item's id (React keys / DnD identity must survive a move).
+  let movedId: string | undefined;
+  if (existing !== -1) {
+    const [moved] = items.splice(existing, 1);
+    movedId = moved?.id;
+    // Adjust only when the twin sat strictly BEFORE the cursor: then removal
+    // shifts the cursor's slot down and the pre-removal target is one too
+    // large. A twin AT the cursor keeps the pre-removal target (review
+    // 2026-11-03 cases pin both).
+    if (existing < state.currentIndex) target -= 1;
+  }
   const at = Math.max(0, Math.min(target, items.length));
-  items.splice(at, 0, { ...item, id: crypto.randomUUID(), position: at });
+  items.splice(at, 0, { ...item, id: movedId ?? crypto.randomUUID(), position: at });
   const withPositions = items.map((it, i) => ({ ...it, position: i }));
   let currentIndex = moveCursor
     ? at

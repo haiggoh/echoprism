@@ -324,10 +324,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seekingRef = useRef(false);
   const seek = useCallback(
     (position: number) => {
-      seekingRef.current = true;
       setPlaybackState({ position_seconds: position });
       const el = playbackFormatRef.current === 'video' && videoEl ? videoEl : audioRef.current;
-      if (el) el.currentTime = position;
+      // Only arm the guard when there is an element to seek — a null element
+      // must not leave the flag sticky (review 2026-11-03).
+      if (el) {
+        seekingRef.current = true;
+        el.currentTime = position;
+      }
     },
     [setPlaybackState, videoEl]
   );
@@ -432,6 +436,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Batch 4 item 6: an error right after a seek is the server catching up
       // to the requested position — downgrade to a warning, keep playing.
       if (seekingRef.current) {
+        // Clear on the error path too: a FAILED seek fires error WITHOUT
+        // seeked, and the flag must not downgrade every later genuine error
+        // (review 2026-11-03).
+        seekingRef.current = false;
         addToast({
           title: 'Seeking…',
           description: 'This stream is slow to jump in — playback continues.',
