@@ -117,10 +117,27 @@ impl Extractor {
     /// then fall back to the local yt-dlp binary — the same failover policy
     /// as search.
     pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<StreamUrl, String> {
+        // Handover 2026-10-22 item 3: the silent fallbacks logged nothing. An
+        // empty candidate list means every instance is Failed (skipped by
+        // order_for_search); reaching yt-dlp after attempts means all of them
+        // errored. Both are visible now.
+        if candidates.is_empty() {
+            tracing::warn!(
+                "resolve_stream({video_id}, format={format:?}): no healthy instance candidates — falling back to yt-dlp"
+            );
+        }
+        let mut attempted = 0usize;
         for instance in candidates {
-            if let Ok(stream) = self.get_stream_from_instance(video_id, instance, format, quality).await {
-                return Ok(stream);
+            attempted += 1;
+            match self.get_stream_from_instance(video_id, instance, format, quality).await {
+                Ok(stream) => return Ok(stream),
+                Err(e) => tracing::debug!("instance {} failed for {video_id}: {e}", instance.url),
             }
+        }
+        if attempted > 0 {
+            tracing::warn!(
+                "resolve_stream({video_id}, format={format:?}): all {attempted} instance(s) failed — falling back to yt-dlp"
+            );
         }
         self.get_stream_with_yt_dlp(video_id, format, quality).await
     }
