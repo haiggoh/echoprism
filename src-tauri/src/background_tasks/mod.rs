@@ -37,8 +37,31 @@ fn start_instance_health_checks(
     tauri::async_runtime::spawn(run_instance_health_checks(pool))
 }
 
+/// Dedupe state for failover logging. An instance that STAYS Failed/Degraded
+/// would otherwise log "Failover failed … No healthy instance available"
+/// every 5-minute cycle forever (live 2026-11-03: repeated ERROR every
+/// cycle while the only seeded instance was down). One line per failure
+/// episode; a recovery resets the episode. Pure so the policy is testable.
+#[derive(Default)]
+struct FailoverLog {
+    reported: std::collections::HashSet<String>,
+}
+
+impl FailoverLog {
+    /// true exactly once per continuous unhealthy episode for `id`;
+    /// `healthy == true` closes the episode without logging.
+    fn should_log(&mut self, id: &str, healthy: bool) -> bool {
+        if healthy {
+            self.reported.remove(id);
+            return false;
+        }
+        self.reported.insert(id.to_string())
+    }
+}
+
 async fn run_instance_health_checks(pool: Arc<InstancePool>) {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
+    let mut failover_log = FailoverLog::default();
     loop {
         interval.tick().await;
 
@@ -54,10 +77,17 @@ async fn run_instance_health_checks(pool: Arc<InstancePool>) {
                 tracing::warn!("Health check failed for {}: {}", instance.id, e);
             }
 
-            // Check for failover needed
-            if instance.auto_failover && (instance.health == InstanceHealth::Failed || instance.health == InstanceHealth::Degraded) {
-                if let Err(e) = pool.failover_instance(&instance.id).await {
-                    tracing::error!("Failover failed for {}: {}", instance.id, e);
+            // Re-read after the probe: the failover decision must use the
+            // health THIS tick measured, not the stale pre-test snapshot
+            // (the stale clone delayed failover by one 5-min cycle).
+            let Some(fresh) = pool.get(&instance.id).await else { continue };
+            let unhealthy = fresh.health == InstanceHealth::Failed || fresh.health == InstanceHealth::Degraded;
+            let log_now = failover_log.should_log(&fresh.id, !unhealthy);
+            if fresh.auto_failover && unhealthy {
+                match pool.failover_instance(&fresh.id).await {
+                    Ok(()) => tracing::info!("Failed over {} to a healthy instance", fresh.id),
+                    Err(e) if log_now => tracing::warn!("Failover failed for {}: {}", fresh.id, e),
+                    Err(e) => tracing::debug!("Failover still unavailable for {}: {}", fresh.id, e),
                 }
             }
         }
@@ -191,6 +221,21 @@ mod tests {
     /// launch (caught by a 15-second smoke run, invisible to `#[tokio::test]`,
     /// which supplies exactly the missing context). Starters must spawn through
     /// `tauri::async_runtime`, whose global runtime works from anywhere.
+    /// Live 2026-11-03: with the only instance down, "Failover failed … No
+    /// healthy instance available" was logged as ERROR every 5 min forever.
+    /// The log must fire once per failure episode and again only after a
+    /// recovery — not on every tick.
+    #[test]
+    fn failover_log_fires_once_per_unhealthy_episode() {
+        let mut log = FailoverLog::default();
+        assert!(log.should_log("a", false), "first failure of the episode logs");
+        assert!(!log.should_log("a", false), "repeat within the same episode does not log");
+        assert!(!log.should_log("a", true), "recovery closes the episode silently");
+        assert!(log.should_log("a", false), "a NEW episode after recovery logs again");
+        assert!(log.should_log("b", false), "another instance is independent");
+        assert!(!log.should_log("b", false));
+    }
+
     /// Deliberately a plain `#[test]`: no runtime context is the point.
     #[test]
     fn starter_spawns_outside_any_tokio_runtime() {
