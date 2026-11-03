@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { MemoryRouter } from 'react-router-dom';
 import { PrismAppIcon } from '../components/ui/PrismAppIcon';
 import { Sidebar } from '../components/Sidebar';
+import { usePlayerStore } from '../store/slices/playerSlice';
 
 afterEach(cleanup);
 
@@ -62,21 +63,24 @@ describe('app icon sync', () => {
     expect(getAllByTestId('prism-app-icon').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('audioOnly mode renders the headphones mark, not a paled prism glyph (batch 4 item 2)', () => {
-    // Owner 2026-11-02: switching to audio showed an undecipherable pale glyph;
-    // the consciously chosen replacement is the headphones silhouette.
-    const { container } = render(<PrismAppIcon size={64} audioOnly />);
-    // Scope to this render's container — a second render appends to document.body.
-    const within1 = within(container);
-    expect(within1.getByTestId('headphones-mark')).toBeTruthy();
-    // The prism mark paths are gone in audio mode.
-    expect(within1.queryByTestId('mark-combined')).toBeNull();
-    expect(within1.queryByTestId('mark-video-beam')).toBeNull();
-
-    // Video mode keeps the prism mark and no headphones.
-    const { container: c2 } = render(<PrismAppIcon size={64} />);
-    const within2 = within(c2);
-    expect(within2.queryByTestId('headphones-mark')).toBeNull();
-    expect(within2.queryByTestId('mark-combined')).toBeTruthy();
+  it('the app icon NEVER swaps to a headphones overlay — audio-only is shown on the player stage, not on the brand (owner correction 2026-11-03)', () => {
+    // REVERSES the 2026-11-02 decision this test used to encode (batch 4 item
+    // 2, headphones silhouette on the icon): the owner reported 2026-11-03
+    // that overlaying the headphones on the top-left app icon is a mistake.
+    // The headphones mark belongs where the cover art is shown (PlayerScreen
+    // audio-stage-headphones). The brand icon always renders the prism mark.
+    usePlayerStore.setState({ isAudioMode: true });
+    try {
+      const { container } = render(
+        <MemoryRouter>
+          <Sidebar />
+        </MemoryRouter>
+      );
+      const icon = within(container).getByTestId('prism-app-icon');
+      expect(within(icon as HTMLElement).queryByTestId('headphones-mark')).toBeNull();
+      expect(within(icon as HTMLElement).getByTestId('mark-combined')).toBeTruthy();
+    } finally {
+      usePlayerStore.setState({ isAudioMode: false });
+    }
   });
 });

@@ -1,6 +1,5 @@
 import { useId } from 'react';
-import { PrismMark, PRISM_PALE_FILTER, PRISM_PALE_OPACITY, PRISM_VIEW_H, PRISM_VIEW_W } from './PrismLogo';
-import { HeadphonesIcon } from './HeadphonesIcon';
+import { PrismMark, PRISM_VIEW_H, PRISM_VIEW_W } from './PrismLogo';
 
 /**
  * PrismAppIcon — THE app icon, in one place.
@@ -28,7 +27,6 @@ interface PrismAppIconProps {
   size: number;
   /** Include the OS app-icon canvas margin (the dock build does). */
   margin?: boolean;
-  audioOnly?: boolean;
   /** Display size the fringes are tuned for; defaults to the body size.
    *  The 1024px dock canvas is shown at ~128pt, so the build passes that. */
   displayPx?: number;
@@ -65,7 +63,6 @@ export function squirclePath(off: number, size: number, steps = 24): string {
 export function PrismAppIcon({
   size,
   margin = false,
-  audioOnly = false,
   displayPx,
   className,
 }: PrismAppIconProps) {
@@ -113,14 +110,10 @@ export function PrismAppIcon({
       <path d={outer} fill={`url(#${ids.brand})`} />
       <path d={inner} fill={panel} />
       <g clipPath={`url(#${ids.clip})`}>
-        {audioOnly ? (
-          // Batch 4 item 2 (owner 2026-11-02): in audio-only mode the app icon
-          // shows the headphones silhouette — the consciously chosen mark —
-          // not a paled-down prism glyph (which read as an undecipherable blob).
-          <g transform={`translate(${(C - markW) / 2} ${(C - markH) / 2}) scale(${markW / 24})`}>
-            <HeadphonesIcon size={24} className="text-white" {...{ 'data-testid': 'headphones-mark' } as object} />
-          </g>
-        ) : (
+        {/* The brand icon always shows the prism mark. Owner correction
+            2026-11-03: the headphones overlay in audio-only mode was a
+            mistake — the audio-only indicator lives on the player stage,
+            where the cover art is (PlayerScreen audio-stage-headphones). */}
         <svg
           x={(C - markW) / 2}
           y={(C - markH) / 2}
@@ -133,11 +126,8 @@ export function PrismAppIcon({
             reach={reach}
             pxWidth={markPx}
             k={markPx < 40 ? 1.3 : 1}
-            videoOpacity={audioOnly ? PRISM_PALE_OPACITY : 1}
-            videoFilter={audioOnly ? PRISM_PALE_FILTER : undefined}
           />
         </svg>
-        )}
       </g>
     </svg>
   );
