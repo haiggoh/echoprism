@@ -130,6 +130,15 @@ pub fn run() {
                     Ok(n) => tracing::info!("Seeded {} default search instance(s)", n),
                     Err(e) => tracing::warn!("Default instance seeding failed: {}", e),
                 }
+                // Existing installs only ever got the defaults that existed at
+                // first run; add any that joined the list later so failover has
+                // somewhere to go (2026-11-03 live run: sole instance down,
+                // "No healthy instance available for failover" every 5 min).
+                match db_shared.backfill_missing_default_instances().await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("Backfilled {} missing default search instance(s)", n),
+                    Err(e) => tracing::warn!("Default instance backfill failed: {}", e),
+                }
                 if let Err(e) = pool_shared.initialize().await {
                     tracing::warn!("Instance pool failed to load: {}", e);
                 }

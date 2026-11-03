@@ -90,28 +90,55 @@ pub async fn seed_default_instances_if_empty(pool: &SqlitePool) -> DbResult<usiz
     let now = chrono::Utc::now().to_rfc3339();
     let mut seeded = 0usize;
     for url in DEFAULT_INSTANCES {
-        let host = url.split("//").nth(1).unwrap_or(url);
-        let slug = host.replace(['.', '-'], "-");
-        let instance = Instance {
-            id: format!("default-{}", slug),
-            url: url.to_string(),
-            instance_type: InstanceType::Piped,
-            health: InstanceHealth::Unknown,
-            latency_ms: None,
-            last_checked: None,
-            auto_failover: true,
-            supports_sabr: false,
-            supports_age_restricted: false,
-            region: None,
-            country: None,
-            pinned: false,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-        };
-        insert_instance(pool, &instance).await?;
+        insert_instance(pool, &default_instance(url, &now)).await?;
         seeded += 1;
     }
     Ok(seeded)
+}
+
+/// One default row per URL — shared by the seed and the backfill so the two
+/// can never drift apart (derive, don't duplicate).
+fn default_instance(url: &str, now: &str) -> Instance {
+    let host = url.split("//").nth(1).unwrap_or(url);
+    let slug = host.replace(['.', '-'], "-");
+    Instance {
+        id: format!("default-{}", slug),
+        url: url.to_string(),
+        instance_type: InstanceType::Piped,
+        health: InstanceHealth::Unknown,
+        latency_ms: None,
+        last_checked: None,
+        auto_failover: true,
+        supports_sabr: false,
+        supports_age_restricted: false,
+        region: None,
+        country: None,
+        pinned: false,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
+    }
+}
+
+/// Add any DEFAULT_INSTANCES entries missing from an EXISTING install. Unlike
+/// `seed_default_instances_if_empty` this runs on every startup: a default
+/// added to the list later (api.piped.private.coffee, 2g) must reach installs
+/// that seeded before it existed — otherwise failover has nowhere to go when
+/// the original default is down (live 2026-11-03: the only seeded instance,
+/// pipedapi.ducks.party, does not answer from the owner's network and the
+/// health loop logged "No healthy instance available for failover" every
+/// 5 min). Existing rows are matched by url and never updated or deleted.
+pub async fn backfill_missing_default_instances(pool: &SqlitePool) -> DbResult<usize> {
+    let existing = list_instances(pool).await?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut added = 0usize;
+    for url in DEFAULT_INSTANCES {
+        if existing.iter().any(|i| i.url == *url) {
+            continue;
+        }
+        insert_instance(pool, &default_instance(url, &now)).await?;
+        added += 1;
+    }
+    Ok(added)
 }
 
 /// Store network search results locally so the established search path —
@@ -3575,6 +3602,59 @@ mod search_source_tests {
         let all = list_instances(&pool).await.expect("list");
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn backfill_adds_only_missing_default_instances_and_never_touches_rows() {
+        // The 2026-11-03 live-run state: an install seeded before
+        // api.piped.private.coffee joined DEFAULT_INSTANCES has ONLY the
+        // original default, with user-visible state the backfill must not reset.
+        let pool = fresh_pool().await;
+        let mut old_default =
+            user_instance("default-pipedapi-ducks-party", "https://pipedapi.ducks.party", InstanceType::Piped);
+        old_default.health = InstanceHealth::Failed;
+        old_default.latency_ms = Some(9000);
+        insert_instance(&pool, &old_default).await.expect("insert old default");
+        insert_instance(&pool, &user_instance("user-1", "https://my.local.instance", InstanceType::Invidious))
+            .await
+            .expect("insert user instance");
+
+        let added = backfill_missing_default_instances(&pool).await.expect("backfill");
+        // Count DERIVES from the list + the one row already present.
+        assert_eq!(added, DEFAULT_INSTANCES.len() - 1, "only the missing default is added");
+        assert_eq!(
+            backfill_missing_default_instances(&pool).await.expect("backfill again"),
+            0,
+            "idempotent: second run adds nothing"
+        );
+
+        let all = list_instances(&pool).await.expect("list");
+        assert_eq!(all.len(), 3);
+        let ducks = all
+            .iter()
+            .find(|i| i.url == "https://pipedapi.ducks.party")
+            .expect("pre-existing default kept");
+        assert_eq!(ducks.id, "default-pipedapi-ducks-party");
+        assert_eq!(ducks.health, InstanceHealth::Failed, "existing row's health untouched");
+        assert_eq!(ducks.latency_ms, Some(9000), "existing row's latency untouched");
+        assert!(
+            all.iter().any(|i| i.url == "https://api.piped.private.coffee"
+                && i.auto_failover
+                && i.health == InstanceHealth::Unknown
+                && i.instance_type == InstanceType::Piped),
+            "the missing default arrived as a fresh auto-failover Piped instance"
+        );
+        assert!(all.iter().any(|i| i.id == "user-1"), "user row untouched");
+    }
+
+    #[tokio::test]
+    async fn backfill_on_empty_table_seeds_every_default() {
+        let pool = fresh_pool().await;
+        let added = backfill_missing_default_instances(&pool).await.expect("backfill");
+        assert_eq!(added, DEFAULT_INSTANCES.len());
+        let all = list_instances(&pool).await.expect("list");
+        assert_eq!(all.len(), DEFAULT_INSTANCES.len());
+        assert!(all.iter().all(|i| i.instance_type == InstanceType::Piped && i.auto_failover));
     }
 
     fn video(id: &str, title: &str, channel: &str, channel_id: Option<&str>, duration: u64) -> crate::extractor::VideoInfo {

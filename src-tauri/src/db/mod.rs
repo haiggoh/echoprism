@@ -67,6 +67,10 @@ impl Database {
         queries::seed_default_instances_if_empty(&self.pool).await
     }
 
+    pub async fn backfill_missing_default_instances(&self) -> DbResult<usize> {
+        queries::backfill_missing_default_instances(&self.pool).await
+    }
+
     pub async fn upsert_video_results(
         &self,
         videos: &[crate::extractor::VideoInfo],
