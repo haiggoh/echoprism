@@ -299,9 +299,10 @@ impl Extractor {
 /// 2026-10-20 from pipedapi.ducks.party): Piped's `/streams/{id}` returns
 /// ONE object with two stream arrays, camelCase keys. Entries are parsed
 /// permissively (serde defaults) so a missing field never kills the parse.
-/// Note the real capture's audioStreams are EMPTY (PO-token gating) — the
-/// instance branch then errors and resolve_stream falls through to yt-dlp,
-/// which is the designed failover.
+/// Note the real capture's audioStreams are EMPTY (PO-token gating) — audio
+/// requests fall back to the best combined mp4 video stream (see
+/// select_piped_stream); only when that is impossible does resolve_stream
+/// fall through to yt-dlp.
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 struct PipedStreams {
@@ -319,6 +320,9 @@ struct PipedStreamEntry {
     quality: Option<String>,
     itag: Option<i64>,
     mime_type: Option<String>,
+    /// true for video-only streams (no audio track) — must be excluded when
+    /// the caller wants audio.
+    video_only: Option<bool>,
 }
 
 /// Phase E: a hover-preview storyboard — sprite-sheet pages + per-frame
@@ -486,31 +490,68 @@ fn piped_quality_rank(quality: &Option<String>) -> u64 {
 /// "audio" (case-insensitive) selects audioStreams; anything else selects
 /// videoStreams. `quality` is a substring filter on the quality label when
 /// given. Best pick = highest numeric quality rank.
+///
+/// Audio fallback (live 2026-11-03): Piped's audioStreams are EMPTY under
+/// PO-token gating (verified on the live instance and in the committed
+/// fixture), and erroring there pushed resolution to the yt-dlp fallback —
+/// whose direct googlevideo URL carries no headers and cannot be loaded by
+/// the webview media element ("Stream error" on every audio-only play).
+/// A combined (audio+video) mp4 plays fine in an <audio> element, so when no
+/// audio stream is published, audio falls back to the best combined mp4
+/// video stream (skipping video-only and HLS/DASH manifests, which an audio
+/// element cannot use).
 fn select_piped_stream(
     streams: PipedStreams,
     format: Option<&str>,
     quality: Option<&str>,
 ) -> Result<StreamUrl, String> {
     let want_audio = matches!(format, Some(f) if f.eq_ignore_ascii_case("audio"));
-    let list = if want_audio {
-        streams.audio_streams
-    } else {
-        streams.video_streams
+    let quality_ok = |s: &PipedStreamEntry| {
+        quality.map_or(true, |q| s.quality.as_deref().map_or(false, |sq| sq.contains(q)))
     };
-
-    let best = list
-        .into_iter()
-        .filter(|s| !s.url.is_empty())
-        .filter(|s| quality.map_or(true, |q| s.quality.as_deref().map_or(false, |sq| sq.contains(q))))
-        .max_by_key(|s| piped_quality_rank(&s.quality))
-        .ok_or("No suitable stream found")?;
-
-    Ok(StreamUrl {
+    let into_url = |best: PipedStreamEntry| StreamUrl {
         url: best.url,
         format: best.format.unwrap_or_else(|| "mp4".to_string()),
         quality: best.quality.unwrap_or_else(|| "720p".to_string()),
         headers: None,
-    })
+    };
+
+    if want_audio {
+        let best = streams
+            .audio_streams
+            .into_iter()
+            .filter(|s| !s.url.is_empty())
+            .filter(quality_ok)
+            .max_by_key(|s| piped_quality_rank(&s.quality));
+        if let Some(best) = best {
+            return Ok(into_url(best));
+        }
+        let best = streams
+            .video_streams
+            .into_iter()
+            .filter(|s| !s.url.is_empty())
+            .filter(|s| !s.video_only.unwrap_or(false))
+            .filter(|s| {
+                s.format
+                    .as_deref()
+                    .map_or(true, |f| !matches!(f.to_ascii_uppercase().as_str(), "HLS" | "DASH"))
+            })
+            .max_by_key(|s| piped_quality_rank(&s.quality));
+        if let Some(best) = best {
+            return Ok(into_url(best));
+        }
+        return Err("No suitable stream found".to_string());
+    }
+
+    let best = streams
+        .video_streams
+        .into_iter()
+        .filter(|s| !s.url.is_empty())
+        .filter(quality_ok)
+        .max_by_key(|s| piped_quality_rank(&s.quality))
+        .ok_or("No suitable stream found")?;
+
+    Ok(into_url(best))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1188,13 +1229,46 @@ mod tests {
         assert_eq!(picked.quality, "LBRY HLS");
     }
 
+    /// REVERSED 2026-11-03 (owner live-run round 2): the old expectation was
+    /// that audio selection on the PO-token-gated fixture ERRORS and falls
+    /// through to yt-dlp — but yt-dlp returns a direct googlevideo URL with no
+    /// headers, which the webview media element cannot load ("Stream error"
+    /// on every audio-only toggle). Piped's combined video streams carry an
+    /// audio track and play in an <audio> element, so audio now falls back to
+    /// the best non-video-only mp4 video stream.
     #[test]
-    fn piped_streams_audio_selection_on_gated_fixture_errors() {
+    fn piped_streams_audio_falls_back_to_best_combined_mp4() {
         let streams = parse_piped_streams(PIPED_STREAMS_FIXTURE).expect("parse");
-        assert!(
-            select_piped_stream(streams, Some("audio"), None).is_err(),
-            "no audio streams published — resolve_stream must fall through to yt-dlp"
-        );
+        assert_eq!(streams.audio_streams.len(), 0, "premise: real capture is audio-gated");
+        let picked = select_piped_stream(streams, Some("audio"), None).expect("combined fallback");
+        assert_eq!(picked.quality, "360p", "highest-ranked combined stream wins");
+        assert_eq!(picked.format, "MPEG_4", "an mp4, not an HLS manifest");
+        assert!(picked.url.contains("piped-proxy"), "a proxy URL the media element can load: {}", picked.url);
+    }
+
+    #[test]
+    fn piped_streams_audio_prefers_real_audio_streams_when_present() {
+        let streams = parse_piped_streams(
+            r#"{"audioStreams":[{"url":"https://proxy.example/audio-128.opus","format":"M4A","quality":"128 kbps"}],
+                "videoStreams":[{"url":"https://proxy.example/v-720.mp4","format":"MPEG_4","quality":"720p"}]}"#,
+        )
+        .expect("parse");
+        let picked = select_piped_stream(streams, Some("audio"), None).expect("audio stream");
+        assert!(picked.url.contains("audio-128"), "audioStreams win when published: {}", picked.url);
+    }
+
+    #[test]
+    fn piped_streams_audio_fallback_skips_video_only_and_hls() {
+        // Only a video-only stream and an HLS manifest carry no usable audio
+        // for an <audio> element → error (yt-dlp last resort stays).
+        let streams = parse_piped_streams(
+            r#"{"audioStreams":[],
+                "videoStreams":[
+                  {"url":"https://x/vonly.mp4","format":"MPEG_4","quality":"720p","videoOnly":true},
+                  {"url":"https://x/master.m3u8","format":"HLS","quality":"1080p"}]}"#,
+        )
+        .expect("parse");
+        assert!(select_piped_stream(streams, Some("audio"), None).is_err());
     }
 
     /// Truncated/malformed body must fail the parse, not yield empty-ok.
@@ -1214,6 +1288,7 @@ mod tests {
             quality: Some(q.into()),
             itag: Some(18),
             mime_type: None,
+            video_only: None,
         };
         let streams = PipedStreams {
             audio_streams: vec![],
