@@ -107,7 +107,7 @@ describe('batch 4 items 3+4: cover art in audio-only mode', () => {
     }
   });
 
-  it('a video in audio-only mode shows its YouTube thumbnail on the stage', async () => {
+  it('a video in audio-only mode shows its YouTube thumbnail FULL-SIZED on the stage (owner 2026-11-03: not small and rectangular)', async () => {
     const videoEp: Episode = { ...artEpisode('ep-vid-art', false), video_id: 'yt-art-1', podcast_guid: undefined, audio_url: undefined, thumbnail_url: ART_URL };
     const spy = mockEpisode(videoEp);
     try {
@@ -118,7 +118,12 @@ describe('batch 4 items 3+4: cover art in audio-only mode', () => {
       });
       await waitFor(() => {
         const stage = screen.getByTestId('video-stage');
-        expect(stage.querySelector(`img[src="${ART_URL}"]`)).toBeTruthy();
+        const img = stage.querySelector(`img[src="${ART_URL}"]`) as HTMLImageElement;
+        expect(img).toBeTruthy();
+        // Full stage width, 16:9 like a YouTube thumbnail — not a small square.
+        expect(img.className).toContain('w-full');
+        expect(img.className).toContain('aspect-video');
+        expect(img.className).not.toContain('w-40');
       });
     } finally {
       spy.mockRestore();

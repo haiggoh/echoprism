@@ -110,7 +110,10 @@ export function PlayerScreen() {
                     itunes image, or the YouTube thumbnail for a video); only fall
                     back to the headphones mark when there is no art at all. */}
                 {art ? (
-                  <Thumbnail src={art} alt="" className="w-40 h-40 rounded-2xl object-cover" />
+                  // Owner 2026-11-03: the audio-only cover art is the FULL-SIZED
+                  // thumbnail (16:9 for YouTube videos, object-cover crops square
+                  // podcast art), not a small square.
+                  <Thumbnail src={art} alt="" className="w-full max-w-2xl aspect-video rounded-2xl object-cover" />
                 ) : (
                   <div className="w-24 h-24 mb-4 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
                     <HeadphonesIcon size={48} className="text-white" data-testid="audio-stage-headphones" />
