@@ -209,9 +209,74 @@ impl Scorer {
         words
     }
 
+    /// Dividers YouTube creators actually put between episode title and show
+    /// branding. `content_words` splits on every non-alphanumeric, so the
+    /// divider itself never reaches the word list — segment splitting has to
+    /// happen on the raw title first.
+    const BRANDING_DIVIDERS: &[char] = &['|', '-', '–', '—', ':', '/'];
+
+    /// Does a divider-delimited segment look like show/site BRANDING rather
+    /// than content? Owner pattern rule (2026-11-03 live run, handover batch-2
+    /// Task 4 quote): "X" vs "X | The Vergecast" is the same episode — the
+    /// segment is branding when it is a single content word ("| Vergecast"),
+    /// or shares a >=4-char stem with either known channel name ("The
+    /// Vergecast Special" vs channel "The Verge"). A multi-word segment with
+    /// no channel affinity ("A Bonus Segment") is NOT branding — pinned by
+    /// an_unrelated_leading/trailing_segment_still_counts.
+    fn looks_like_branding(&self, seg_words: &[String], channels: &[Option<&str>]) -> bool {
+        if seg_words.is_empty() {
+            return false;
+        }
+        if seg_words.len() == 1 {
+            return true;
+        }
+        for ch in channels.iter().flatten() {
+            for cw in self.content_words(ch) {
+                for sw in seg_words {
+                    if cw.len() >= 4 && sw.len() >= 4 && (sw.starts_with(&cw) || cw.starts_with(sw)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Content words of `text` with a leading/trailing branding segment
+    /// removed when one is present: first the exact channel-name rule (any
+    /// known channel, either position), then the divider-segment pattern rule.
+    fn strip_any_branding(&self, text: &str, channels: &[Option<&str>]) -> Vec<String> {
+        let base = self.content_words(text);
+        for ch in channels.iter().flatten() {
+            let w = self.strip_show_branding(text, Some(ch));
+            if w != base {
+                return w;
+            }
+        }
+        let segments: Vec<&str> = text
+            .split(|c| Self::BRANDING_DIVIDERS.contains(&c))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if segments.len() < 2 {
+            return base;
+        }
+        let last_seg = self.content_words(segments.last().unwrap());
+        if self.looks_like_branding(&last_seg, channels) {
+            return self.content_words(&segments[..segments.len() - 1].join(" "));
+        }
+        let first_seg = self.content_words(segments.first().unwrap());
+        if self.looks_like_branding(&first_seg, channels) {
+            return self.content_words(&segments[1..].join(" "));
+        }
+        base
+    }
+
     /// `title_similarity` minus a show-branding segment on either side.
     /// Used where the channel context is known, so a show brace ("| Show")
-    /// cannot cost the pair its similarity.
+    /// cannot cost the pair its similarity. The one-word guard inside
+    /// `similarity_of` still caps pairs whose remaining evidence is a single
+    /// word, so the strip can never manufacture certainty from nothing.
     pub(crate) fn title_similarity_for_pairing(
         &self,
         title1: &str,
@@ -219,8 +284,9 @@ impl Scorer {
         channel1: Option<&str>,
         channel2: Option<&str>,
     ) -> f64 {
-        let words1 = self.strip_show_branding(title1, channel2);
-        let words2 = self.strip_show_branding(title2, channel1);
+        let channels = [channel1, channel2];
+        let words1 = self.strip_any_branding(title1, &channels);
+        let words2 = self.strip_any_branding(title2, &channels);
         self.similarity_of(&words1, &words2)
     }
 
@@ -714,6 +780,65 @@ mod scorer_tests {
                 );
             }
         }
+    }
+
+    /// Owner 2026-11-03 (live run): "Amazon built the Trojan Horse for your
+    /// smart home" vs "… | The Vergecast" must be 100% certain — the handover
+    /// plans' pattern rule: same title plus a show-branding segment is the
+    /// same episode, recognized as a PATTERN, not only when the segment
+    /// spells the other side's channel name exactly. Must hold with channel
+    /// metadata missing entirely, and with channel names that merely share a
+    /// stem ("The Verge" vs the "The Vergecast" segment).
+    #[test]
+    fn a_branded_suffix_is_1_0_regardless_of_channel_metadata() {
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        let base = "Amazon built the Trojan Horse for your smart home";
+        let branded = "Amazon built the Trojan Horse for your smart home | The Vergecast";
+
+        // (a) both channel names present but DIFFERENT ("The Verge" channel
+        // holds Vergecast episodes): exact-match strip cannot fire.
+        let mut p = pod(base);
+        p.channel_title = Some("The Verge".into());
+        let mut v = vid(branded);
+        v.channel_title = Some("The Verge".into());
+        let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
+        assert_eq!(sim, 1.0, "branding suffix behind '|' must strip even when channel names differ. Got {sim}");
+        assert_eq!(sc.confidence(&p, &v, &cfg, false), 1.0, "identical-after-branding is certain, full stop");
+
+        // (b) no channel metadata at all — the pattern alone must carry it.
+        let p2 = pod(base);
+        let v2 = vid(branded);
+        let sim2 = sc.title_similarity_for_pairing(&p2.title, &v2.title, None, None);
+        assert_eq!(sim2, 1.0, "pattern rule must not depend on channel metadata. Got {sim2}");
+    }
+
+    /// Same rule for a multi-word segment that shares a stem with a known
+    /// channel ("The Vergecast Special" vs channel "The Verge").
+    #[test]
+    fn a_branding_segment_sharing_a_channel_stem_strips() {
+        let sc = scorer();
+        let base = "Why your favorite creator is building an app";
+        let branded = "Why your favorite creator is building an app | The Vergecast Special";
+        let mut p = pod(base);
+        p.channel_title = Some("The Verge".into());
+        let v = vid(branded);
+        let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
+        assert_eq!(sim, 1.0, "segment sharing a >=4-char stem with a channel name is branding. Got {sim}");
+    }
+
+    /// Guard, suffix twin of `an_unrelated_leading_segment_still_counts`:
+    /// a MULTI-word segment with no channel affinity stays content even on
+    /// the pairing path — the pattern rule must not paper over a mismatch.
+    #[test]
+    fn an_unrelated_trailing_segment_still_counts_on_the_pairing_path() {
+        let sc = scorer();
+        let mut p = pod("Why Billionaires Should Not Exist");
+        p.channel_title = Some("Some More News".into());
+        let mut v = vid("Why Billionaires Should Not Exist | A Bonus Segment");
+        v.channel_title = Some("Some More News".into());
+        let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
+        assert!(sim < 1.0, "an unrelated multi-word trailing segment is still extra content. Got {sim}");
     }
 
     /// Batch 4 follow-up (owner 2026-11-02): when the CHANNELS are already
