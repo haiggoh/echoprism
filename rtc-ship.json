@@ -1,7 +1,7 @@
 {
   "manifest": "package.json",
   "changelog": "CHANGELOG.md",
-  "version_file": "src-tauri/Cargo.toml",
+  "version_file": "",
   "tag_prefix": "v",
   "default_branch": "master",
   "test_workers": 12,
