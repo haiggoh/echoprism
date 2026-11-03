@@ -89,6 +89,31 @@ describe('Smart link one-tap switch (features.csv must-have)', () => {
     expect(usePlayerStore.getState().playbackState?.position_seconds).toBeCloseTo(expected, 0);
   });
 
+  it('audio-only stays on when switching to the YouTube version (owner 2026-11-03 round 2)', async () => {
+    // The switch used to pass an explicit 'video' mode for video twins, which
+    // beat the standing audio-only toggle in formatFor — the toggle was
+    // silently ignored on version switch.
+    const pod = await episodeCommands.get('ep-pod-1');
+    const stream = vi.spyOn(episodeCommands, 'stream');
+
+    renderBar();
+    await waitFor(() => expect(api).toBeDefined());
+    usePlayerStore.setState({ isAudioMode: true });
+    await act(async () => {
+      api.play({ ...pod, duration_seconds: 1000 });
+    });
+
+    const bar = screen.getByLabelText('Mini player');
+    const sw = await within(bar).findByRole('button', { name: /youtube version/i });
+    await act(async () => {
+      fireEvent.click(sw);
+    });
+
+    await waitFor(() => expect(api.currentEpisode?.id).toBe('ep-video-1'));
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-video-1', 'audio'));
+    expect(api.playbackFormat).toBe('audio');
+  });
+
   it('an unlinked episode offers no switch', async () => {
     const lone: Episode = {
       id: 'ep-lone', channel_id: 'ch-1', external_id: 'ep-lone', title: 'Lone', video_id: 'yt-lone',

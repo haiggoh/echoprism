@@ -592,7 +592,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
     }
     const hasVideoStream = !!twin.video_id || !!twin.video_url;
-    playRef.current({ ...twin, progress_seconds: startAt }, hasVideoStream ? 'video' : 'audio');
+    // Owner 2026-11-03 round 2: an explicit 'video' mode here overrode the
+    // standing audio-only toggle in formatFor, so switching to the YouTube
+    // version silently dropped audio-only. A video-capable twin passes NO
+    // mode — the toggle decides; a podcast twin (no video) is always 'audio'.
+    playRef.current({ ...twin, progress_seconds: startAt }, hasVideoStream ? undefined : 'audio');
   }, []);
 
   // Review Focus 4: the ends are no-ops, and the BUTTONS must be disabled so
