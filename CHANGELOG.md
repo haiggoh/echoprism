@@ -7,6 +7,18 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.5] - 2026-11-03
+
+### Fixed — live-run round 2 (branch fix/2026-11-03-round-2, 5 commits; owner report 2026-11-03 ~19:56 CET)
+
+- Audio-only no longer errors: Piped's `audioStreams` are empty under PO-token gating (verified live), so format=audio fell through to a headerless googlevideo URL the webview cannot load. Audio now falls back to the best combined mp4 video stream, which plays in an `<audio>` element.
+- Smart-link version switch respects the audio-only toggle (an explicit 'video' mode no longer overrides it).
+- Podcast VIDEO enclosures are read: the enclosure mime type routes video/mp4 to `video_url` (verified live on "Was jetzt? – Die Woche", which publishes only video enclosures); such episodes play in the video element, and audio-only plays the mp4's audio track.
+- Audio-only pales only the orange video beams in the logo — the white combined beam stays lit.
+- Matcher: parentheses/brackets count as branding dividers ("X (Livestream)" vs "X" = 100%), and livestream/live tag words are branding; mutation-checked.
+
+Gates: cargo 175/175, vitest 344/344, tsc clean, eslint clean.
+
 ## [0.1.4] - 2026-11-03
 
 ### Fixed — live-run fixes (branch fix/2026-11-03-live-run, 6 commits; owner run of bin/echoprism 2026-11-03 ~18:10 CET)
