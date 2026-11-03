@@ -1,0 +1,9 @@
+{
+  "manifest": "package.json",
+  "changelog": "CHANGELOG.md",
+  "version_file": "src-tauri/tauri.conf.json",
+  "tag_prefix": "v",
+  "default_branch": "master",
+  "test_workers": 12,
+  "test_cmd": "./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vitest run && ./node_modules/.bin/eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0 && (cd src-tauri && cargo test --lib && cargo build)"
+}
