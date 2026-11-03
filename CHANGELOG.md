@@ -7,6 +7,20 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.4] - 2026-11-03
+
+### Fixed — live-run fixes (branch fix/2026-11-03-live-run, 6 commits; owner run of bin/echoprism 2026-11-03 ~18:10 CET)
+
+- Default instances are BACKFILLED on existing installs, not only seeded into an empty table — the 2026-11-03 run had only pipedapi.ducks.party (down from this network), so failover had nowhere to go. Existing rows are matched by url and never touched.
+- The health loop no longer logs "Failover failed … No healthy instance available" as ERROR every 5 min: one warn per failure episode (recovery resets), repeats at debug; the failover decision now uses the health measured in the same tick.
+- Stream resolution logs its yt-dlp fallbacks (no candidates / all instances failed) instead of going silent.
+- Matcher recognizes the branding-suffix PATTERN, not only exact channel names: "X" vs "X | The Vergecast" is 100% certain even when channel names differ ("The Verge") or are missing; multi-word segments with no channel affinity stay content (guard tests pin both sides).
+- The app icon keeps the prism mark in audio-only mode — the headphones overlay there was a mistake (reverses 0.1.3); the audio-only indicator lives on the player stage, where the cover art is.
+- Audio-only stage shows the FULL-SIZED thumbnail (w-full, aspect-video), not a small square.
+- Mini-player volume bar is a vertical slider popping above the mute button, clear of the play bar.
+
+Gates: cargo 168/168, vitest 343/343, tsc clean.
+
 ## [0.1.3] - 2026-11-02
 
 ### Changed — live-test batch 4 (branch fix/live-test-batch-4-2026-11-02)
