@@ -65,9 +65,20 @@ describe('PrismConvergeToggle', () => {
     expect(getByTestId('mark-audio-beam').getAttribute('opacity')).toBe('1');
   });
 
-  it('combined (white) beam lights only in unified mode', () => {
-    const { getByTestId } = renderToggle('audio');
-    expect(getByTestId('mark-combined').getAttribute('opacity')).toBe(DIM);
+  it('combined (white) beam stays LIT in audio mode — only video mode dims it (owner correction 2026-11-03 round 2)', () => {
+    // REVERSES the previous "lights only in unified" expectation: checking
+    // audio-only must not dim the white combined stream, only the orange
+    // video parts pale.
+    const audio = renderToggle('audio');
+    expect(audio.getByTestId('mark-combined').getAttribute('opacity')).toBe('1');
+    expect(audio.getByTestId('mark-video-beam').getAttribute('opacity')).toBe(PALE);
+    cleanup();
+    const audioOnlyUnified = renderToggle('unified', true);
+    expect(audioOnlyUnified.getByTestId('mark-combined').getAttribute('opacity')).toBe('1');
+    expect(audioOnlyUnified.getByTestId('mark-video-beam').getAttribute('opacity')).toBe(PALE);
+    cleanup();
+    const video = renderToggle('video');
+    expect(video.getByTestId('mark-combined').getAttribute('opacity')).toBe(DIM);
   });
 
   it('uses straight beam segments (no curve commands)', () => {

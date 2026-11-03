@@ -58,8 +58,10 @@ export function PrismConvergeToggle({
           audioFilter={audioPale ? PRISM_PALE_FILTER : undefined}
           videoOpacity={videoPale ? PRISM_PALE_OPACITY : 1}
           videoFilter={videoPale ? PRISM_PALE_FILTER : undefined}
-          // The combined stream is fully lit only in unified mode
-          combinedOpacity={unified ? 1 : 0.25}
+          // The combined (white) stream is fully lit unless pure VIDEO mode —
+          // owner correction 2026-11-03 round 2: audio-only pales only the
+          // orange video beams, never the white combined beam.
+          combinedOpacity={mode === 'video' ? 0.25 : 1}
           transition={BEAM_TRANSITION}
         />
 
