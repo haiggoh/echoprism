@@ -206,15 +206,25 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
     if has_video_id {
         return None;
     }
-    let url = episode.audio_url.as_deref()?.trim().to_string();
-    if url.is_empty() {
-        return None;
+    let nonempty = |u: Option<&str>| u.map(str::trim).filter(|u| !u.is_empty()).map(|u| u.to_string());
+    if let Some(url) = nonempty(episode.audio_url.as_deref()) {
+        return Some(StreamInfo {
+            url,
+            headers: None,
+            format: "audio".into(),
+        });
     }
-    Some(StreamInfo {
-        url,
-        headers: None,
-        format: "audio".into(),
-    })
+    // Video-only podcast episode (e.g. "Was jetzt? – Die Woche" publishes a
+    // single video/mp4 enclosure): the mp4 plays in the <video> element, and
+    // under audio-only the <audio> element plays its audio track.
+    if let Some(url) = nonempty(episode.video_url.as_deref()) {
+        return Some(StreamInfo {
+            url,
+            headers: None,
+            format: "video".into(),
+        });
+    }
+    None
 }
 
 #[command]
@@ -432,5 +442,32 @@ mod stream_tests {
         assert!(enclosure_stream_for(&e, None).is_none());
         let e2 = episode_stub();
         assert!(enclosure_stream_for(&e2, None).is_none());
+    }
+
+    /// Video-only podcast episode (live-verified 2026-11-03: "Was jetzt? – Die
+    /// Woche" publishes a single video/mp4 enclosure, stored in video_url):
+    /// the mp4 resolves as the stream for BOTH elements — <video> shows it,
+    /// <audio> (audio-only mode) plays its audio track.
+    #[test]
+    fn video_only_podcast_episode_resolves_from_video_url() {
+        let mut e = episode_stub();
+        e.video_url = Some("https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4".into());
+        for requested in [Some("video"), Some("audio"), None] {
+            let info = enclosure_stream_for(&e, requested)
+                .unwrap_or_else(|| panic!("video enclosure must resolve for request {requested:?}"));
+            assert_eq!(info.url, "https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4");
+            assert_eq!(info.format, "video");
+        }
+    }
+
+    /// Audio enclosure wins when both are present.
+    #[test]
+    fn audio_enclosure_wins_over_video_url() {
+        let mut e = episode_stub();
+        e.audio_url = Some("https://audio.example/ep.mp3".into());
+        e.video_url = Some("https://video.example/ep.mp4".into());
+        let info = enclosure_stream_for(&e, None).expect("audio enclosure");
+        assert_eq!(info.url, "https://audio.example/ep.mp3");
+        assert_eq!(info.format, "audio");
     }
 }

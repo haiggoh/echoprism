@@ -112,6 +112,14 @@ impl PodcastManager {
             let guid = item.guid.as_ref().map(|g| g.value.clone()).unwrap_or_else(|| {
                 item.link.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
             });
+            // Enclosure mime type decides audio_url vs video_url (see the
+            // PodcastEpisode.video_url doc): "Was jetzt? – Die Woche" and
+            // friends publish video/mp4 enclosures only.
+            let (audio_url, video_url) = match item.enclosure.as_ref() {
+                Some(e) if e.mime_type.starts_with("video/") => (None, Some(e.url.clone())),
+                Some(e) => (Some(e.url.clone()), None),
+                None => (None, None),
+            };
             // Read before the moves below: `item.description` is moved into the
             // struct, which would make a later `item.itunes_ext()` a borrow of
             // a partially moved value.
@@ -140,7 +148,11 @@ impl PodcastManager {
                 channel_id: None,
                 published_at: item.pub_date.as_ref().and_then(|d| DateTime::parse_from_rfc2822(d).ok().map(|dt| DateTimeUtc(dt.with_timezone(&Utc)))),
                 duration_seconds,
-                audio_url: item.enclosure.as_ref().map(|e| e.url.clone()),
+                // The enclosure's mime type decides the field: video/mp4
+                // enclosures must not land in audio_url (the episode IS a
+                // video then), audio/* is the normal podcast case.
+                audio_url,
+                video_url,
                 transcript: None,
                 thumbnail_url,
             });
@@ -179,9 +191,18 @@ impl PodcastManager {
                 let published = item.get("date_published").and_then(|v| v.as_str())
                     .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|dt| DateTimeUtc(dt.with_timezone(&Utc))));
                 
-                let audio_url = item.get("attachments").and_then(|v| v.as_array())
-                    .and_then(|arr| arr.iter().find(|a| a.get("mime_type").and_then(|m| m.as_str()).map(|m| m.starts_with("audio/")).unwrap_or(false)))
-                    .and_then(|a| a.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()));
+                // JSON Feed attachments: audio wins; a video/* attachment
+                // (no audio one) marks the episode video-capable.
+                let attachments = item.get("attachments").and_then(|v| v.as_array());
+                let pick = |prefix: &str| {
+                    attachments.and_then(|arr| {
+                        arr.iter()
+                            .find(|a| a.get("mime_type").and_then(|m| m.as_str()).map(|m| m.starts_with(prefix)).unwrap_or(false))
+                            .and_then(|a| a.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    })
+                };
+                let audio_url = pick("audio/");
+                let video_url = if audio_url.is_some() { None } else { pick("video/") };
                 
                 // JSON Feed: an item's own `image`/`icon`, else the feed's —
                 // same shape as the RSS path's itunes_image inheritance.
@@ -201,6 +222,7 @@ impl PodcastManager {
                     published_at: published,
                     duration_seconds: None,
                     audio_url,
+                    video_url,
                     transcript: None,
                     thumbnail_url: item_image.or_else(|| feed_image.clone()),
                 });
@@ -514,6 +536,12 @@ pub struct PodcastEpisode {
     pub published_at: Option<DateTimeUtc>,
     pub duration_seconds: Option<u64>,
     pub audio_url: Option<String>,
+    /// Set when the item's enclosure is a VIDEO (type="video/...") — feeds
+    /// like "Was jetzt? – Die Woche" publish one mp4 enclosure per item, no
+    /// audio track (live-verified 2026-11-03 on feed.podbean.com). The player
+    /// treats such an episode as video-capable; an audio element still plays
+    /// the mp4's audio track under audio-only.
+    pub video_url: Option<String>,
     pub transcript: Option<String>,
     /// Cover art. An item's own `<itunes:image>` when it has one, otherwise the
     /// channel's — hydrated at parse time, not stored per row redundantly.
@@ -680,6 +708,39 @@ mod tests {
                 .starts_with("https://www.podtrac.com/"),
             "enclosure audio URL must survive parsing"
         );
+    }
+
+    /// Live-verified 2026-11-03 against the real feed of "Was jetzt? – Die
+    /// Woche" (feed.podbean.com/wasjetzt-diewoche): items carry ONE enclosure
+    /// with type="video/mp4" and NO audio enclosure. Such an enclosure must
+    /// land in video_url, not audio_url — otherwise the episode is treated as
+    /// audio-only and the video is never surfaced.
+    #[test]
+    fn rss_video_enclosure_lands_in_video_url_not_audio_url() {
+        let xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Was jetzt? – Die Woche</title>
+    <item>
+      <title>Folge 1</title>
+      <guid>wj-1</guid>
+      <enclosure url="https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4" length="431728325" type="video/mp4"/>
+    </item>
+    <item>
+      <title>Folge 2 (audio feed variant)</title>
+      <guid>wj-2</guid>
+      <enclosure url="https://mcdn.podbean.com/mf/web/abc/folge2.mp3" length="5000000" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>"##;
+        let data = PodcastManager::parse_rss(xml).expect("parse");
+        assert_eq!(data.episodes.len(), 2);
+        let video = &data.episodes[0];
+        assert_eq!(video.video_url.as_deref(), Some("https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4"));
+        assert_eq!(video.audio_url, None, "a video/mp4 enclosure must not become audio_url");
+        let audio = &data.episodes[1];
+        assert!(audio.audio_url.as_deref().unwrap_or("").ends_with("folge2.mp3"));
+        assert_eq!(audio.video_url, None);
     }
 
     // ---- RSS2-R-1: episode DURATION ----

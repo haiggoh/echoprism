@@ -384,8 +384,8 @@ pub async fn upsert_podcast_subscription(
         sqlx::query(
             // Live-test Task 9: thumbnail_url is written here — an episode
             // INSERT that omitted it left every podcast row artless.
-            "INSERT INTO episodes (channel_id, external_id, title, description, duration_seconds, published_at, podcast_guid, audio_url, thumbnail_url) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO episodes (channel_id, external_id, title, description, duration_seconds, published_at, podcast_guid, audio_url, video_url, thumbnail_url) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&channel_id)
         .bind(&episode.guid)
@@ -395,6 +395,7 @@ pub async fn upsert_podcast_subscription(
         .bind(episode.published_at.as_ref().map(|d| d.0.to_rfc3339()))
         .bind(&episode.guid)
         .bind(&episode.audio_url)
+        .bind(&episode.video_url)
         .bind(&episode.thumbnail_url)
         .execute(&mut *tx)
         .await
@@ -3818,6 +3819,7 @@ mod podcast_subscription_tests {
                     published_at: None,
                     duration_seconds: Some(5912),
                     audio_url: Some("https://audio.example/ep100.mp3".into()),
+                    video_url: None,
                     transcript: None,
                     thumbnail_url: Some("https://img.example/ep100.jpg".into()),
                 },
@@ -3831,6 +3833,7 @@ mod podcast_subscription_tests {
                     published_at: None,
                     duration_seconds: Some(5400),
                     audio_url: Some("https://audio.example/ep99.mp3".into()),
+                    video_url: None,
                     transcript: None,
                     thumbnail_url: Some("https://img.example/ep99.jpg".into()),
                 },
