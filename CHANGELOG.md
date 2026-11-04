@@ -7,6 +7,18 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.6] - 2026-11-04
+
+### Fixed — live-run round 3 (branch fix/2026-11-04-round-3, 6 commits; owner run 2026-11-04 ~17:55 CET)
+
+- Stream error root cause fixed properly: Piped `/streams` is 500-gated (verified live), so resolution fell to yt-dlp, whose googlevideo URLs need headers a media element cannot send. yt-dlp `-J` formats are now parsed and headered URLs are served through a new local 127.0.0.1 proxy that forwards Range and streams the body (seeking works). Audio-only of YouTube videos works again.
+- Audio-only is a no-op for video-less episodes: the player stage no longer flips podcast episodes between the video branch and the art stage when the toggle changes; square podcast covers keep their shape.
+- Podcast video enclosures: refresh moves a misfiled video/mp4 enclosure from audio_url to video_url ("Was jetzt? – Die Woche" verified live to publish video-only enclosures), so such episodes play as video.
+- Matcher: word-level fuzzy matching ("iPhone X Review" vs "iPhone Duo review (emotional)" no longer pairs), branding segments must relate to a known channel or be livestream/live tags ("(emotional)" is content), a +/-2-day date hard gate when both dates are known, and unconfirmed links are re-scored on Run Matching (a stale 68% branded pair becomes 100% and auto-confirmed).
+- Smart Links UI: 100% matches render in a collapsed group, expanded on demand.
+
+Gates: cargo 180/180, vitest 346/346, tsc clean, eslint clean.
+
 ## [0.1.5] - 2026-11-03
 
 ### Fixed — live-run round 2 (branch fix/2026-11-03-round-2, 5 commits; owner report 2026-11-03 ~19:56 CET)
