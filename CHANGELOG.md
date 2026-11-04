@@ -7,6 +7,16 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.7] - 2026-11-04
+
+### Fixed — live-run round 4 (branch fix/2026-11-04-round-4)
+
+- Matcher: stale links are re-scored on every Run Matching and DELETED when they no longer pass the gates (the 95% "iPhone X Review ↔ iPhone Duo review (emotional)" false positive from the char-fuzzy era disappears); certain pairs upgrade to 100%. Channel-name similarity is only a soft signal — channel LINKING still requires shared confirmed episodes. Branding segments strip only on the exact (podcast) channel name or livestream/live tags. Fixed a words_match arg-order bug in the word-level fuzzy.
+- Audio-only yt-dlp picks are progressive direct URLs only (an <audio> element cannot play HLS manifests — the "Seeking…" loop).
+- Smart-link matching fires on playback start (debounced 30 s) so the twin-switch button appears whenever a match exists.
+
+Gates: cargo 181/181, vitest 347/347, tsc clean, eslint clean.
+
 ## [0.1.6] - 2026-11-04
 
 ### Fixed — live-run round 3 (branch fix/2026-11-04-round-3, 6 commits; owner run 2026-11-04 ~17:55 CET)
