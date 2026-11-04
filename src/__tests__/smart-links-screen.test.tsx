@@ -17,6 +17,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { SettingsScreen } from '../components/screens/SettingsScreen';
 import { smartLinkCommands } from '../hooks/useTauriCommands';
 import { resetMockState } from '../mocks/router';
+import type { EpisodeLink } from '../types';
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,6 +41,29 @@ describe('2c: Smart Links screen', () => {
     });
     // The seeded pair from the mock DB is visible with its confidence.
     expect(screen.getByText(/92% confidence/)).toBeTruthy();
+  });
+
+  it('100% matches are collapsed by default and expand on demand (owner 2026-11-04 round 3)', async () => {
+    // One certain (100%) and one reviewable (92%) link. The spy is restored in
+    // finally: this file's afterEach only cleans up renders, and a leaked mock
+    // would poison the later confirm/unlink tests.
+    const base = (await smartLinkCommands.list()) as unknown as EpisodeLink[];
+    const certain = { ...base[0], id: 'link-certain', confidence: 1.0, user_confirmed: true };
+    const spy = vi.spyOn(smartLinkCommands, 'list').mockResolvedValue([certain, ...base]);
+    try {
+      renderScreen();
+      // The 92% row lists openly; the 100% row is NOT in the list yet.
+      await waitFor(() => expect(screen.getByText(/92% confidence/)).toBeTruthy());
+      expect(screen.queryByText(/100% confidence/)).toBeNull();
+
+      const toggle = screen.getByRole('button', { name: /certain matches \(1\)/i });
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(toggle);
+      await waitFor(() => expect(screen.getByText(/100% confidence/)).toBeTruthy());
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('confirm toggles a link, unlink removes it', async () => {

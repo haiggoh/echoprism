@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { smartLinkCommands } from '../../hooks/useTauriCommands';
@@ -93,6 +94,60 @@ export function SmartLinksPanel({
 
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
 
+  // Owner 2026-11-04 round 3: 100% (certain) matches are trusted by default and
+  // hidden in a COLLAPSED group, expanded on demand — the user does not want
+  // to double-check obvious matchups manually. Only sub-100% links list open.
+  const [showCertain, setShowCertain] = useState(false);
+  const certainLinks = (links ?? []).filter((l) => l.confidence >= 1);
+  const reviewLinks = (links ?? []).filter((l) => l.confidence < 1);
+
+  const renderRow = (link: EpisodeLink) => (
+    <li
+      key={link.id}
+      data-testid="smart-link-row"
+      className="flex items-center justify-between gap-4 bg-surface border border-border rounded-lg px-4 py-3"
+    >
+      <div className="min-w-0">
+        {/* Live-test Task 5: was `{podcast_guid} ↔ {youtube_video_id}`
+            — "long id strings the user doesn't know how to judge". */}
+        <p className="text-sm truncate flex items-baseline gap-2 flex-wrap">
+          <LinkSide title={link.podcast_title} id={link.podcast_guid} />
+          <span className="text-text-muted" aria-hidden="true">
+            ↔
+          </span>
+          <LinkSide title={link.video_title} id={link.youtube_video_id} />
+        </p>
+        {(link.podcast_channel || link.video_channel) && (
+          <p className="text-xs text-text-muted mt-0.5 truncate">
+            {[link.podcast_channel, link.video_channel].filter(Boolean).join(' · ')}
+          </p>
+        )}
+        <p className="text-xs text-text-muted mt-1">
+          {Math.round(link.confidence * 100)}% confidence
+          {link.user_confirmed ? ' · confirmed' : ''}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Button
+          variant="ghost"
+          aria-label={`Confirm link ${linkLabel(link)}`}
+          onClick={() =>
+            confirmMutation.mutate({ linkId: link.id, confirmed: !link.user_confirmed })
+          }
+        >
+          {link.user_confirmed ? 'Unconfirm' : 'Confirm'}
+        </Button>
+        <Button
+          variant="ghost"
+          aria-label={`Unlink ${linkLabel(link)}`}
+          onClick={() => unlinkMutation.mutate(link.id)}
+        >
+          Unlink
+        </Button>
+      </div>
+    </li>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -160,54 +215,30 @@ export function SmartLinksPanel({
       {!isLoading && !isError && links && links.length === 0 && <EmptyState variant="smart-links" />}
 
       {!isLoading && !isError && links && links.length > 0 && (
-        <ul className="space-y-2" aria-label="Smart links">
-          {links.map((link) => (
-            <li
-              key={link.id}
-              data-testid="smart-link-row"
-              className="flex items-center justify-between gap-4 bg-surface border border-border rounded-lg px-4 py-3"
-            >
-              <div className="min-w-0">
-                {/* Live-test Task 5: was `{podcast_guid} ↔ {youtube_video_id}`
-                    — "long id strings the user doesn't know how to judge". */}
-                <p className="text-sm truncate flex items-baseline gap-2 flex-wrap">
-                  <LinkSide title={link.podcast_title} id={link.podcast_guid} />
-                  <span className="text-text-muted" aria-hidden="true">
-                    ↔
-                  </span>
-                  <LinkSide title={link.video_title} id={link.youtube_video_id} />
-                </p>
-                {(link.podcast_channel || link.video_channel) && (
-                  <p className="text-xs text-text-muted mt-0.5 truncate">
-                    {[link.podcast_channel, link.video_channel].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-                <p className="text-xs text-text-muted mt-1">
-                  {Math.round(link.confidence * 100)}% confidence
-                  {link.user_confirmed ? ' · confirmed' : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  variant="ghost"
-                  aria-label={`Confirm link ${linkLabel(link)}`}
-                  onClick={() =>
-                    confirmMutation.mutate({ linkId: link.id, confirmed: !link.user_confirmed })
-                  }
-                >
-                  {link.user_confirmed ? 'Unconfirm' : 'Confirm'}
-                </Button>
-                <Button
-                  variant="ghost"
-                  aria-label={`Unlink ${linkLabel(link)}`}
-                  onClick={() => unlinkMutation.mutate(link.id)}
-                >
-                  Unlink
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          {certainLinks.length > 0 && (
+            <section aria-label="Certain matches" className="flex flex-col gap-2">
+              <Button
+                variant="ghost"
+                aria-expanded={showCertain}
+                aria-controls="certain-links-group"
+                onClick={() => setShowCertain((v) => !v)}
+              >
+                Certain matches ({certainLinks.length}) {showCertain ? '▾' : '▸'}
+              </Button>
+              {showCertain && (
+                <ul id="certain-links-group" className="space-y-2" aria-label="Certain smart links">
+                  {certainLinks.map(renderRow)}
+                </ul>
+              )}
+            </section>
+          )}
+          {reviewLinks.length > 0 && (
+            <ul className="space-y-2" aria-label="Smart links">
+              {reviewLinks.map(renderRow)}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
