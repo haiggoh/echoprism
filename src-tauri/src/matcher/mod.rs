@@ -171,6 +171,10 @@ impl Scorer {
         best
     }
 
+    /// Plain (channel-unaware) title similarity — test-only since round 4
+    /// (the pairing path uses title_similarity_for_pairing, channels use
+    /// word_jaccard directly).
+    #[cfg(test)]
     pub(crate) fn title_similarity(&self, title1: &str, title2: &str) -> f64 {
         let words1 = self.content_words(title1);
         let words2 = self.content_words(title2);
