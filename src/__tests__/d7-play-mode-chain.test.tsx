@@ -53,6 +53,7 @@ const basePrefs: UserPreferences = {
 // and setPlaying(false) silently kills every playback after the first — which
 // looks exactly like a broken feature rather than a missing mock entry.
 vi.mock('../hooks/useTauriCommands', () => ({
+  smartLinkCommands: { match: vi.fn().mockResolvedValue({ matched_count: 0 }) },
   episodeCommands: { stream: vi.fn() },
   historyCommands: { record: vi.fn() },
   settingsCommands: { get: vi.fn() },

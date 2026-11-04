@@ -2,7 +2,11 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, Re
 import { useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { episodeCommands, historyCommands, settingsCommands, smartLinkCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands, settingsCommands } from '../hooks/useTauriCommands';
+// Namespace import for the match-on-play call: several engine tests partially
+// mock useTauriCommands WITHOUT smartLinkCommands — the optional chain keeps
+// those green while the real app always has the export.
+import * as tauriCommands from '../hooks/useTauriCommands';
 import { resolveDefaultPlayMode } from '../lib/playModeChain';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
@@ -281,10 +285,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const now = Date.now();
     if (now - lastMatchAtRef.current > 30_000) {
       lastMatchAtRef.current = now;
-      smartLinkCommands
-        .match()
-        .then(() => queryClient.invalidateQueries())
-        .catch((err) => console.warn('smart-link match on play failed', err));
+      const matchPromise = tauriCommands.smartLinkCommands?.match?.() ?? Promise.resolve({ matched_count: 0 });
+      matchPromise
+        .then(() =>
+          queryClient.invalidateQueries({
+            predicate: (q) =>
+              ['smart-links', 'feed', 'channels', 'search', 'episode', 'history'].includes(
+                q.queryKey[0] as string,
+              ),
+          }),
+        )
+        .catch((err: unknown) => console.warn('smart-link match on play failed', err));
     }
     // A podcast episode has no video capability: requesting format 'video'
     // fails at the backend and the catch path kills playback. Start from the

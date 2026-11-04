@@ -14,6 +14,7 @@ import { usePlayerStore } from '../store/slices/playerSlice';
 import type { Episode } from '../types';
 
 vi.mock('../hooks/useTauriCommands', () => ({
+  smartLinkCommands: { match: vi.fn().mockResolvedValue({ matched_count: 0 }) },
   episodeCommands: { stream: vi.fn(() => new Promise(() => {})) },
   // Batch 3 Task 3: the engine reads the remembered Audio-only preference
   // at mount and writes it on toggle.

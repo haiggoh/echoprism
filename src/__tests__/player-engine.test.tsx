@@ -23,6 +23,7 @@ import { episodeCommands } from '../hooks/useTauriCommands';
 import type { Episode, QueueItem } from '../types';
 
 vi.mock('../hooks/useTauriCommands', () => ({
+  smartLinkCommands: { match: vi.fn().mockResolvedValue({ matched_count: 0 }) },
   episodeCommands: { stream: vi.fn() },
   // Phase (live-test pass): the resolve effect now also records history —
   // the engine tests must not break on it (and can assert it).
