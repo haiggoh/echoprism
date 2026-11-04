@@ -12,6 +12,7 @@ mod db;
 mod instance_pool;
 mod extractor;
 mod netpath;
+mod stream_proxy;
 mod matcher;
 mod channel_art;
 mod podcast;

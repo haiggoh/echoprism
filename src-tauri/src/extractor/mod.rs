@@ -261,13 +261,34 @@ impl Extractor {
     }
     
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
-        let args = yt_dlp_stream_args(video_id, format);
+        // -J: the full JSON carries each format's url AND its http_headers.
+        // googlevideo URLs are useless to a webview media element without
+        // those headers (live 2026-11-04: Piped /streams is 500-gated, so
+        // yt-dlp is the only source and its raw URL failed to load —
+        // "Stream error"). Headered URLs go through the local stream proxy.
+        let args = vec![
+            "--no-playlist".into(),
+            "--no-warnings".into(),
+            "-J".into(),
+            format!("https://www.youtube.com/watch?v={}", video_id),
+        ];
         let output = self.yt_dlp_output(&args).await?;
-
-        let url = first_url_line(&String::from_utf8_lossy(&output.stdout))
-            .ok_or_else(|| "yt-dlp returned no stream URL".to_string())?;
-        let kind = if format == Some("audio") { "m4a" } else { "hls" };
-        Ok(StreamUrl { url, format: kind.to_string(), quality: quality.unwrap_or("auto").to_string(), headers: None })
+        let dump: YtDlpDump = serde_json::from_slice(&output.stdout)
+            .map_err(|e| format!("yt-dlp -J parse failed: {e}"))?;
+        let want_audio = format.map_or(false, |f| f.eq_ignore_ascii_case("audio"));
+        let picked = pick_yt_dlp_format(&dump.formats, want_audio, quality)
+            .ok_or_else(|| "yt-dlp returned no usable stream format".to_string())?;
+        let url = picked.url.clone().filter(|u| !u.is_empty())
+            .or_else(|| picked.manifest_url.clone())
+            .ok_or_else(|| "yt-dlp format has no URL".to_string())?;
+        let headers = picked.http_headers.clone().unwrap_or_default();
+        let url = if headers.is_empty() {
+            url
+        } else {
+            crate::stream_proxy::register(&url, headers)
+        };
+        let kind = if want_audio { "m4a".to_string() } else { picked.ext.clone().unwrap_or_else(|| "mp4".into()) };
+        Ok(StreamUrl { url, format: kind, quality: quality.unwrap_or("auto").to_string(), headers: None })
     }
     
     async fn find_yt_dlp(&self) -> Result<String, String> {
@@ -751,26 +772,85 @@ fn parse_invidious_search(body: &str) -> Result<Vec<VideoInfo>, String> {
 ///     resolution plus the separate audio rendition, and WebKit's native HLS
 ///     joins them and adapts quality itself (measured 2026-10-22: 16 avc1
 ///     variants with AUDIO groups, fetchable without extra headers).
-fn yt_dlp_stream_args(video_id: &str, format: Option<&str>) -> Vec<String> {
-    let (selector, field) = match format {
-        Some("audio") => ("bestaudio[ext=m4a]/bestaudio", "url"),
-        _ => ("best[protocol^=m3u8][vcodec^=avc1]/bv*[protocol^=m3u8][vcodec^=avc1]", "manifest_url"),
-    };
-    vec![
-        "--no-playlist".into(),
-        "--no-warnings".into(),
-        "-f".into(),
-        selector.into(),
-        "--print".into(),
-        field.into(),
-        format!("https://www.youtube.com/watch?v={}", video_id),
-    ]
+/// A yt-dlp `-J` dump, reduced to the fields stream selection needs.
+#[derive(Debug, Deserialize)]
+struct YtDlpDump {
+    #[serde(default)]
+    formats: Vec<YtDlpFormat>,
 }
 
-/// The first non-empty line: a selector that resolves to several formats
-/// prints one URL each, and a media element can take only one.
-fn first_url_line(stdout: &str) -> Option<String> {
-    stdout.lines().map(str::trim).find(|l| l.starts_with("http")).map(str::to_string)
+#[derive(Debug, Deserialize, Clone)]
+struct YtDlpFormat {
+    url: Option<String>,
+    manifest_url: Option<String>,
+    http_headers: Option<std::collections::HashMap<String, String>>,
+    ext: Option<String>,
+    vcodec: Option<String>,
+    acodec: Option<String>,
+    abr: Option<f64>,
+    height: Option<u32>,
+    protocol: Option<String>,
+}
+
+fn is_none_codec(c: &Option<String>) -> bool {
+    c.as_deref().map_or(true, |c| c == "none")
+}
+
+/// Pick the best format for the logical kind. Audio: audio-only format
+/// (vcodec none), highest abr. Video: muxed progressive http(s) with the
+/// greatest height first; otherwise the HLS master manifest (WKWebView
+/// plays HLS natively in a <video> element). Replaces the old `-f/--print`
+/// selector approach (2026-11-04): the selector output carried no headers,
+/// and headerless googlevideo URLs fail in the media element.
+fn pick_yt_dlp_format(
+    formats: &[YtDlpFormat],
+    want_audio: bool,
+    _quality: Option<&str>,
+) -> Option<YtDlpFormat> {
+    let usable = |f: &YtDlpFormat| {
+        f.url.as_ref().map_or(false, |u| !u.is_empty()) || f.manifest_url.is_some()
+    };
+    if want_audio {
+        let audio_only: Vec<&YtDlpFormat> = formats
+            .iter()
+            .filter(|f| usable(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec))
+            .collect();
+        // No dedicated audio-only format (common under PO-token gating):
+        // a muxed stream still plays in an <audio> element — its audio track.
+        let pool: &[&YtDlpFormat] = if audio_only.is_empty() {
+            &formats.iter().filter(|f| usable(f)).collect::<Vec<_>>()
+        } else {
+            &audio_only
+        };
+        return pool
+            .iter()
+            .max_by(|a, b| {
+                a.abr
+                    .unwrap_or(0.0)
+                    .partial_cmp(&b.abr.unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.height.unwrap_or(0).cmp(&b.height.unwrap_or(0)))
+            })
+            .map(|f| (*f).clone());
+    }
+    let muxed = formats
+        .iter()
+        .filter(|f| {
+            usable(f)
+                && f.url.is_some()
+                && !is_none_codec(&f.vcodec)
+                && !is_none_codec(&f.acodec)
+                && f.protocol.as_deref().map_or(true, |p| p.starts_with("http"))
+        })
+        .max_by_key(|f| f.height.unwrap_or(0))
+        .cloned();
+    if muxed.is_some() {
+        return muxed;
+    }
+    formats
+        .iter()
+        .find(|f| f.manifest_url.is_some() && !is_none_codec(&f.vcodec))
+        .cloned()
 }
 
 /// 2h: card-appropriate thumbnail from a yt-dlp `thumbnails` list — the
@@ -877,13 +957,25 @@ fn parse_yt_dlp_search(body: &str) -> Result<Vec<VideoInfo>, String> {
 mod tests {
     use super::*;
 
-    /// An extractor whose "yt-dlp" is a script echoing its argv back as the
-    /// URL line, so a test can read exactly what the real call site passed.
-    fn extractor_with_echo_ytdlp(v: crate::netpath::Ipv6Verdict) -> (Extractor, tempfile::TempDir) {
+    /// An extractor whose "yt-dlp" is a script emitting a `-J` dump whose one
+    /// format URL echoes the argv, so a test can read exactly what the real
+    /// call site passed. `with_headers` makes the format carry http_headers,
+    /// which must route the URL through the local stream proxy.
+    fn extractor_with_echo_ytdlp(v: crate::netpath::Ipv6Verdict, with_headers: bool) -> (Extractor, tempfile::TempDir) {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("yt-dlp");
-        std::fs::write(&bin, "#!/bin/sh\necho \"https://echo.invalid/?$*\"\n").unwrap();
+        let headers = if with_headers {
+            r#","http_headers":{"User-Agent":"EchoPrism-test"}"#
+        } else {
+            ""
+        };
+        // printf with %s so $* IS expanded (single-quoted echo would not).
+        std::fs::write(
+            &bin,
+            format!("#!/bin/sh\nprintf '{{\"formats\":[{{\"url\":\"https://echo.invalid/?%s\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\"%s}}]}}\\n' \"$*\" '{headers}'\n"),
+        )
+        .unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
         np.set(v);
@@ -894,7 +986,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_resolution_uses_ipv4_when_the_verdict_says_broken() {
-        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken);
+        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken, false);
         let s = ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await.unwrap();
         assert!(s.url.contains("--force-ipv4"), "{}", s.url);
         assert!(s.url.contains("--socket-timeout 15"), "{}", s.url);
@@ -903,16 +995,32 @@ mod tests {
 
     #[tokio::test]
     async fn stream_resolution_stays_dual_stack_when_ipv6_works() {
-        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works);
+        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works, false);
         let s = ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await.unwrap();
         assert!(!s.url.contains("--force-ipv4"), "{}", s.url);
+    }
+
+    /// 2026-11-04: a format WITH http_headers (googlevideo) must be served
+    /// through the local proxy — a bare media-element src cannot carry them
+    /// and fails to load ("Stream error"). Without headers the URL passes
+    /// through unchanged.
+    #[tokio::test]
+    async fn headered_ytdlp_urls_go_through_the_local_proxy() {
+        let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works, true);
+        let s = ex.get_stream_with_yt_dlp("vid123", Some("video"), None).await.unwrap();
+        assert!(s.url.starts_with("http://127.0.0.1:"), "expected proxy URL, got {}", s.url);
+        assert!(s.url.contains("/stream/"), "{}", s.url);
+
+        let (ex2, _d2) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works, false);
+        let s2 = ex2.get_stream_with_yt_dlp("vid123", Some("video"), None).await.unwrap();
+        assert!(s2.url.starts_with("https://echo.invalid/"), "headerless URL stays direct: {}", s2.url);
     }
 
     #[tokio::test]
     async fn search_uses_ipv4_when_the_verdict_says_broken() {
         use std::os::unix::fs::PermissionsExt;
         // Search parses JSON lines, so this fake prints one entry carrying argv.
-        let (ex, d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken);
+        let (ex, d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken, false);
         let bin = d.path().join("yt-dlp");
         std::fs::write(&bin, "#!/bin/sh\nprintf '{\"id\":\"x\",\"title\":\"%s\"}\\n' \"$*\"\n").unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -929,49 +1037,44 @@ mod tests {
     const LIVE_THUMBNAILS_FIXTURE: &str =
         include_str!("fixtures/yt_search_vergecast_thumbnails.jsonl");
 
-    fn selector(args: &[String]) -> (&str, &str) {
-        let at = |flag: &str| args[args.iter().position(|a| a == flag).expect(flag) + 1].as_str();
-        (at("-f"), at("--print"))
-    }
-
-    /// The player's logical format must never reach yt-dlp as a selector:
-    /// `-f video` / `-f audio` are "Requested format is not available" on
-    /// every video (the live "Playback unavailable" of 2026-10-22).
-    #[test]
-    fn stream_args_translate_logical_formats_to_real_selectors() {
-        for format in [Some("video"), Some("audio"), None] {
-            let args = yt_dlp_stream_args("tuN5h65fhBk", format);
-            let (sel, _) = selector(&args);
-            assert!(sel != "video" && sel != "audio", "{format:?} passed through as {sel}");
-            assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=tuN5h65fhBk");
+    fn fmt(url: &str, vcodec: Option<&str>, acodec: Option<&str>, abr: Option<f64>, height: Option<u32>) -> YtDlpFormat {
+        YtDlpFormat {
+            url: Some(url.into()),
+            manifest_url: None,
+            http_headers: None,
+            ext: Some("mp4".into()),
+            vcodec: vcodec.map(|s| s.into()),
+            acodec: acodec.map(|s| s.into()),
+            abr,
+            height,
+            protocol: Some("https".into()),
         }
     }
 
     #[test]
-    fn audio_resolves_to_a_single_m4a_url() {
-        let args = yt_dlp_stream_args("x", Some("audio"));
-        let (sel, print) = selector(&args);
-        assert!(sel.starts_with("bestaudio[ext=m4a]"));
-        assert_eq!(print, "url");
-    }
-
-    /// No muxed files exist any more; video is the HLS master manifest of an
-    /// H.264 variant, which carries the separate audio rendition.
-    #[test]
-    fn video_resolves_to_an_h264_hls_master_manifest() {
-        for format in [Some("video"), None] {
-            let args = yt_dlp_stream_args("x", format);
-            let (sel, print) = selector(&args);
-            assert!(sel.contains("protocol^=m3u8") && sel.contains("vcodec^=avc1"), "{sel}");
-            assert_eq!(print, "manifest_url");
-        }
+    fn pick_audio_takes_highest_abr_audio_only_format() {
+        let formats = vec![
+            fmt("https://v/1080", Some("avc1"), Some("mp4a"), None, Some(1080)),
+            fmt("https://a/128", Some("none"), Some("mp4a"), Some(128.0), None),
+            fmt("https://a/64", Some("none"), Some("opus"), Some(64.0), None),
+        ];
+        let picked = pick_yt_dlp_format(&formats, true, None).expect("audio");
+        assert_eq!(picked.url.as_deref(), Some("https://a/128"));
     }
 
     #[test]
-    fn first_url_line_takes_one_url_from_multi_line_output() {
-        assert_eq!(first_url_line("\nhttps://a/1\nhttps://b/2\n").as_deref(), Some("https://a/1"));
-        assert_eq!(first_url_line("NA\n"), None, "yt-dlp prints NA for a missing field");
-        assert_eq!(first_url_line(""), None);
+    fn pick_video_prefers_muxed_progressive_over_hls_manifest() {
+        let mut hls = fmt("https://v/hls", Some("avc1"), Some("mp4a"), None, Some(1080));
+        hls.url = None;
+        hls.manifest_url = Some("https://v/master.m3u8".into());
+        hls.protocol = Some("m3u8_native".into());
+        let formats = vec![hls, fmt("https://v/720", Some("avc1"), Some("mp4a"), None, Some(720))];
+        let picked = pick_yt_dlp_format(&formats, false, None).expect("video");
+        assert_eq!(picked.url.as_deref(), Some("https://v/720"), "muxed progressive beats HLS");
+        // No muxed format → the HLS manifest.
+        let only_hls = vec![formats[0].clone()];
+        let picked = pick_yt_dlp_format(&only_hls, false, None).expect("manifest");
+        assert_eq!(picked.manifest_url.as_deref(), Some("https://v/master.m3u8"));
     }
 
     /// Piped search items arrive wrapped in {"items": [...]} and carry the
