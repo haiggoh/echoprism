@@ -19,7 +19,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { PlayerProvider, usePlayer } from '../components/PlayerProvider';
 import { MiniPlayer } from '../components/MiniPlayer';
-import { episodeCommands, historyCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands, smartLinkCommands } from '../hooks/useTauriCommands';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import { resetMockState } from '../mocks/router';
@@ -112,6 +112,27 @@ describe('Smart link one-tap switch (features.csv must-have)', () => {
     await waitFor(() => expect(api.currentEpisode?.id).toBe('ep-video-1'));
     await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-video-1', 'audio'));
     expect(api.playbackFormat).toBe('audio');
+  });
+
+  it('playing an episode fires smart-link matching (debounced) so the switch button appears (owner 2026-11-04 round 4)', async () => {
+    const pod = await episodeCommands.get('ep-pod-1');
+    const matchSpy = vi.spyOn(smartLinkCommands, 'match').mockResolvedValue({ matched_count: 0 });
+    try {
+      renderBar();
+      await waitFor(() => expect(api).toBeDefined());
+      await act(async () => {
+        api.play(pod);
+      });
+      await waitFor(() => expect(matchSpy).toHaveBeenCalledTimes(1));
+      // Debounced: an immediate second play does not re-fire.
+      await act(async () => {
+        api.play(pod);
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(matchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      matchSpy.mockRestore();
+    }
   });
 
   it('an unlinked episode offers no switch', async () => {

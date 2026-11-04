@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, Re
 import { useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { episodeCommands, historyCommands, settingsCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands, settingsCommands, smartLinkCommands } from '../hooks/useTauriCommands';
 import { resolveDefaultPlayMode } from '../lib/playModeChain';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
@@ -269,11 +269,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // turns (isPlaying, current episode, no stream yet) into a stream_episode
   // call. A stale resolution (episode switched mid-flight) is discarded.
   const resolvingRef = useRef(false);
+  // Owner 2026-11-04 round 4: run smart-link matching when playback starts, so
+  // the switch-to-twin button appears whenever a match exists — debounced to
+  // at most one run per 30 s; matching must never break playback.
+  const lastMatchAtRef = useRef(0);
   useEffect(() => {
     if (!isPlaying || streamUrl || resolvingRef.current) return;
     const ep = currentEpisodeRef.current;
     if (!ep) return;
     resolvingRef.current = true;
+    const now = Date.now();
+    if (now - lastMatchAtRef.current > 30_000) {
+      lastMatchAtRef.current = now;
+      smartLinkCommands
+        .match()
+        .then(() => queryClient.invalidateQueries())
+        .catch((err) => console.warn('smart-link match on play failed', err));
+    }
     // A podcast episode has no video capability: requesting format 'video'
     // fails at the backend and the catch path kills playback. Start from the
     // playback format play()/load() chose (D7 chain mode or the toggle), then
