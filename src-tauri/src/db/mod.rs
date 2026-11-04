@@ -281,6 +281,39 @@ impl Database {
         queries::get_youtube_videos(&self.pool).await
     }
 
+    pub async fn list_unconfirmed_links(&self) -> DbResult<Vec<EpisodeLink>> {
+        queries::list_unconfirmed_links(&self.pool).await
+    }
+
+    pub async fn update_episode_link_scores(
+        &self,
+        link_id: &str,
+        confidence: f64,
+        title_similarity: Option<f64>,
+        date_diff_days: Option<i64>,
+        duration_diff_seconds: Option<i64>,
+        user_confirmed: bool,
+    ) -> DbResult<()> {
+        queries::update_episode_link_scores(
+            &self.pool,
+            link_id,
+            confidence,
+            title_similarity,
+            date_diff_days,
+            duration_diff_seconds,
+            user_confirmed,
+        )
+        .await
+    }
+
+    pub async fn get_podcast_by_guid(&self, guid: &str) -> DbResult<Option<PodcastEpisode>> {
+        queries::get_podcast_by_guid(&self.pool, guid).await
+    }
+
+    pub async fn get_video_by_video_id(&self, video_id: &str) -> DbResult<Option<YoutubeVideo>> {
+        queries::get_video_by_video_id(&self.pool, video_id).await
+    }
+
     pub async fn insert_episode_link(&self, link: &EpisodeLink) -> DbResult<()> {
         queries::insert_episode_link(&self.pool, link).await
     }

@@ -1859,6 +1859,153 @@ pub async fn update_shortcut(pool: &SqlitePool, action: String, key: String, con
 // unlinked candidates. Runtime-checked queries (query_as::<_, Row>), NOT
 // `query_as!` macros — new macro SQL would demand regenerating the .sqlx
 // offline cache (same reasoning as resolve_smart_links below).
+/// Links not yet user-confirmed — re-scored on every match run (round 3:
+/// a link stored under the old scoring must be upgraded when it becomes
+/// certain, e.g. the 68% branded-suffix pair).
+pub async fn list_unconfirmed_links(pool: &SqlitePool) -> DbResult<Vec<EpisodeLink>> {
+    #[derive(sqlx::FromRow)]
+    struct LinkRow {
+        id: String,
+        podcast_guid: String,
+        youtube_video_id: String,
+        confidence: f64,
+        matched_at: String,
+        matched_by: String,
+        title_similarity: Option<f64>,
+        date_diff_days: Option<i64>,
+        duration_diff_seconds: Option<i64>,
+        user_confirmed: i64,
+        created_at: String,
+        updated_at: String,
+    }
+    let rows = sqlx::query_as::<_, LinkRow>(
+        "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by, \
+                title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at \
+         FROM episode_links WHERE user_confirmed = 0",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|r| EpisodeLink {
+            id: r.id,
+            podcast_guid: r.podcast_guid,
+            youtube_video_id: r.youtube_video_id,
+            confidence: r.confidence,
+            matched_at: DateTimeUtc::from(r.matched_at),
+            matched_by: r.matched_by.into(),
+            title_similarity: r.title_similarity,
+            date_diff_days: r.date_diff_days,
+            duration_diff_seconds: r.duration_diff_seconds,
+            user_confirmed: r.user_confirmed != 0,
+            created_at: DateTimeUtc::from(r.created_at),
+            updated_at: DateTimeUtc::from(r.updated_at),
+        })
+        .collect())
+}
+
+/// Re-score an existing link after re-evaluation (round 3).
+pub async fn update_episode_link_scores(
+    pool: &SqlitePool,
+    link_id: &str,
+    confidence: f64,
+    title_similarity: Option<f64>,
+    date_diff_days: Option<i64>,
+    duration_diff_seconds: Option<i64>,
+    user_confirmed: bool,
+) -> DbResult<()> {
+    sqlx::query(
+        "UPDATE episode_links SET confidence = ?, title_similarity = ?, date_diff_days = ?, \
+                duration_diff_seconds = ?, user_confirmed = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(confidence)
+    .bind(title_similarity)
+    .bind(date_diff_days)
+    .bind(duration_diff_seconds)
+    .bind(user_confirmed)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(link_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn get_podcast_by_guid(pool: &SqlitePool, guid: &str) -> DbResult<Option<PodcastEpisode>> {
+    #[derive(sqlx::FromRow)]
+    struct PodcastEpisodeRow {
+        id: String,
+        podcast_guid: String,
+        title: String,
+        description: Option<String>,
+        channel_title: Option<String>,
+        channel_id: String,
+        published_at: Option<String>,
+        duration_seconds: Option<i64>,
+        audio_url: Option<String>,
+    }
+    let row = sqlx::query_as::<_, PodcastEpisodeRow>(
+        r#"SELECT e.id, e.podcast_guid, e.title, e.description,
+                  c.title AS channel_title, e.channel_id,
+                  e.published_at, e.duration_seconds, e.audio_url
+           FROM episodes e JOIN channels c ON c.id = e.channel_id
+           WHERE e.podcast_guid = ? LIMIT 1"#,
+    )
+    .bind(guid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| PodcastEpisode {
+        id: r.id,
+        guid: r.podcast_guid,
+        title: r.title,
+        description: r.description,
+        channel_title: r.channel_title,
+        channel_id: Some(r.channel_id),
+        published_at: r.published_at.map(DateTimeUtc::from),
+        duration_seconds: r.duration_seconds.map(|d| d.max(0) as u64),
+        audio_url: r.audio_url,
+        transcript: None,
+    }))
+}
+
+pub async fn get_video_by_video_id(pool: &SqlitePool, video_id: &str) -> DbResult<Option<YoutubeVideo>> {
+    #[derive(sqlx::FromRow)]
+    struct VideoRow {
+        video_id: String,
+        title: String,
+        description: Option<String>,
+        channel_title: Option<String>,
+        channel_id: String,
+        published_at: Option<String>,
+        duration_seconds: Option<i64>,
+        thumbnail_url: Option<String>,
+    }
+    let row = sqlx::query_as::<_, VideoRow>(
+        r#"SELECT e.video_id, e.title, e.description,
+                  c.title AS channel_title, e.channel_id,
+                  e.published_at, e.duration_seconds, e.thumbnail_url
+           FROM episodes e JOIN channels c ON c.id = e.channel_id
+           WHERE e.video_id = ? LIMIT 1"#,
+    )
+    .bind(video_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| YoutubeVideo {
+        id: r.video_id.clone(),
+        video_id: r.video_id,
+        title: r.title,
+        description: r.description,
+        channel_title: r.channel_title,
+        channel_id: Some(r.channel_id),
+        published_at: r.published_at.map(DateTimeUtc::from),
+        duration_seconds: r.duration_seconds.map(|d| d.max(0) as u64),
+        thumbnail_url: r.thumbnail_url,
+    }))
+}
+
 pub async fn get_unmatched_podcasts(pool: &SqlitePool) -> DbResult<Vec<PodcastEpisode>> {
     #[derive(sqlx::FromRow)]
     struct PodcastEpisodeRow {
@@ -2711,6 +2858,34 @@ mod d6_d7_tests {
         .execute(pool)
         .await
         .expect("insert link");
+    }
+
+    /// Round 3: unconfirmed links are listed for re-scoring and their scores
+    /// can be upgraded (confidence + auto-confirm when certain).
+    #[tokio::test]
+    async fn unconfirmed_links_list_and_rescore() {
+        let pool = fresh_pool().await;
+        insert_link_full(&pool, "l-1", "g-1", "v-1", 0.68, Some(0.89), false).await;
+        insert_link_full(&pool, "l-2", "g-2", "v-2", 0.95, Some(1.0), true).await;
+
+        let unconfirmed = list_unconfirmed_links(&pool).await.expect("list");
+        assert_eq!(unconfirmed.len(), 1, "only the unconfirmed link is listed");
+        assert_eq!(unconfirmed[0].id, "l-1");
+        assert!((unconfirmed[0].confidence - 0.68).abs() < 1e-9);
+
+        update_episode_link_scores(&pool, "l-1", 1.0, Some(1.0), Some(0), Some(12), true)
+            .await
+            .expect("update");
+        let after = list_unconfirmed_links(&pool).await.expect("list again");
+        assert!(after.is_empty(), "upgraded to confirmed → no longer unconfirmed");
+        let row: (f64, Option<f64>, i64) =
+            query_as("SELECT confidence, title_similarity, user_confirmed FROM episode_links WHERE id = 'l-1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(row.0, 1.0);
+        assert_eq!(row.1, Some(1.0));
+        assert_eq!(row.2, 1);
     }
 
     // ---- Phase 4 (dead-controls plan): playlists ----

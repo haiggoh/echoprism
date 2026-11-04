@@ -24,6 +24,11 @@ pub struct MatchingConfig {
     /// Gate on the title signal alone: date/duration coincidence between two
     /// unrelated titles must never manufacture a pairing.
     pub min_title_similarity: f64,
+    /// Owner 2026-11-04 round 3: when BOTH sides carry a publish date, pairs
+    /// further apart than this are skipped outright (+/- 2 days) — dates are
+    /// the strongest disambiguator against title-similar but different
+    /// episodes ("iPhone X Review" vs "iPhone Duo review (emotional)").
+    pub date_hard_gate_days: Option<i64>,
 }
 
 impl Default for MatchingConfig {
@@ -49,6 +54,7 @@ impl Default for MatchingConfig {
             max_date_diff_days: 3,
             max_duration_diff_seconds: 60,
             min_title_similarity: 0.7,
+            date_hard_gate_days: Some(2),
         }
     }
 }
@@ -96,41 +102,48 @@ impl Scorer {
     /// channel-suffix-aware path and the plain path cannot drift apart: two
     /// copies of Jaccard + fuzzy would eventually disagree, and the doc comment
     /// above this function is the only thing that says what "similarity" means.
+    /// Two content words match if equal, or if the shorter (>= 4 chars) is
+    /// FULLY covered by a fuzzy subsequence match into the longer — so
+    /// "verge"~"vergecast" matches but "x"~"duo" does not. Word-level, not
+    /// char-level: the old joined-string coverage fuzzy saturated at 1.0 for
+    /// any subsequence and paired "phone" with "rip mitch mcconnell"
+    /// (live 1d smoke), and still let "iPhone X Review" pair with "iPhone Duo
+    /// review (emotional)" (owner round 3 false positive).
+    fn words_match(&self, a: &str, b: &str) -> bool {
+        if a == b {
+            return true;
+        }
+        let (shorter, longer) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+        if shorter.chars().count() < 4 {
+            return false;
+        }
+        self.fuzzy
+            .fuzzy_indices(shorter, longer)
+            .map_or(false, |(_, idx)| idx.len() == shorter.chars().count())
+    }
+
     fn similarity_of(&self, words1: &[String], words2: &[String]) -> f64 {
         let mut best = 0.0f64;
 
         if !words1.is_empty() && !words2.is_empty() {
-            let set1: std::collections::HashSet<_> = words1.iter().collect();
-            let set2: std::collections::HashSet<_> = words2.iter().collect();
-            let intersection = set1.intersection(&set2).count();
-            let union = set1.union(&set2).count();
-            if union > 0 {
-                best = intersection as f64 / union as f64;
+            // Greedy bipartite word match: exact first, then fuzzy —
+            // Jaccard over the matched words.
+            let mut used2 = vec![false; words2.len()];
+            let mut matched = 0usize;
+            for w1 in words1 {
+                if let Some((i, _)) = words2.iter().enumerate().find(|(i, w2)| !used2[*i] && w1 == *w2) {
+                    used2[i] = true;
+                    matched += 1;
+                    continue;
+                }
+                if let Some((i, _)) = words2.iter().enumerate().find(|(i, w2)| !used2[*i] && self.words_match(w1, w2)) {
+                    used2[i] = true;
+                    matched += 1;
+                }
             }
-
-            // Fuzzy on the joined content words, measured by COVERAGE: the
-            // fraction of the longer string the match accounts for. Raw
-            // SkimMatcherV2 scores are open-ended (~16 per matched char, not
-            // the ~2 the first calibration assumed), so score-based
-            // normalization saturated at 1.0 for ANY subsequence match — the
-            // live 1d smoke paired "phone" with "rip mitch mcconnell" that
-            // way. Coverage keeps identical strings at 1.0 while a few
-            // stray subsequence characters score their true fraction.
-            // Both argument orders: fuzzy_match(choice, pattern) cannot
-            // match a pattern LONGER than the choice.
-            let joined1 = words1.join(" ");
-            let joined2 = words2.join(" ");
-            let longer = joined1.len().max(joined2.len()) as f64;
-            let fuzzy_best = [
-                self.fuzzy.fuzzy_indices(&joined1, &joined2),
-                self.fuzzy.fuzzy_indices(&joined2, &joined1),
-            ]
-            .into_iter()
-            .flatten()
-            .map(|(_, indices)| indices.len() as f64 / longer)
-            .fold(0.0f64, f64::max);
-            if fuzzy_best > best {
-                best = fuzzy_best;
+            let union = words1.len() + words2.len() - matched;
+            if union > 0 {
+                best = matched as f64 / union as f64;
             }
         }
 
@@ -227,9 +240,6 @@ impl Scorer {
         if seg_words.is_empty() {
             return false;
         }
-        if seg_words.len() == 1 {
-            return true;
-        }
         // Owner 2026-11-03 round 2: livestream flags live in the TITLE on one
         // side only ("… | Livestream", "… (Livestream)") — clearly the same
         // episode to a human, so tag-only segments are branding.
@@ -237,6 +247,11 @@ impl Scorer {
         if seg_words.iter().all(|w| TAG_WORDS.contains(&w.as_str())) {
             return true;
         }
+        // Owner 2026-11-04 round 3: a bare single word is NOT automatically
+        // branding — "(emotional)" paired against channels The Verge/Vergecast
+        // must not strip (it is content, and the pair is a false positive).
+        // A segment is branding only via tag words, exact channel name, or a
+        // shared >=4-char stem with a known channel ("Vergecast" ~ "Verge").
         for ch in channels.iter().flatten() {
             for cw in self.content_words(ch) {
                 for sw in seg_words {
@@ -419,6 +434,15 @@ impl Scorer {
     ) -> Option<BestPairing> {
         let mut best: Option<(f64, f64, bool, &YoutubeVideo)> = None; // (confidence, title_sim, certain, video)
         for video in youtube_videos {
+            // Date hard gate (owner round 3): both dates known and further
+            // apart than the gate → not the same episode, skip entirely.
+            if let Some(gate) = config.date_hard_gate_days {
+                if let Some(d) = self.date_diff(podcast.published_at, video.published_at) {
+                    if d.abs() > gate {
+                        continue;
+                    }
+                }
+            }
             let title_sim = self.title_similarity_for_pairing(
                 &podcast.title,
                 &video.title,
@@ -530,6 +554,34 @@ impl EpisodeMatcher {
                 }
                 Ok(None) => {}
                 Err(e) => errors.push(format!("{}: {}", podcast.guid, e)),
+            }
+        }
+
+        // Round 3 (owner 2026-11-04): re-score UNCONFIRMED links stored under
+        // older scoring — e.g. an obvious branded-suffix pair stuck at 68%
+        // must become 100% and auto-confirmed on the next Run Matching.
+        let config = MatchingConfig::default();
+        let unconfirmed = self.db.list_unconfirmed_links().await?;
+        for link in unconfirmed {
+            let (Some(p), Some(v)) = (
+                self.db.get_podcast_by_guid(&link.podcast_guid).await?,
+                self.db.get_video_by_video_id(&link.youtube_video_id).await?,
+            ) else {
+                continue;
+            };
+            if let Some(pairing) = self.scorer.best_pairing(&p, std::slice::from_ref(&v), &config, &linked) {
+                if pairing.certain || pairing.confidence > link.confidence {
+                    self.db
+                        .update_episode_link_scores(
+                            &link.id,
+                            pairing.confidence,
+                            Some(pairing.title_similarity),
+                            pairing.date_diff_days,
+                            pairing.duration_diff_seconds,
+                            pairing.certain,
+                        )
+                        .await?;
+                }
             }
         }
 
@@ -825,50 +877,109 @@ mod scorer_tests {
     #[test]
     fn obvious_branded_and_livestream_suffixes_are_1_0() {
         let sc = scorer();
-        for (base, branded) in [
+        for (base, branded, ch1, ch2) in [
             (
                 "Apple's HomeView has an app problem",
                 "Apple's HomeView has an app problem | The Vergecast",
+                Some("The Vergecast"),
+                Some("The Verge"),
             ),
             (
                 "How we really feel about the iPhone Duo",
                 "How we really feel about the iPhone Duo | Livestream",
+                None,
+                None,
             ),
         ] {
-            let sim = sc.title_similarity_for_pairing(base, branded, None, None);
+            let sim = sc.title_similarity_for_pairing(base, branded, ch1, ch2);
             assert_eq!(sim, 1.0, "pair ({base:?} vs {branded:?}) must be 1.0. Got {sim}");
         }
     }
 
     /// Owner 2026-11-03 (live run): "Amazon built the Trojan Horse for your
-    /// smart home" vs "… | The Vergecast" must be 100% certain — the handover
-    /// plans' pattern rule: same title plus a show-branding segment is the
-    /// same episode, recognized as a PATTERN, not only when the segment
-    /// spells the other side's channel name exactly. Must hold with channel
-    /// metadata missing entirely, and with channel names that merely share a
-    /// stem ("The Verge" vs the "The Vergecast" segment).
+    /// smart home" vs "… | The Vergecast" must be 100% certain. Round-3
+    /// refinement (owner 2026-11-04): the branding assumption must RELATE to
+    /// a known channel — with channel names that share a stem ("The Verge" vs
+    /// the "The Vergecast" segment) it strips; with NO channel metadata at
+    /// all it must NOT ("(emotional)" is content, not branding — see the
+    /// iPhone false-positive test).
     #[test]
-    fn a_branded_suffix_is_1_0_regardless_of_channel_metadata() {
+    fn a_branded_suffix_is_1_0_via_channel_stem_affinity() {
         let sc = scorer();
         let cfg = MatchingConfig::default();
         let base = "Amazon built the Trojan Horse for your smart home";
         let branded = "Amazon built the Trojan Horse for your smart home | The Vergecast";
 
-        // (a) both channel names present but DIFFERENT ("The Verge" channel
-        // holds Vergecast episodes): exact-match strip cannot fire.
+        // Both channel names present but DIFFERENT ("The Verge" channel holds
+        // Vergecast episodes): the shared "verge" stem marks the segment as
+        // show branding.
         let mut p = pod(base);
         p.channel_title = Some("The Verge".into());
         let mut v = vid(branded);
         v.channel_title = Some("The Verge".into());
         let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
-        assert_eq!(sim, 1.0, "branding suffix behind '|' must strip even when channel names differ. Got {sim}");
+        assert_eq!(sim, 1.0, "branding suffix must strip via channel-stem affinity. Got {sim}");
         assert_eq!(sc.confidence(&p, &v, &cfg, false), 1.0, "identical-after-branding is certain, full stop");
 
-        // (b) no channel metadata at all — the pattern alone must carry it.
+        // No channel metadata at all: NOT assumed branding (round-3 guard).
         let p2 = pod(base);
         let v2 = vid(branded);
         let sim2 = sc.title_similarity_for_pairing(&p2.title, &v2.title, None, None);
-        assert_eq!(sim2, 1.0, "pattern rule must not depend on channel metadata. Got {sim2}");
+        assert!(sim2 < 1.0, "without channel metadata a suffix is content, not proven branding. Got {sim2}");
+    }
+
+    /// Owner 2026-11-04 round 3 false positive: "iPhone X Review" vs
+    /// "iPhone Duo review (emotional)" are DIFFERENT phones — "(emotional)"
+    /// does not relate to either channel, and word-level matching must not
+    /// let "x" fuzzy-match anything. Pair must stay below the title gate.
+    #[test]
+    fn iphone_x_vs_iphone_duo_emotional_is_rejected() {
+        let sc = scorer();
+        let sim = sc.title_similarity_for_pairing(
+            "iPhone X Review",
+            "iPhone Duo review (emotional)",
+            Some("The Verge"),
+            Some("The Vergecast"),
+        );
+        assert!(sim < 0.7, "different phones must not pair. Got {sim}");
+    }
+
+    /// Owner 2026-11-04 round 3: the obvious branded pair is certain, and the
+    /// date hard gate (+/- 2 days) rejects same-title-different-episode pairs
+    /// whose publish dates are further apart.
+    #[test]
+    fn tesla_branded_pair_is_certain_and_date_gate_applies() {
+        use chrono::{DateTime, Utc};
+        let sc = scorer();
+        let cfg = MatchingConfig::default();
+        let mut p = pod("Why Tesla needs its cars to fly");
+        p.channel_title = Some("The Vergecast".into());
+        p.channel_id = Some("ch-pod".into());
+        p.published_at = Some(DateTimeUtc::from(
+            DateTime::parse_from_rfc3339("2026-11-01T10:00:00Z").unwrap().with_timezone(&Utc),
+        ));
+        let mut v = vid("Why Tesla needs its cars to fly | The Vergecast");
+        v.channel_title = Some("The Verge".into());
+        v.channel_id = Some("ch-vid".into());
+        v.published_at = Some(DateTimeUtc::from(
+            DateTime::parse_from_rfc3339("2026-11-01T12:00:00Z").unwrap().with_timezone(&Utc),
+        ));
+
+        let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
+        assert_eq!(sim, 1.0, "clear pattern must be 100%%. Got {sim}");
+        let empty = std::collections::HashSet::new();
+        let pair = sc.best_pairing(&p, &[v.clone()], &cfg, &empty).expect("pairs");
+        assert!(pair.certain && pair.confidence >= 1.0, "must be auto-certain (certain={}, conf={})", pair.certain, pair.confidence);
+
+        // Same titles, 3 days apart → hard gate rejects.
+        let mut v_far = v.clone();
+        v_far.published_at = Some(DateTimeUtc::from(
+            DateTime::parse_from_rfc3339("2026-11-04T10:00:00Z").unwrap().with_timezone(&Utc),
+        ));
+        assert!(
+            sc.best_pairing(&p, std::slice::from_ref(&v_far), &cfg, &empty).is_none(),
+            "3 days apart must be rejected by the date hard gate"
+        );
     }
 
     /// Same rule for a multi-word segment that shares a stem with a known
