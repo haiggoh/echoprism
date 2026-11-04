@@ -1859,50 +1859,53 @@ pub async fn update_shortcut(pool: &SqlitePool, action: String, key: String, con
 // unlinked candidates. Runtime-checked queries (query_as::<_, Row>), NOT
 // `query_as!` macros — new macro SQL would demand regenerating the .sqlx
 // offline cache (same reasoning as resolve_smart_links below).
-/// Links not yet user-confirmed — re-scored on every match run (round 3:
-/// a link stored under the old scoring must be upgraded when it becomes
-/// certain, e.g. the 68% branded-suffix pair).
-pub async fn list_unconfirmed_links(pool: &SqlitePool) -> DbResult<Vec<EpisodeLink>> {
-    #[derive(sqlx::FromRow)]
-    struct LinkRow {
-        id: String,
-        podcast_guid: String,
-        youtube_video_id: String,
-        confidence: f64,
-        matched_at: String,
-        matched_by: String,
-        title_similarity: Option<f64>,
-        date_diff_days: Option<i64>,
-        duration_diff_seconds: Option<i64>,
-        user_confirmed: i64,
-        created_at: String,
-        updated_at: String,
+/// Link row shared by the list queries (runtime query_as, not macros — new
+/// macro SQL would demand regenerating the .sqlx offline cache).
+#[derive(sqlx::FromRow)]
+struct LinkRow {
+    id: String,
+    podcast_guid: String,
+    youtube_video_id: String,
+    confidence: f64,
+    matched_at: String,
+    matched_by: String,
+    title_similarity: Option<f64>,
+    date_diff_days: Option<i64>,
+    duration_diff_seconds: Option<i64>,
+    user_confirmed: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+fn link_row_into(r: LinkRow) -> EpisodeLink {
+    EpisodeLink {
+        id: r.id,
+        podcast_guid: r.podcast_guid,
+        youtube_video_id: r.youtube_video_id,
+        confidence: r.confidence,
+        matched_at: DateTimeUtc::from(r.matched_at),
+        matched_by: r.matched_by.into(),
+        title_similarity: r.title_similarity,
+        date_diff_days: r.date_diff_days,
+        duration_diff_seconds: r.duration_diff_seconds,
+        user_confirmed: r.user_confirmed != 0,
+        created_at: DateTimeUtc::from(r.created_at),
+        updated_at: DateTimeUtc::from(r.updated_at),
     }
-    let rows = sqlx::query_as::<_, LinkRow>(
-        "SELECT id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by, \
-                title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at \
-         FROM episode_links WHERE user_confirmed = 0",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(rows
-        .into_iter()
-        .map(|r| EpisodeLink {
-            id: r.id,
-            podcast_guid: r.podcast_guid,
-            youtube_video_id: r.youtube_video_id,
-            confidence: r.confidence,
-            matched_at: DateTimeUtc::from(r.matched_at),
-            matched_by: r.matched_by.into(),
-            title_similarity: r.title_similarity,
-            date_diff_days: r.date_diff_days,
-            duration_diff_seconds: r.duration_diff_seconds,
-            user_confirmed: r.user_confirmed != 0,
-            created_at: DateTimeUtc::from(r.created_at),
-            updated_at: DateTimeUtc::from(r.updated_at),
-        })
-        .collect())
+}
+
+const LINK_COLUMNS: &str = "id, podcast_guid, youtube_video_id, confidence, matched_at, matched_by, \
+                title_similarity, date_diff_days, duration_diff_seconds, user_confirmed, created_at, updated_at";
+
+/// All links regardless of confirmation — the round-4 re-score pass iterates
+/// these and deletes links that no longer pass the gates. (The unconfirmed-
+/// only view merged into this in round 4; tests filter on user_confirmed.)
+pub async fn list_all_links(pool: &SqlitePool) -> DbResult<Vec<EpisodeLink>> {
+    let rows = sqlx::query_as::<_, LinkRow>(&format!("SELECT {LINK_COLUMNS} FROM episode_links"))
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(link_row_into).collect())
 }
 
 /// Re-score an existing link after re-evaluation (round 3).
@@ -2868,7 +2871,12 @@ mod d6_d7_tests {
         insert_link_full(&pool, "l-1", "g-1", "v-1", 0.68, Some(0.89), false).await;
         insert_link_full(&pool, "l-2", "g-2", "v-2", 0.95, Some(1.0), true).await;
 
-        let unconfirmed = list_unconfirmed_links(&pool).await.expect("list");
+        let unconfirmed = list_all_links(&pool)
+            .await
+            .expect("list")
+            .into_iter()
+            .filter(|l| !l.user_confirmed)
+            .collect::<Vec<_>>();
         assert_eq!(unconfirmed.len(), 1, "only the unconfirmed link is listed");
         assert_eq!(unconfirmed[0].id, "l-1");
         assert!((unconfirmed[0].confidence - 0.68).abs() < 1e-9);
@@ -2876,7 +2884,12 @@ mod d6_d7_tests {
         update_episode_link_scores(&pool, "l-1", 1.0, Some(1.0), Some(0), Some(12), true)
             .await
             .expect("update");
-        let after = list_unconfirmed_links(&pool).await.expect("list again");
+        let after = list_all_links(&pool)
+            .await
+            .expect("list again")
+            .into_iter()
+            .filter(|l| !l.user_confirmed)
+            .collect::<Vec<_>>();
         assert!(after.is_empty(), "upgraded to confirmed → no longer unconfirmed");
         let row: (f64, Option<f64>, i64) =
             query_as("SELECT confidence, title_similarity, user_confirmed FROM episode_links WHERE id = 'l-1'")

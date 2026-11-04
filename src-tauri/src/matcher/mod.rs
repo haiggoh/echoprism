@@ -117,35 +117,43 @@ impl Scorer {
         if shorter.chars().count() < 4 {
             return false;
         }
+        // fuzzy_indices(choice, pattern): match the SHORTER word as a pattern
+        // inside the longer choice, and require FULL coverage of the shorter.
         self.fuzzy
-            .fuzzy_indices(shorter, longer)
+            .fuzzy_indices(longer, shorter)
             .map_or(false, |(_, idx)| idx.len() == shorter.chars().count())
     }
 
-    fn similarity_of(&self, words1: &[String], words2: &[String]) -> f64 {
-        let mut best = 0.0f64;
-
-        if !words1.is_empty() && !words2.is_empty() {
-            // Greedy bipartite word match: exact first, then fuzzy —
-            // Jaccard over the matched words.
-            let mut used2 = vec![false; words2.len()];
-            let mut matched = 0usize;
-            for w1 in words1 {
-                if let Some((i, _)) = words2.iter().enumerate().find(|(i, w2)| !used2[*i] && w1 == *w2) {
-                    used2[i] = true;
-                    matched += 1;
-                    continue;
-                }
-                if let Some((i, _)) = words2.iter().enumerate().find(|(i, w2)| !used2[*i] && self.words_match(w1, w2)) {
-                    used2[i] = true;
-                    matched += 1;
-                }
+    /// Greedy bipartite word match (exact first, then fuzzy) → Jaccard over
+    /// matched words. Shared by title similarity and the channel soft signal;
+    /// only the title path applies the one-word cap (see similarity_of).
+    fn word_jaccard(&self, words1: &[String], words2: &[String]) -> f64 {
+        if words1.is_empty() || words2.is_empty() {
+            return 0.0;
+        }
+        let mut used2 = vec![false; words2.len()];
+        let mut matched = 0usize;
+        for w1 in words1 {
+            if let Some((i, _)) = words2.iter().enumerate().find(|(i, w2)| !used2[*i] && w1 == *w2) {
+                used2[i] = true;
+                matched += 1;
+                continue;
             }
-            let union = words1.len() + words2.len() - matched;
-            if union > 0 {
-                best = matched as f64 / union as f64;
+            if let Some((i, _)) = words2.iter().enumerate().find(|(i, w2)| !used2[*i] && self.words_match(w1, w2)) {
+                used2[i] = true;
+                matched += 1;
             }
         }
+        let union = words1.len() + words2.len() - matched;
+        if union > 0 {
+            matched as f64 / union as f64
+        } else {
+            0.0
+        }
+    }
+
+    fn similarity_of(&self, words1: &[String], words2: &[String]) -> f64 {
+        let mut best = self.word_jaccard(words1, words2);
 
         // One-word evidence cannot auto-link: when either title's content
         // words collapse to a single distinct word (the ISO stop list eats
@@ -170,8 +178,16 @@ impl Scorer {
     }
 
     pub(crate) fn channel_similarity(&self, ch1: &Option<String>, ch2: &Option<String>) -> f64 {
+        // Owner 2026-11-04 round 4: channel-NAME similarity is only a SOFT
+        // signal (a suspicion booster in confidence) — never evidence to LINK
+        // channels. The hard gate for linking is shared EPISODES (the
+        // `linked` set, built from confirmed episode links, used for the
+        // channels_linked floor in best_pairing). The soft signal uses the
+        // word-level fuzzy WITHOUT the one-word cap (channel names like
+        // "The Verge" collapse to one content word, which the title cap
+        // would flatten to 0.5).
         match (ch1, ch2) {
-            (Some(c1), Some(c2)) => self.title_similarity(c1, c2),
+            (Some(c1), Some(c2)) => self.word_jaccard(&self.content_words(c1), &self.content_words(c2)),
             // A MISSING channel name is neutral, not a penalty. This used to
             // return 0.0, so two titles matching word for word still lost 0.10
             // of confidence purely because the metadata was absent — live-test
@@ -247,20 +263,12 @@ impl Scorer {
         if seg_words.iter().all(|w| TAG_WORDS.contains(&w.as_str())) {
             return true;
         }
-        // Owner 2026-11-04 round 3: a bare single word is NOT automatically
-        // branding — "(emotional)" paired against channels The Verge/Vergecast
-        // must not strip (it is content, and the pair is a false positive).
-        // A segment is branding only via tag words, exact channel name, or a
-        // shared >=4-char stem with a known channel ("Vergecast" ~ "Verge").
-        for ch in channels.iter().flatten() {
-            for cw in self.content_words(ch) {
-                for sw in seg_words {
-                    if cw.len() >= 4 && sw.len() >= 4 && (sw.starts_with(&cw) || cw.starts_with(sw)) {
-                        return true;
-                    }
-                }
-            }
-        }
+        // Owner 2026-11-04 round 3+4: a bare single word is NOT automatically
+        // branding ("(emotional)" is content), and channels are never
+        // fuzzy-matched ("verge"~"vergecast" is not evidence — the stem rule
+        // is GONE). A segment is branding only via tag words or by spelling a
+        // known channel name exactly (usually the PODCAST's name).
+        let _ = channels;
         false
     }
 
@@ -557,30 +565,42 @@ impl EpisodeMatcher {
             }
         }
 
-        // Round 3 (owner 2026-11-04): re-score UNCONFIRMED links stored under
-        // older scoring — e.g. an obvious branded-suffix pair stuck at 68%
-        // must become 100% and auto-confirmed on the next Run Matching.
+        // Round 3+4 (owner 2026-11-04): re-score ALL links stored under older
+        // scoring. A link that no longer passes the gates (e.g. the 95%
+        // "iPhone X Review ↔ iPhone Duo review (emotional)" false positive
+        // from the char-fuzzy era) is DELETED; a link that is now certain
+        // (e.g. the branded-suffix pair stuck at 80%) is upgraded to 100%.
+        // A user's confirmation is never unset.
         let config = MatchingConfig::default();
-        let unconfirmed = self.db.list_unconfirmed_links().await?;
-        for link in unconfirmed {
+        let all_links = self.db.list_all_links().await?;
+        for link in all_links {
             let (Some(p), Some(v)) = (
                 self.db.get_podcast_by_guid(&link.podcast_guid).await?,
                 self.db.get_video_by_video_id(&link.youtube_video_id).await?,
             ) else {
                 continue;
             };
-            if let Some(pairing) = self.scorer.best_pairing(&p, std::slice::from_ref(&v), &config, &linked) {
-                if pairing.certain || pairing.confidence > link.confidence {
-                    self.db
-                        .update_episode_link_scores(
-                            &link.id,
-                            pairing.confidence,
-                            Some(pairing.title_similarity),
-                            pairing.date_diff_days,
-                            pairing.duration_diff_seconds,
-                            pairing.certain,
-                        )
-                        .await?;
+            match self.scorer.best_pairing(&p, std::slice::from_ref(&v), &config, &linked) {
+                None => {
+                    tracing::info!(
+                        "re-score removed stale link {} ({} ↔ {}): no longer passes the gates",
+                        link.id, link.podcast_guid, link.youtube_video_id
+                    );
+                    self.db.delete_episode_link(&link.id).await?;
+                }
+                Some(pairing) => {
+                    if pairing.certain || pairing.confidence > link.confidence {
+                        self.db
+                            .update_episode_link_scores(
+                                &link.id,
+                                pairing.confidence,
+                                Some(pairing.title_similarity),
+                                pairing.date_diff_days,
+                                pairing.duration_diff_seconds,
+                                link.user_confirmed || pairing.certain,
+                            )
+                            .await?;
+                    }
                 }
             }
         }
@@ -860,15 +880,16 @@ mod scorer_tests {
             let sim = sc.title_similarity_for_pairing(base, branded, None, None);
             assert_eq!(sim, 1.0, "pair ({base:?} vs {branded:?}) must be 1.0. Got {sim}");
         }
-        // Multi-word segment that is pure tag language ("Live Replay" would
-        // need all words in the tag set) plus show name WITH channel stem.
+        // Round 4 (owner): channels are exact-matched only — a multi-word
+        // segment that merely contains the channel name plus a tag word is
+        // NOT stripped by stem affinity anymore.
         let sim = sc.title_similarity_for_pairing(
             "The folding iPhone Duo is finally here",
             "The folding iPhone Duo is finally here | The Vergecast Livestream",
             Some("The Verge"),
             Some("The Vergecast"),
         );
-        assert_eq!(sim, 1.0, "channel-stem affinity strips 'The Vergecast Livestream'. Got {sim}");
+        assert!(sim < 1.0, "stem-only affinity must not strip. Got {sim}");
     }
 
     /// Owner live-run 2026-11-03, round 2: these obvious pairs must NOT ask for
@@ -896,36 +917,66 @@ mod scorer_tests {
         }
     }
 
-    /// Owner 2026-11-03 (live run): "Amazon built the Trojan Horse for your
-    /// smart home" vs "… | The Vergecast" must be 100% certain. Round-3
-    /// refinement (owner 2026-11-04): the branding assumption must RELATE to
-    /// a known channel — with channel names that share a stem ("The Verge" vs
-    /// the "The Vergecast" segment) it strips; with NO channel metadata at
-    /// all it must NOT ("(emotional)" is content, not branding — see the
-    /// iPhone false-positive test).
+    /// Owner 2026-11-04 round 4: the branded segment is the PODCAST's channel
+    /// name (not usually the YouTube channel's) — "T | The Vergecast",
+    /// "The Vergecast: T", and "T (The Vergecast)" must all be 1.0 when the
+    /// podcast channel is known. Channels are matched EXACTLY, never by
+    /// stem: "The Verge" vs "The Vergecast" is NOT channel evidence.
     #[test]
-    fn a_branded_suffix_is_1_0_via_channel_stem_affinity() {
+    fn branded_forms_with_the_podcast_channel_name_are_1_0_and_stems_are_not_channel_evidence() {
         let sc = scorer();
         let cfg = MatchingConfig::default();
-        let base = "Amazon built the Trojan Horse for your smart home";
-        let branded = "Amazon built the Trojan Horse for your smart home | The Vergecast";
+        let base = "The delightfully messy state of Apple gadgets";
 
-        // Both channel names present but DIFFERENT ("The Verge" channel holds
-        // Vergecast episodes): the shared "verge" stem marks the segment as
-        // show branding.
+        // Channel-NAME similarity is only a soft signal (round 4): sound-alike
+        // names may raise suspicion but can never LINK channels — the hard
+        // gate is shared episodes (channels_linked), pinned by
+        // linked_channels_floor_near_identical_titles_at_0_95_and_mark_certain.
+        assert!(
+            sc.channel_similarity(&Some("The Verge".into()), &Some("The Vergecast".into())) > 0.5,
+            "soft signal only: names may be similar"
+        );
+        // Hard gate: without shared-episode channel links, sound-alike channel
+        // names must NOT make a near-identical pair certain.
+        let mut p_near = pod(base);
+        p_near.channel_title = Some("The Vergecast".into());
+        p_near.channel_id = Some("ch-pod".into());
+        let mut v_near = vid(&format!("{base} extra"));
+        v_near.channel_title = Some("The Verge".into());
+        v_near.channel_id = Some("ch-vid".into());
+        let unlinked = sc
+            .best_pairing(&p_near, std::slice::from_ref(&v_near), &cfg, &std::collections::HashSet::new())
+            .expect("pairs at the gate");
+        assert!(!unlinked.certain, "sound-alike channels without shared episodes must not be certain");
+
+        for branded in [
+            format!("{base} | The Vergecast"),
+            format!("The Vergecast: {base}"),
+            format!("{base} (The Vergecast)"),
+        ] {
+            let mut p = pod(base);
+            p.channel_title = Some("The Vergecast".into());
+            let mut v = vid(&branded);
+            v.channel_title = Some("The Verge".into());
+            let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
+            assert_eq!(sim, 1.0, "branded form {branded:?} with the podcast's channel name must be 1.0. Got {sim}");
+            assert_eq!(sc.confidence(&p, &v, &cfg, false), 1.0);
+        }
+    }
+
+    /// Round 4 guard: a segment that merely SHARES A STEM with a channel name
+    /// ("The Vergecast Special" vs channel "The Verge") is NOT branding —
+    /// channels are exact-matched only.
+    #[test]
+    fn a_segment_sharing_only_a_channel_stem_is_not_branding() {
+        let sc = scorer();
+        let base = "Why your favorite creator is building an app";
+        let branded = "Why your favorite creator is building an app | The Vergecast Special";
         let mut p = pod(base);
         p.channel_title = Some("The Verge".into());
-        let mut v = vid(branded);
-        v.channel_title = Some("The Verge".into());
+        let v = vid(branded);
         let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
-        assert_eq!(sim, 1.0, "branding suffix must strip via channel-stem affinity. Got {sim}");
-        assert_eq!(sc.confidence(&p, &v, &cfg, false), 1.0, "identical-after-branding is certain, full stop");
-
-        // No channel metadata at all: NOT assumed branding (round-3 guard).
-        let p2 = pod(base);
-        let v2 = vid(branded);
-        let sim2 = sc.title_similarity_for_pairing(&p2.title, &v2.title, None, None);
-        assert!(sim2 < 1.0, "without channel metadata a suffix is content, not proven branding. Got {sim2}");
+        assert!(sim < 1.0, "stem-sharing segment must not strip. Got {sim}");
     }
 
     /// Owner 2026-11-04 round 3 false positive: "iPhone X Review" vs
@@ -982,19 +1033,10 @@ mod scorer_tests {
         );
     }
 
-    /// Same rule for a multi-word segment that shares a stem with a known
-    /// channel ("The Vergecast Special" vs channel "The Verge").
-    #[test]
-    fn a_branding_segment_sharing_a_channel_stem_strips() {
-        let sc = scorer();
-        let base = "Why your favorite creator is building an app";
-        let branded = "Why your favorite creator is building an app | The Vergecast Special";
-        let mut p = pod(base);
-        p.channel_title = Some("The Verge".into());
-        let v = vid(branded);
-        let sim = sc.title_similarity_for_pairing(&p.title, &v.title, p.channel_title.as_deref(), v.channel_title.as_deref());
-        assert_eq!(sim, 1.0, "segment sharing a >=4-char stem with a channel name is branding. Got {sim}");
-    }
+    /// SUPERSEDED 2026-11-04 round 4 (owner: channels are never fuzzy-matched,
+    /// only exact names or shared episodes count): the old stem rule let
+    /// "The Vergecast Special" strip against channel "The Verge". Removed —
+    /// see a_segment_sharing_only_a_channel_stem_is_not_branding.
 
     /// Guard, suffix twin of `an_unrelated_leading_segment_still_counts`:
     /// a MULTI-word segment with no channel affinity stays content even on

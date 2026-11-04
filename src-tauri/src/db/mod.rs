@@ -281,8 +281,8 @@ impl Database {
         queries::get_youtube_videos(&self.pool).await
     }
 
-    pub async fn list_unconfirmed_links(&self) -> DbResult<Vec<EpisodeLink>> {
-        queries::list_unconfirmed_links(&self.pool).await
+    pub async fn list_all_links(&self) -> DbResult<Vec<EpisodeLink>> {
+        queries::list_all_links(&self.pool).await
     }
 
     pub async fn update_episode_link_scores(
