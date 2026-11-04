@@ -379,6 +379,38 @@ pub async fn upsert_podcast_subscription(
                 .await
                 .map_err(|e| e.to_string())?;
             }
+            // 2026-11-04 round 3: rows stored BEFORE video enclosures were read
+            // carry a video/mp4 enclosure in audio_url and no video_url. When
+            // the freshly parsed item has a video enclosure whose URL matches
+            // the stored audio_url, MOVE it to video_url (audio-only playback
+            // of a video-only episode then uses the mp4's audio track; the
+            // video element can play it). Plus the both-NULL backfill for rows
+            // stored before the field existed. Stored non-matching values are
+            // never overwritten.
+            if let Some(vurl) = &episode.video_url {
+                sqlx::query(
+                    "UPDATE episodes SET video_url = ?, audio_url = NULL \
+                     WHERE id = ? AND video_url IS NULL AND audio_url = ?",
+                )
+                .bind(vurl)
+                .bind(&episode_id)
+                .bind(vurl)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            }
+            if episode.audio_url.is_some() || episode.video_url.is_some() {
+                sqlx::query(
+                    "UPDATE episodes SET audio_url = COALESCE(audio_url, ?), video_url = COALESCE(video_url, ?) \
+                     WHERE id = ? AND audio_url IS NULL AND video_url IS NULL",
+                )
+                .bind(&episode.audio_url)
+                .bind(&episode.video_url)
+                .bind(&episode_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            }
             continue;
         }
         sqlx::query(
@@ -3784,6 +3816,54 @@ mod podcast_subscription_tests {
     use super::*;
     use crate::podcast::{PodcastEpisode, PodcastFeedData};
     use sqlx::sqlite::SqlitePoolOptions;
+
+    /// 2026-11-04 round 3: a row stored BEFORE video enclosures were parsed
+    /// holds the video/mp4 enclosure in audio_url and no video_url ("Was
+    /// jetzt? – Die Woche" rows). Re-upserting the feed must MOVE that URL to
+    /// video_url; a row with a real audio enclosure keeps it untouched.
+    #[tokio::test]
+    async fn refresh_moves_misfiled_video_enclosure_to_video_url() {
+        let pool = fresh_pool().await;
+        let feed_url = "https://feed.podbean.com/wasjetzt-diewoche/feed.xml";
+        let mp4 = "https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4";
+
+        // Pre-0.1.5 state: subscribed once, the video enclosure landed in audio_url.
+        let mut old = feed();
+        old.episodes[0].audio_url = Some(mp4.into());
+        old.episodes[0].video_url = None;
+        upsert_podcast_subscription(&pool, feed_url, "Was jetzt?", &old).await.unwrap();
+
+        // Refresh with the fixed parser: enclosure is video/mp4 → video_url.
+        let mut fresh = feed();
+        fresh.episodes[0].audio_url = None;
+        fresh.episodes[0].video_url = Some(mp4.into());
+        upsert_podcast_subscription(&pool, feed_url, "Was jetzt?", &fresh).await.unwrap();
+
+        let row: (Option<String>, Option<String>) =
+            query_as("SELECT audio_url, video_url FROM episodes WHERE podcast_guid = 'vergecast-ep-100'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(row.1.as_deref(), Some(mp4), "video enclosure moved to video_url");
+        assert_eq!(row.0, None, "audio_url cleared for a video-only episode");
+
+        // A row with a genuine audio enclosure is never touched.
+        let audio = "https://audio.example/ep100.mp3";
+        let mut feed2 = feed();
+        feed2.episodes[0].guid = "vergecast-ep-audio".into();
+        feed2.episodes[0].audio_url = Some(audio.into());
+        upsert_podcast_subscription(&pool, feed_url, "Was jetzt?", &feed2).await.unwrap();
+        let mut feed3 = feed2.clone();
+        feed3.episodes[0].audio_url = Some(audio.into()); // same audio enclosure on refresh
+        upsert_podcast_subscription(&pool, feed_url, "Was jetzt?", &feed3).await.unwrap();
+        let row2: (Option<String>, Option<String>) =
+            query_as("SELECT audio_url, video_url FROM episodes WHERE podcast_guid = 'vergecast-ep-audio'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(row2.0.as_deref(), Some(audio), "stored audio_url untouched");
+        assert_eq!(row2.1, None);
+    }
 
     async fn fresh_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
