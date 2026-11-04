@@ -7,6 +7,12 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.8] - 2026-11-04
+
+### Fixed
+
+- Audio-only yt-dlp picks are progressive direct URLs only — an HLS manifest cannot play in an `<audio>` element (the "Seeking…" error loop). (Missed by the 0.1.7 tag; shipped here.)
+
 ## [0.1.7] - 2026-11-04
 
 ### Fixed — live-run round 4 (branch fix/2026-11-04-round-4)
