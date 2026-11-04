@@ -811,16 +811,29 @@ fn pick_yt_dlp_format(
         f.url.as_ref().map_or(false, |u| !u.is_empty()) || f.manifest_url.is_some()
     };
     if want_audio {
+        // An <audio> element cannot play HLS/DASH manifests — only progressive
+        // direct URLs (round 4: a manifest_url pick here showed up as the
+        // 'Seeking…' error loop on audio-only playback).
+        let progressive = |f: &YtDlpFormat| {
+            f.url.as_ref().map_or(false, |u| !u.is_empty())
+                && f.protocol.as_deref().map_or(true, |p| p.starts_with("http"))
+        };
         let audio_only: Vec<&YtDlpFormat> = formats
             .iter()
-            .filter(|f| usable(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec))
+            .filter(|f| progressive(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec))
             .collect();
         // No dedicated audio-only format (common under PO-token gating):
-        // a muxed stream still plays in an <audio> element — its audio track.
-        let pool: &[&YtDlpFormat] = if audio_only.is_empty() {
+        // a muxed progressive stream still plays in an <audio> element.
+        let pool: Vec<&YtDlpFormat> = if audio_only.is_empty() {
+            formats.iter().filter(|f| progressive(f)).collect()
+        } else {
+            audio_only
+        };
+        // Last resort: any usable format (may be a manifest — better than erroring).
+        let pool: &[&YtDlpFormat] = if pool.is_empty() {
             &formats.iter().filter(|f| usable(f)).collect::<Vec<_>>()
         } else {
-            &audio_only
+            &pool
         };
         return pool
             .iter()
@@ -1060,6 +1073,26 @@ mod tests {
         ];
         let picked = pick_yt_dlp_format(&formats, true, None).expect("audio");
         assert_eq!(picked.url.as_deref(), Some("https://a/128"));
+    }
+
+    /// Round 4: an <audio> element cannot play an HLS manifest — audio picks
+    /// must be progressive direct URLs when any exist.
+    #[test]
+    fn pick_audio_skips_manifests_when_progressive_exists() {
+        let mut hls_audio = fmt("https://a/master.m3u8", Some("none"), Some("mp4a"), Some(160.0), None);
+        hls_audio.url = None;
+        hls_audio.manifest_url = Some("https://a/master.m3u8".into());
+        hls_audio.protocol = Some("m3u8_native".into());
+        let formats = vec![
+            hls_audio,
+            fmt("https://a/128.m4a", Some("none"), Some("mp4a"), Some(128.0), None),
+        ];
+        let picked = pick_yt_dlp_format(&formats, true, None).expect("audio");
+        assert_eq!(picked.url.as_deref(), Some("https://a/128.m4a"), "manifest skipped for progressive");
+        // Manifest only → fall back to it (better than erroring).
+        let only_hls = vec![formats[0].clone()];
+        let picked = pick_yt_dlp_format(&only_hls, true, None).expect("fallback");
+        assert_eq!(picked.manifest_url.as_deref(), Some("https://a/master.m3u8"));
     }
 
     #[test]
