@@ -130,6 +130,42 @@ describe('batch 4 items 3+4: cover art in audio-only mode', () => {
     }
   });
 
+  it('audio-only is a NO-OP for a video-less podcast episode: same stage with the toggle on and off (owner 2026-11-04 round 3)', async () => {
+    // Previously the toggle flipped a podcast between the (empty) <video>
+    // branch and the art stage — the cover was "formatted differently".
+    const pod = artEpisode('ep-pod-noop', true);
+    const spy = mockEpisode(pod);
+    try {
+      renderApp('/player/ep-pod-noop');
+      await waitFor(() => expect(api).toBeDefined());
+
+      // Toggle OFF, plain play: stage must already show the art.
+      await act(async () => {
+        api.play(pod);
+      });
+      await waitFor(() => {
+        const stage = screen.getByTestId('video-stage');
+        expect(stage.querySelector('video')).toBeNull();
+        const img = stage.querySelector(`img[src="${ART_URL}"]`) as HTMLImageElement;
+        expect(img).toBeTruthy();
+        expect(img.className).toContain('aspect-square'); // podcast art keeps its square shape
+      });
+
+      // Toggle ON: identical stage, not a video element, not a different crop.
+      await act(async () => {
+        api.setAudioMode(true);
+      });
+      await waitFor(() => {
+        const stage = screen.getByTestId('video-stage');
+        expect(stage.querySelector('video')).toBeNull();
+        const img = stage.querySelector(`img[src="${ART_URL}"]`) as HTMLImageElement;
+        expect(img.className).toContain('aspect-square');
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('an episode with no art at all falls back to the headphones mark', async () => {
     const spy = mockEpisode(artEpisode('ep-noart', false));
     try {

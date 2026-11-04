@@ -19,6 +19,11 @@ export function PlayerScreen() {
   // Batch 4 items 3+4: the artwork shown in audio-only mode — the episode's own
   // art, else the channel's (podcast cover or YouTube channel avatar).
   const art = episode?.thumbnail_url ?? episode?.channel?.thumbnail_url;
+  // Owner 2026-11-04 round 3: audio-only is a NO-OP for episodes without video
+  // — a podcast is audio regardless of the toggle, so the stage must render
+  // identically either way (previously the toggle flipped podcast playback
+  // between the empty <video> branch and the art stage).
+  const hasVideo = !!episode?.video_id || !!episode?.video_url;
   const { playbackFormat, currentEpisode, load, registerVideoElement } = usePlayer();
 
   useEffect(() => {
@@ -94,7 +99,7 @@ export function PlayerScreen() {
                 D7 chain mode included), not the user's audio-only preference:
                 a video rule under an audio-on toggle still shows picture. The
                 toggle reaches this through setAudioMode, which updates both. */}
-            {playbackFormat === 'video' ? (
+            {playbackFormat === 'video' && hasVideo ? (
               <video
                 ref={registerVideoElement}
                 title="video-surface"
@@ -110,10 +115,18 @@ export function PlayerScreen() {
                     itunes image, or the YouTube thumbnail for a video); only fall
                     back to the headphones mark when there is no art at all. */}
                 {art ? (
-                  // Owner 2026-11-03: the audio-only cover art is the FULL-SIZED
-                  // thumbnail (16:9 for YouTube videos, object-cover crops square
-                  // podcast art), not a small square.
-                  <Thumbnail src={art} alt="" className="w-full max-w-2xl aspect-video rounded-2xl object-cover" />
+                  // Owner 2026-11-03: full-sized art on the audio stage — 16:9
+                  // for YouTube videos; square podcast covers keep their shape
+                  // (2026-11-04: object-cover would crop them to 16:9).
+                  <Thumbnail
+                    src={art}
+                    alt=""
+                    className={
+                      hasVideo
+                        ? 'w-full max-w-2xl aspect-video rounded-2xl object-cover'
+                        : 'w-full max-w-md aspect-square rounded-2xl object-cover'
+                    }
+                  />
                 ) : (
                   <div className="w-24 h-24 mb-4 bg-gradient-to-br from-stream-video to-stream-audio rounded-2xl flex items-center justify-center">
                     <HeadphonesIcon size={48} className="text-white" data-testid="audio-stage-headphones" />
