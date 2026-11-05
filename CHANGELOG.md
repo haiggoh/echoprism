@@ -7,6 +7,31 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.12] - 2026-11-05
+
+### Fixed — the audio-only toggle restarted at 0:00 (owner 2026-11-05)
+
+- Measured cause: switching video→audio-only re-resolves the stream and assigns a new `src`, but **WebKit resets a `currentTime` written before `loadedmetadata`**, so the position restore was lost; the fresh element's first `timeupdate` then wrote 0 into the store, and the playbar showed 0:00. The restore is now held in a ref, re-applied on `loadedmetadata`, and `timeupdate` is ignored while it is pending (cleared on `seeked`, and on error so it can never freeze position updates). Reproduced in jsdom with an element that drops pre-metadata writes (3 tests red before, green after); toggling while paused and a rapid audio→video→audio toggle are covered.
+
+### Changed — the play controls now sit in the centre of the bottom bar (owner 2026-11-05)
+
+- The bottom bar is a 3-column grid at ≥1000 px, so the transport sits exactly at the bar's centre (measured ≤0.5 px off; it was 28.8 px right of centre at 1200 px before). Below 1000 px the bar keeps the old flex layout, because a centred 360 px transport and the actions group cannot both fit in the 800 px minimum width — measured overlap at 800–900 px, clean at 1000/1200/1280. The bar's time readout and speed control now hide below `xl`, where they did not fit beside a centred transport.
+- The play triangle is optically centred everywhere: the old points left its centroid at x≈9.67 in the 24×24 box (reads left-shifted), the new shared `PlayIcon` puts it at x≈11.67. All five copies (mini player, card overlay, card action bar, podcast directory, queue row) now use it.
+- Clicking the mini player's bottom-left **thumbnail or title** opens the player — previously the only way to bring a backgrounded video back was the "Open full player" button. Every card / directory / queue / playlist "Play now" already navigated through the one shared path; tests now pin that.
+
+### Added — a splash you actually see (owner 2026-11-05)
+
+- Measured in the dev build: the HTML arrives at ~260 ms but `main.tsx` only evaluates at ~882 ms (blank window until then), and the React splash that already existed was on screen for ~12 ms. `index.html` now ships a **static pre-splash** inside `#root` (inline prism mark, pulsing, on `#0A0E1A`) so the first frame is branded, and the React splash is held until init is done **and** at least 900 ms (`SPLASH_MIN_MS`) have passed since mount.
+
+### Docs
+
+- Refreshed all eight `docs/screenshots/*.png` (Pages + README) against the fixed UI; the player capture had been broken since card clicks started queueing — it clicks the card's Play now button now.
+
+### Gates
+
+- `tsc` clean, `eslint --max-warnings 0` clean, vitest **366 passed** (was 347; +19 for the round 6 behaviours), cargo **188 passed / 0 failed / 10 ignored** (the new live mid-stream Range test is `#[ignore]`), `cargo build` clean. Playwright: the new `transport-centre.spec.ts` 2/2 green; the 8 pre-existing e2e failures reproduce identically on v0.1.11 (`6ec0682c`, verified in a scratch worktree).
+- Live checks run on 2026-11-05: `live_round6_youtube_resolves_to_streamable_media` and the new `live_round6_audio_only_mid_stream_range_seek` both pass against real YouTube (audio-only Range at 50 % → `206`, `Content-Range: bytes 32011074-64022147/64022148`, 68 KB streamed), and googlevideo advertises `accept-ranges: bytes`, which the proxy forwards.
+
 ## [0.1.11] - 2026-11-05
 
 ### Fixed — YouTube playback "Stream error" (owner 2026-11-05 ~12:40, verified working in the dev build)
