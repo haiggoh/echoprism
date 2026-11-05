@@ -48,7 +48,13 @@ test('capture search with directory results', async ({ page }) => {
 
 test('capture the player', async ({ page }) => {
   await page.goto('/feed');
-  await page.getByText('RSS is winning again').click();
+  // Round 6: a plain card click QUEUES (owner decision 2026-11-02); playing
+  // now is the explicit Play now button — that is what navigates to the player.
+  await page
+    .locator('article', { hasText: 'RSS is winning again' })
+    .getByRole('button', { name: 'Play now' })
+    .first()
+    .click();
   await page.waitForURL(/\/player\//);
   await page.waitForTimeout(1200);
   await page.screenshot({ path: path.join(outDir, 'player.png'), fullPage: false });
