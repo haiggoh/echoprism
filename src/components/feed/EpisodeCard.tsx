@@ -1,6 +1,7 @@
 import { Episode } from '../../types';
 import { useQueueStore } from '../../store/slices/queueSlice';
 import { Thumbnail } from '../ui/Thumbnail';
+import { PlayIcon } from '../ui/PlayIcon';
 import { HeadphonesIcon } from '../ui/HeadphonesIcon';
 import { useHoverPreview } from '../../hooks/useHoverPreview';
 import { EpisodePreview } from '../ui/EpisodePreview';
@@ -100,9 +101,7 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
             onClick={(e) => { e.stopPropagation(); onPlayNow?.(); }}
             disabled={!onPlayNow}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
+            <PlayIcon size={24} />
           </button>
         </div>
 
@@ -166,9 +165,7 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
             aria-label="Play now"
             disabled={!onPlayNow}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
+            <PlayIcon size={14} />
             <span className="text-xs">Play</span>
           </button>
           <button

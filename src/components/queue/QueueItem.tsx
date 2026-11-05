@@ -132,7 +132,7 @@ export function QueueItemComponent({
           onClick={(e) => { e.stopPropagation(); onQueueAction?.('play_next'); }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            <polygon points="7 3 21 12 7 21"></polygon>
             <line x1="19" y1="12" x2="19" y2="12"></line>
           </svg>
         </button>

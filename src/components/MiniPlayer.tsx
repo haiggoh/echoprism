@@ -7,6 +7,7 @@ import { ShuffleButton } from './ui/ShuffleButton';
 import { MuteButton } from './ui/MuteButton';
 import { SpeedControl } from './player/SpeedControl';
 import { Thumbnail } from './ui/Thumbnail';
+import { PlayIcon } from './ui/PlayIcon';
 
 /**
  * Parity audit batch 3 (owner, 2026-11-02): "we need only one main play bar
@@ -191,9 +192,7 @@ export function MiniPlayer() {
                 <rect x="14" y="4" width="4" height="16"></rect>
               </svg>
             ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              </svg>
+              <PlayIcon size={24} />
             )}
           </button>
 

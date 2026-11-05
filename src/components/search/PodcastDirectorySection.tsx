@@ -5,6 +5,7 @@ import { channelCommands, episodeCommands, podcastCommands } from '../../hooks/u
 import { useEpisodePlay } from '../../hooks/useEpisodePlay';
 import { useToasts } from '../ui/Toaster';
 import { Thumbnail } from '../ui/Thumbnail';
+import { PlayIcon } from '../ui/PlayIcon';
 import type { Episode, PodcastSearchResult } from '../../types';
 
 /**
@@ -173,9 +174,7 @@ export function PodcastDirectorySection({ query }: { query: string }) {
                         aria-label="Play now"
                         onClick={() => handlePlayNow(episode)}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                          <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                        </svg>
+                        <PlayIcon size={14} />
                       </button>
                     </li>
                   ))}

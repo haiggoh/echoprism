@@ -154,7 +154,7 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
     renderFeed();
     const c = await card();
     const next = within(c).getByRole('button', { name: 'Play next' });
-    expect(next.querySelector('polygon[points="5 3 19 12 5 21 5 3"]'), 'the play triangle belongs to Play now').toBeNull();
+    expect(next.querySelector('polygon[points="7 3 21 12 7 21"]'), 'the play triangle belongs to Play now').toBeNull();
     await act(async () => {
       fireEvent.click(next);
     });
