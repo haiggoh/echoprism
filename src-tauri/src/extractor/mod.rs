@@ -1475,6 +1475,68 @@ mod tests {
         }
     }
 
+    /// LIVE (network + real yt-dlp; run with --ignored). Round 6 Task 2
+    /// (echoprism-audio-only-seek): the owner reports seeking in audio-only
+    /// does nothing. A webview media element seeks by re-requesting with
+    /// `Range: bytes=N-`; through the proxy the upstream must answer 206 with
+    /// a Content-Range starting at N. Probe the total size with bytes=0-,
+    /// then request the second half of the audio stream.
+    #[tokio::test]
+    #[ignore]
+    async fn live_round6_audio_only_mid_stream_range_seek() {
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Broken);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
+        let s = ex.get_stream_with_yt_dlp("tuN5h65fhBk", Some("audio"), None).await.expect("resolve audio");
+        let client = reqwest::Client::new();
+        let head = client.get(&s.url).header("Range", "bytes=0-").send().await.unwrap();
+        assert_eq!(head.status(), 206, "probe: {}", s.url);
+        let cr = head
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let total: u64 = cr
+            .rsplit('/')
+            .next()
+            .unwrap_or("0")
+            .parse()
+            .expect("total size after / in Content-Range");
+        assert!(total > 128 * 1024, "audio stream implausibly small: {total}");
+        drop(head);
+
+        let start = total / 2;
+        let r = client
+            .get(&s.url)
+            .header("Range", format!("bytes={start}-"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 206, "mid-stream range must be honoured: {}", s.url);
+        let cr2 = r
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            cr2.starts_with(&format!("bytes {start}-")),
+            "Content-Range must start at the requested byte, got {cr2}"
+        );
+        let mut got = 0usize;
+        let mut stream = r.bytes_stream();
+        while let Some(chunk) = futures_util::StreamExt::next(&mut stream).await {
+            got += chunk.unwrap().len();
+            if got >= 64 * 1024 {
+                break;
+            }
+        }
+        assert!(got >= 64 * 1024, "only {got} bytes from the mid-stream range");
+        eprintln!("LIVE audio mid-stream seek: total={total} start={start} cr={cr2} got={got} bytes");
+    }
+
     #[test]
     fn rank_excludes_mhtml_storyboards() {
         let mut sb = fmt("https://i.ytimg.com/sb/x/M0.jpg", Some("none"), Some("none"), None, Some(45));
