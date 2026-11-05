@@ -373,6 +373,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (position: number) => {
       setPlaybackState({ position_seconds: position });
       const el = playbackFormatRef.current === 'video' && videoEl ? videoEl : audioRef.current;
+      // Round 6 final review: a seek made while a src-change restore is still
+      // pending (the new element has not loaded metadata yet) must WIN — the
+      // loadedmetadata re-apply would otherwise yank playback back to the old
+      // position, discarding the user's drag.
+      if (pendingRestoreRef.current !== null) pendingRestoreRef.current = position;
       // Only arm the guard when there is an element to seek — a null element
       // must not leave the flag sticky (review 2026-11-03).
       if (el) {

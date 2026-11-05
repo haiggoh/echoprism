@@ -12,6 +12,7 @@ this file is the release notes' single source.
 ### Fixed — the audio-only toggle restarted at 0:00 (owner 2026-11-05)
 
 - Measured cause: switching video→audio-only re-resolves the stream and assigns a new `src`, but **WebKit resets a `currentTime` written before `loadedmetadata`**, so the position restore was lost; the fresh element's first `timeupdate` then wrote 0 into the store, and the playbar showed 0:00. The restore is now held in a ref, re-applied on `loadedmetadata`, and `timeupdate` is ignored while it is pending (cleared on `seeked`, and on error so it can never freeze position updates). Reproduced in jsdom with an element that drops pre-metadata writes (3 tests red before, green after); toggling while paused and a rapid audio→video→audio toggle are covered.
+- Dragging the playbar in the moment before the new element has loaded its metadata now WINS over the pending restore (it used to be yanked back to the old position). Found in the branch's own final review, with a red-first test.
 
 ### Changed — the play controls now sit in the centre of the bottom bar (owner 2026-11-05)
 

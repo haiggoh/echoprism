@@ -244,6 +244,34 @@ describe('Round 6 Task 1: the audio-only toggle keeps the playhead [echoprism-au
     stream.mockRestore();
   });
 
+  it('a seek made BEFORE loadedmetadata wins over the pending restore (final-review finding)', async () => {
+    const stream = mockStream();
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const webkit = webkitPreMetaReset(audio);
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('ep-vid-1', 'video'));
+    await act(async () => { api.seek(120); });
+
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio'));
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+
+    // The owner drags the playbar again while the new element is still loading
+    // metadata: the pending restore (120 s) must NOT override the fresh seek.
+    await act(async () => { api.seek(600); });
+    await act(async () => {
+      webkit.markMetadataLoaded();
+      fireEvent(audio, new Event('loadedmetadata'));
+    });
+    expect(audio.currentTime, 'the user\'s seek target wins, not the stale restore').toBe(600);
+    await act(async () => { fireEvent(audio, new Event('seeked')); });
+    expect(storedPosition()).toBe(600);
+    stream.mockRestore();
+  });
+
   it('audio→video→audio within one resolve keeps the position and ends on audio', async () => {
     const stream = mockStream();
     const { container } = renderPlayer();
