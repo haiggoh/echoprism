@@ -7,6 +7,14 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.10] - 2026-11-05
+
+### Fixed — YouTube playback stuck / failing entirely (owner 2026-11-05 ~10:50)
+
+- Root cause measured live: googlevideo stream URLs expire within seconds — a fresh URL answers 206 at 3.7 MB/s, the next one generated seconds later 403s instantly. A resolve-time probe cannot cover the webview's later load. The local stream proxy now takes a refresh callback (re-runs yt-dlp `-J` for a fresh URL+headers) and retries the in-flight request when the upstream answers 403/410. Delivery test: 403 → refresh → 206 with the fresh body. Live e2e (real yt-dlp → proxy → 200/206, 512 KiB streamed) green.
+
+Gates: cargo 183/183, vitest 347/347, tsc clean, eslint clean, 0 build warnings.
+
 ## [0.1.9] - 2026-11-05
 
 ### Fixed — audio-only playback of YouTube videos (owner 2026-11-05)
