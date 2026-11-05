@@ -260,6 +260,50 @@ impl Extractor {
         })
     }
     
+    /// A proxy refresh callback: re-run yt-dlp -J and return the best fresh
+    /// (url, headers). Used by the stream proxy when the upstream URL 403s.
+    fn refresh_ytdlp_url(&self, video_id: &str, want_audio: bool) -> Option<crate::stream_proxy::RefreshFn> {
+        let netpath = self.netpath.clone();
+        let bin = self.yt_dlp_path.get().cloned().unwrap_or_else(|| "yt-dlp".to_string());
+        let vid = video_id.to_string();
+        Some(std::sync::Arc::new(move || {
+            let netpath = netpath.clone();
+            let bin = bin.clone();
+            let vid = vid.clone();
+            Box::pin(async move {
+                let args = vec![
+                    "--no-playlist".to_string(),
+                    "--no-warnings".to_string(),
+                    "-J".to_string(),
+                    format!("https://www.youtube.com/watch?v={vid}"),
+                ];
+                let out = crate::netpath::run_with_netpath(
+                    &netpath,
+                    |v4| {
+                        let mut full = crate::netpath::yt_dlp_net_args(v4);
+                        full.extend(args.iter().cloned());
+                        let bin = bin.clone();
+                        async move {
+                            tokio::process::Command::new(&bin)
+                                .args(&full)
+                                .kill_on_drop(true)
+                                .output()
+                                .await
+                                .map_err(|e| e.to_string())
+                        }
+                    },
+                    || {},
+                )
+                .await
+                .ok()?;
+                let dump: YtDlpDump = serde_json::from_slice(&out.stdout).ok()?;
+                let cand = rank_yt_dlp_formats(&dump.formats, want_audio).into_iter().next()?;
+                let url = cand.url.clone().filter(|u| !u.is_empty()).or(cand.manifest_url.clone())?;
+                Some((url, cand.http_headers.clone().unwrap_or_default()))
+            })
+        }))
+    }
+
     async fn get_stream_with_yt_dlp(&self, video_id: &str, format: Option<&str>, quality: Option<&str>) -> Result<StreamUrl, String> {
         // -J: the full JSON carries each format's url AND its http_headers.
         // googlevideo URLs are useless to a webview media element without
@@ -296,7 +340,14 @@ impl Extractor {
                 .or_else(|| cand.manifest_url.clone());
             let Some(url) = url else { continue };
             let headers = cand.http_headers.clone().unwrap_or_default();
-            let serve_url = if headers.is_empty() { url.clone() } else { crate::stream_proxy::register(&url, headers) };
+            let serve_url = if headers.is_empty() {
+                url.clone()
+            } else {
+                // googlevideo URLs expire within seconds (measured 2026-11-05:
+                // fresh URL → 206 at 3.7 MB/s, the next one → instant 403).
+                // The proxy re-resolves via this closure when upstream 403s.
+                crate::stream_proxy::register_with_refresh(&url, headers, self.refresh_ytdlp_url(video_id, want_audio))
+            };
             match probe.get(&serve_url).header("Range", "bytes=0-0").send().await {
                 Ok(r) if r.status().is_success() || r.status() == 206 => {
                     let host = r.url().host_str().unwrap_or("?").to_string();
@@ -1126,6 +1177,20 @@ mod tests {
         let raw = f.url.clone().unwrap();
         let direct = client.get(&raw).header("Range", "bytes=0-1023").send().await.unwrap();
         println!("direct reqwest status={} (final url host {})", direct.status(), direct.url().host_str().unwrap_or("?"));
+
+        // Full-load probe: no Range, read 512 KiB through the proxy and time it.
+        use futures_util::StreamExt;
+        let resp2 = client.get(&s.url).send().await.expect("full load through proxy");
+        println!("full load status={} content-length={:?} content-range={:?}", resp2.status(), resp2.headers().get("content-length"), resp2.headers().get("content-range"));
+        let mut stream = resp2.bytes_stream();
+        let mut got = 0usize;
+        let start = std::time::Instant::now();
+        while let Some(chunk) = stream.next().await {
+            got += chunk.unwrap().len();
+            if got >= 512 * 1024 { break; }
+        }
+        println!("read {} bytes in {:?}", got, start.elapsed());
+        assert!(got >= 512 * 1024, "proxy must stream a full body progressively, got {got}");
     }
 
     #[test]

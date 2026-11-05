@@ -23,8 +23,23 @@ use hyper_util::rt::TokioIo;
 type ProxyError = Box<dyn std::error::Error + Send + Sync>;
 type ProxyBody = BoxBody<Bytes, ProxyError>;
 
+/// Re-resolve the upstream URL+headers (googlevideo URLs 403 within seconds —
+/// measured 2026-11-05: a fresh URL answers 206 at 3.7 MB/s, the next one
+/// generated seconds later 403s instantly).
+pub type RefreshFn = Arc<
+    dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<(String, HashMap<String, String>)>> + Send>>
+        + Send
+        + Sync,
+>;
+
+struct Entry {
+    url: String,
+    headers: HashMap<String, String>,
+    refresh: Option<RefreshFn>,
+}
+
 struct ProxyState {
-    entries: DashMap<String, (String, HashMap<String, String>)>,
+    entries: DashMap<String, Entry>,
     client: reqwest::Client,
     port: u16,
 }
@@ -63,12 +78,18 @@ fn state() -> Arc<ProxyState> {
     .clone()
 }
 
-/// Store `url` + its required `headers`; returns the local URL the media
-/// element should load instead.
-pub fn register(url: &str, headers: HashMap<String, String>) -> String {
+/// Store `url` + its required `headers`, returning the local URL the media
+/// element should load instead. `refresh` is invoked when the upstream
+/// answers 403/410 (googlevideo URLs die within seconds, measured
+/// 2026-11-05): it returns a FRESH (url, headers) and the in-flight request
+/// is retried against it.
+pub fn register_with_refresh(url: &str, headers: HashMap<String, String>, refresh: Option<RefreshFn>) -> String {
     let st = state();
     let token = uuid::Uuid::new_v4().simple().to_string();
-    st.entries.insert(token.clone(), (url.to_string(), headers));
+    st.entries.insert(
+        token.clone(),
+        Entry { url: url.to_string(), headers, refresh },
+    );
     format!("http://127.0.0.1:{}/stream/{}", st.port, token)
 }
 
@@ -83,17 +104,31 @@ async fn handle(
             .body(empty_body())
             .unwrap());
     };
-    let (url, headers) = entry.clone();
+    let range = req.headers().get(hyper::header::RANGE).cloned();
+    let mut url = entry.url.clone();
+    let mut headers = entry.headers.clone();
+    let refresh = entry.refresh.clone();
     drop(entry);
 
-    let mut up = st.client.request(Method::GET, &url);
-    for (k, v) in &headers {
-        up = up.header(k, v);
+    // Upstream may answer 403/410 for an expired googlevideo URL (measured
+    // 2026-11-05: URLs 403 within seconds). If we have a refresh callback,
+    // get a FRESH url+headers and retry once against it.
+    let mut resp = send_upstream(&st, &url, &headers, range.as_ref()).await;
+    if matches!(resp.as_ref(), Ok(r) if r.status() == 403 || r.status() == 410) {
+        if let Some(refresh) = refresh {
+            if let Some((fresh_url, fresh_headers)) = refresh().await {
+                tracing::info!("stream proxy: upstream expired (403/410), refreshed URL, retrying");
+                if let Some(mut e) = st.entries.get_mut(&token) {
+                    e.url = fresh_url.clone();
+                    e.headers = fresh_headers.clone();
+                }
+                url = fresh_url;
+                headers = fresh_headers;
+                resp = send_upstream(&st, &url, &headers, range.as_ref()).await;
+            }
+        }
     }
-    if let Some(range) = req.headers().get(hyper::header::RANGE) {
-        up = up.header(hyper::header::RANGE, range);
-    }
-    let resp = match up.send().await {
+    let resp = match resp {
         Ok(r) => r,
         Err(e) => {
             let note: ProxyError = Box::new(e);
@@ -127,6 +162,22 @@ fn empty_body() -> ProxyBody {
     BodyExt::boxed(StreamBody::new(stream::empty::<Result<Frame<Bytes>, ProxyError>>()))
 }
 
+async fn send_upstream(
+    st: &ProxyState,
+    url: &str,
+    headers: &HashMap<String, String>,
+    range: Option<&hyper::header::HeaderValue>,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let mut up = st.client.request(Method::GET, url);
+    for (k, v) in headers {
+        up = up.header(k, v);
+    }
+    if let Some(range) = range {
+        up = up.header(hyper::header::RANGE, range);
+    }
+    up.send().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,7 +207,7 @@ mod tests {
 
         let mut headers = HashMap::new();
         headers.insert("User-Agent".to_string(), "EchoPrism-test".to_string());
-        let local = register(&format!("http://127.0.0.1:{}/video.mp4", up_port), headers);
+        let local = register_with_refresh(&format!("http://127.0.0.1:{}/video.mp4", up_port), headers, None);
         assert!(local.starts_with("http://127.0.0.1:"), "{local}");
 
         let client = reqwest::Client::new();
@@ -180,10 +231,70 @@ mod tests {
         );
     }
 
+    /// Round 5 delivery test: upstream 403s the original URL; the refresh
+    /// callback supplies a fresh one; the in-flight request is retried and the
+    /// client sees the fresh body with 206.
+    #[tokio::test]
+    async fn proxy_refreshes_expired_upstream_url_on_403() {
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up_port = upstream.local_addr().unwrap().port();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut sock, _)) = upstream.accept().await {
+                tauri::async_runtime::spawn(async move {
+                    // keep-alive: answer every request on this connection
+                    loop {
+                        let mut buf = vec![0u8; 4096];
+                        let n = match sock.read(&mut buf).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => n,
+                        };
+                        let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let path = req.lines().next().unwrap_or("").split_whitespace().nth(1).unwrap_or("");
+                        let (status, body) = if path.contains("fresh") {
+                            ("206 Partial Content", "FRESH")
+                        } else {
+                            ("403 Forbidden", "expired")
+                        };
+                        let resp = format!(
+                            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nContent-Range: bytes 0-4/100\r\nConnection: keep-alive\r\n\r\n{body}",
+                            body.len()
+                        );
+                        if sock.write_all(resp.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+
+        let mut headers = HashMap::new();
+        headers.insert("User-Agent".to_string(), "t".to_string());
+        let refresh: super::RefreshFn = std::sync::Arc::new(move || {
+            Box::pin(async move {
+                Some((
+                    format!("http://127.0.0.1:{up_port}/fresh.mp4"),
+                    [("User-Agent".to_string(), "t".to_string())].into_iter().collect(),
+                ))
+            })
+        });
+        let local = register_with_refresh(&format!("http://127.0.0.1:{up_port}/old.mp4"), headers, Some(refresh));
+
+        let resp = reqwest::Client::new()
+            .get(&local)
+            .header("Range", "bytes=0-4")
+            .send()
+            .await
+            .expect("proxy response");
+        assert_eq!(resp.status(), 206, "must retry with the refreshed URL: {}", resp.status());
+        let body = resp.bytes().await.unwrap();
+        assert_eq!(&body[..], b"FRESH");
+    }
+
     #[test]
     fn register_returns_loopback_url_with_unique_tokens() {
-        let a = register("http://x/1", HashMap::new());
-        let b = register("http://x/2", HashMap::new());
+        let a = register_with_refresh("http://x/1", HashMap::new(), None);
+        let b = register_with_refresh("http://x/2", HashMap::new(), None);
         assert_ne!(a, b);
         assert!(a.starts_with("http://127.0.0.1:"));
     }
