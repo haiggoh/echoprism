@@ -196,6 +196,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Changing episode invalidates any previous stream; resolution is owned
       // by the resolve effect below (single code path, also serves load(paused)).
       setStreamUrl(null);
+      setResolveTick((t) => t + 1);
     },
     [setPlaying, setPlaybackState, items, currentIndex, setCurrentIndex]
   );
@@ -215,6 +216,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         duration_seconds: ep.duration_seconds,
       });
       setStreamUrl(null);
+      setResolveTick((t) => t + 1);
     },
     [setPlaying, setPlaybackState]
   );
@@ -264,6 +266,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Playback position is NOT reset here: the effect restores it from the
       // store on the new src (the F06 format-switch sync).
       setStreamUrl(null);
+      setResolveTick((t) => t + 1);
     },
     [setStoreAudioMode, setStreamUrl, queryClient]
   );
@@ -273,6 +276,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // turns (isPlaying, current episode, no stream yet) into a stream_episode
   // call. A stale resolution (episode switched mid-flight) is discarded.
   const resolvingRef = useRef(false);
+  // Round 5: a bumped tick re-triggers resolution — covers the toggle-during-
+  // in-flight-resolve case where the effect bailed on resolvingRef and nothing
+  // else changed to re-run it (stream stuck with no src).
+  const [resolveTick, setResolveTick] = useState(0);
   // Owner 2026-11-04 round 4: run smart-link matching when playback starts, so
   // the switch-to-twin button appears whenever a match exists — debounced to
   // at most one run per 30 s; matching must never break playback.
@@ -302,9 +309,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // playback format play()/load() chose (D7 chain mode or the toggle), then
     // apply the episode's own capability as a floor.
     const wantAudio = playbackFormatRef.current === 'audio' || (!ep.video_id && !ep.video_url);
+    // Round 5: the toggle state at resolve start — a mid-flight toggle discards
+    // the stale result. (Compare the TOGGLE only: the capability floor above
+    // can make wantAudio true while the toggle is off — that is not a change.)
+    const audioAtStart = playbackFormatRef.current === 'audio';
     episodeCommands
       .stream(ep.id, wantAudio ? 'audio' : 'video')
       .then((info) => {
+        if ((playbackFormatRef.current === 'audio') !== audioAtStart) {
+          // The audio-only toggle changed while resolving — discard the
+          // stale-format result and re-resolve for the new format.
+          setResolveTick((t) => t + 1);
+          return;
+        }
         // Only commit if this episode is still the one the engine is playing.
         if (currentEpisodeRef.current?.id === ep.id) {
           setStreamUrl(info.url);
@@ -335,7 +352,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         resolvingRef.current = false;
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- queryClient is a stable provider singleton; adding it would re-run stream resolution on every render
-  }, [isPlaying, streamUrl, setPlaying, addToast]);
+  }, [isPlaying, streamUrl, resolveTick, setPlaying, addToast]);
 
   const pause = useCallback(() => setPlaying(false), [setPlaying]);
 
@@ -471,6 +488,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
       setPlaying(false);
+      console.warn('media element error, streamUrl =', streamUrl);
       addToast({
         title: 'Stream error',
         description: 'The media element failed to load this stream. The instance may be unhealthy — try another one.',
