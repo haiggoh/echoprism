@@ -23,9 +23,11 @@ use hyper_util::rt::TokioIo;
 type ProxyError = Box<dyn std::error::Error + Send + Sync>;
 type ProxyBody = BoxBody<Bytes, ProxyError>;
 
-/// Re-resolve the upstream URL+headers (googlevideo URLs 403 within seconds —
-/// measured 2026-11-05: a fresh URL answers 206 at 3.7 MB/s, the next one
-/// generated seconds later 403s instantly).
+/// Re-resolve the upstream URL+headers when the upstream 403s/410s. NOTE
+/// (round 6, measured 2026-11-05): a googlevideo URL 403s until its yt-dlp
+/// `available_at` (~4 s after extraction) — the earlier reading "URLs expire
+/// within seconds" was that, inverted. The callback waits for the fresh URL's
+/// `available_at` before returning it.
 pub type RefreshFn = Arc<
     dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<(String, HashMap<String, String>)>> + Send>>
         + Send
@@ -46,16 +48,28 @@ struct ProxyState {
 
 static PROXY: OnceLock<Arc<ProxyState>> = OnceLock::new();
 
+/// Idle limit between upstream body chunks. NOT a total timeout: googlevideo
+/// throttles audio-only to ~2x playback rate (measured 32 KB/s for 129 kbps),
+/// so one media request legitimately streams for many minutes — the old 300 s
+/// total timeout killed audio playback at exactly 5:00 (round 6, MediaError 2).
+const PROXY_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The upstream client: bounded connect + bounded IDLE read, unbounded total.
+fn proxy_client(idle: std::time::Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(idle)
+        .build()
+        .expect("proxy client")
+}
+
 fn state() -> Arc<ProxyState> {
     PROXY.get_or_init(|| {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind proxy");
         let port = listener.local_addr().expect("addr").port();
         let state = Arc::new(ProxyState {
             entries: DashMap::new(),
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(300))
-                .build()
-                .expect("proxy client"),
+            client: proxy_client(PROXY_IDLE_TIMEOUT),
             port,
         });
         let st = state.clone();
@@ -80,9 +94,8 @@ fn state() -> Arc<ProxyState> {
 
 /// Store `url` + its required `headers`, returning the local URL the media
 /// element should load instead. `refresh` is invoked when the upstream
-/// answers 403/410 (googlevideo URLs die within seconds, measured
-/// 2026-11-05): it returns a FRESH (url, headers) and the in-flight request
-/// is retried against it.
+/// answers 403/410 (e.g. past the URL's expiry): it returns a FRESH
+/// (url, headers) and the in-flight request is retried against it.
 pub fn register_with_refresh(url: &str, headers: HashMap<String, String>, refresh: Option<RefreshFn>) -> String {
     let st = state();
     let token = uuid::Uuid::new_v4().simple().to_string();
@@ -105,14 +118,22 @@ async fn handle(
             .unwrap());
     };
     let range = req.headers().get(hyper::header::RANGE).cloned();
+    // What the media element asks for (round 6 diagnosis; RUST_LOG=debug).
+    tracing::debug!(
+        "stream proxy req: method={} range={:?} ua={:?} token={}",
+        req.method(),
+        range,
+        req.headers().get(hyper::header::USER_AGENT),
+        &token[..8.min(token.len())]
+    );
     let mut url = entry.url.clone();
     let mut headers = entry.headers.clone();
     let refresh = entry.refresh.clone();
     drop(entry);
 
-    // Upstream may answer 403/410 for an expired googlevideo URL (measured
-    // 2026-11-05: URLs 403 within seconds). If we have a refresh callback,
-    // get a FRESH url+headers and retry once against it.
+    // Upstream may answer 403/410 for an expired (or not-yet-available)
+    // googlevideo URL. If we have a refresh callback, get a FRESH url+headers
+    // (it waits for available_at) and retry once against it.
     let mut resp = send_upstream(&st, &url, &headers, range.as_ref()).await;
     if matches!(resp.as_ref(), Ok(r) if r.status() == 403 || r.status() == 410) {
         if let Some(refresh) = refresh {
@@ -141,6 +162,15 @@ async fn handle(
         }
     };
     let status = resp.status();
+    // What we answer with (round 6 diagnosis; RUST_LOG=debug).
+    tracing::debug!(
+        "stream proxy resp: status={} ct={:?} cl={:?} cr={:?} host={}",
+        status,
+        resp.headers().get(hyper::header::CONTENT_TYPE),
+        resp.headers().get(hyper::header::CONTENT_LENGTH),
+        resp.headers().get(hyper::header::CONTENT_RANGE),
+        resp.url().host_str().unwrap_or("?")
+    );
     let mut builder = Response::builder().status(status);
     for h in [
         hyper::header::CONTENT_TYPE,
@@ -289,6 +319,38 @@ mod tests {
         assert_eq!(resp.status(), 206, "must retry with the refreshed URL: {}", resp.status());
         let body = resp.bytes().await.unwrap();
         assert_eq!(&body[..], b"FRESH");
+    }
+
+    /// Round 6 (measured live 2026-11-05): audio-only died with MediaError 2
+    /// exactly 300.7 s into playback — the proxy client had a 300 s TOTAL
+    /// timeout, and googlevideo throttles audio to ~32 KB/s so one request
+    /// streams for many minutes. A slow-but-steady body must survive past the
+    /// limit: here chunks arrive every 0.5 s for 3 s against a 1 s limit.
+    #[tokio::test]
+    async fn proxy_client_survives_a_slow_steady_body_longer_than_its_timeout() {
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = upstream.local_addr().unwrap().port();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut sock, _) = upstream.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = sock.read(&mut buf).await;
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mp4\r\nContent-Length: 6\r\n\r\n").await.unwrap();
+            for b in b"ABCDEF" {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                sock.write_all(&[*b]).await.unwrap();
+            }
+        });
+        let client = proxy_client(std::time::Duration::from_secs(1));
+        let body = client
+            .get(format!("http://127.0.0.1:{port}/slow"))
+            .send()
+            .await
+            .expect("headers")
+            .bytes()
+            .await
+            .expect("a slow-but-steady body must not be cut off by a total timeout");
+        assert_eq!(&body[..], b"ABCDEF");
     }
 
     #[test]

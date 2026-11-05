@@ -260,9 +260,12 @@ impl Extractor {
         })
     }
     
-    /// A proxy refresh callback: re-run yt-dlp -J and return the best fresh
-    /// (url, headers). Used by the stream proxy when the upstream URL 403s.
-    fn refresh_ytdlp_url(&self, video_id: &str, want_audio: bool) -> Option<crate::stream_proxy::RefreshFn> {
+    /// A proxy refresh callback: re-run yt-dlp -J and return a fresh
+    /// (url, headers) for the SAME format the stream started on (a different
+    /// format mid-stream would splice another container's bytes), falling
+    /// back to the top-ranked one. Waits for the fresh URL's `available_at`
+    /// before handing it over — a brand-new URL 403s until then.
+    fn refresh_ytdlp_url(&self, video_id: &str, want_audio: bool, format_id: Option<String>) -> Option<crate::stream_proxy::RefreshFn> {
         let netpath = self.netpath.clone();
         let bin = self.yt_dlp_path.get().cloned().unwrap_or_else(|| "yt-dlp".to_string());
         let vid = video_id.to_string();
@@ -270,6 +273,7 @@ impl Extractor {
             let netpath = netpath.clone();
             let bin = bin.clone();
             let vid = vid.clone();
+            let format_id = format_id.clone();
             Box::pin(async move {
                 let args = vec![
                     "--no-playlist".to_string(),
@@ -297,7 +301,12 @@ impl Extractor {
                 .await
                 .ok()?;
                 let dump: YtDlpDump = serde_json::from_slice(&out.stdout).ok()?;
-                let cand = rank_yt_dlp_formats(&dump.formats, want_audio).into_iter().next()?;
+                let ranked = rank_yt_dlp_formats(&dump.formats, want_audio);
+                let cand = format_id
+                    .as_deref()
+                    .and_then(|id| ranked.iter().find(|f| f.format_id.as_deref() == Some(id)).cloned())
+                    .or_else(|| ranked.into_iter().next())?;
+                wait_until_available(&cand).await;
                 let url = cand.url.clone().filter(|u| !u.is_empty()).or(cand.manifest_url.clone())?;
                 Some((url, cand.http_headers.clone().unwrap_or_default()))
             })
@@ -340,15 +349,28 @@ impl Extractor {
                 .or_else(|| cand.manifest_url.clone());
             let Some(url) = url else { continue };
             let headers = cand.http_headers.clone().unwrap_or_default();
+            // Round 6 root cause: googlevideo 403s a URL until its
+            // `available_at` (~4 s after extraction). Probing at once 403'd
+            // every real format (the earlier 'URLs expire within seconds'
+            // reading was this, inverted).
+            wait_until_available(cand).await;
             let serve_url = if headers.is_empty() {
                 url.clone()
             } else {
-                // googlevideo URLs expire within seconds (measured 2026-11-05:
-                // fresh URL → 206 at 3.7 MB/s, the next one → instant 403).
-                // The proxy re-resolves via this closure when upstream 403s.
-                crate::stream_proxy::register_with_refresh(&url, headers, self.refresh_ytdlp_url(video_id, want_audio))
+                // The proxy re-resolves via this closure when upstream 403s
+                // (e.g. a URL past its ~6 h expiry), keeping the SAME format.
+                crate::stream_proxy::register_with_refresh(
+                    &url,
+                    headers,
+                    self.refresh_ytdlp_url(video_id, want_audio, cand.format_id.clone()),
+                )
             };
             match probe.get(&serve_url).header("Range", "bytes=0-0").send().await {
+                Ok(r) if (r.status().is_success() || r.status() == 206)
+                    && !is_media_content_type(r.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())) =>
+                {
+                    last_err = format!("{} -> not media ({:?})", url_host(&url), r.headers().get(reqwest::header::CONTENT_TYPE));
+                }
                 Ok(r) if r.status().is_success() || r.status() == 206 => {
                     let host = r.url().host_str().unwrap_or("?").to_string();
                     tracing::info!("yt-dlp stream candidate OK: host={host} status={} -> {serve_url}", r.status());
@@ -852,6 +874,14 @@ struct YtDlpDump {
 
 #[derive(Debug, Deserialize, Clone)]
 struct YtDlpFormat {
+    #[serde(default)]
+    format_id: Option<String>,
+    /// Unix time before which googlevideo 403s this URL (yt-dlp's own
+    /// downloader sleeps until it: "Sleeping N seconds as required by the
+    /// site"). Measured live 2026-11-05: ~4 s after extraction; t+0 403,
+    /// t+2..8 206 on the same URL.
+    #[serde(default)]
+    available_at: Option<f64>,
     url: Option<String>,
     manifest_url: Option<String>,
     http_headers: Option<std::collections::HashMap<String, String>>,
@@ -867,6 +897,36 @@ fn is_none_codec(c: &Option<String>) -> bool {
     c.as_deref().map_or(true, |c| c == "none")
 }
 
+/// Longest we wait for a format's `available_at`: a bogus far-future value
+/// must not hang playback (the probe then 403s and the honest error shows).
+const MAX_AVAILABLE_AT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Sleep until `available_at` has passed (plus a small clock-skew margin),
+/// capped at MAX_AVAILABLE_AT_WAIT. No-op when the field is absent or past.
+async fn wait_until_available(f: &YtDlpFormat) {
+    let Some(at) = f.available_at else { return };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let delay = at - now + 0.3;
+    if delay > 0.0 {
+        let d = std::time::Duration::from_secs_f64(delay).min(MAX_AVAILABLE_AT_WAIT);
+        tracing::info!("yt-dlp format not available yet; waiting {:.1}s (available_at)", d.as_secs_f64());
+        tokio::time::sleep(d).await;
+    }
+}
+
+/// A probe answer is media only if it is not an image/text body (a
+/// storyboard sprite answers 206 image/webp; WebKit then fails with
+/// MediaError 4). A missing Content-Type is given the benefit of the doubt.
+fn is_media_content_type(ct: Option<&str>) -> bool {
+    ct.is_none_or(|ct| {
+        let ct = ct.trim().to_ascii_lowercase();
+        !(ct.starts_with("image/") || ct.starts_with("text/"))
+    })
+}
+
 fn url_host(url: &str) -> &str {
     url.split('/').nth(2).unwrap_or("?")
 }
@@ -876,7 +936,12 @@ fn url_host(url: &str) -> &str {
 /// progressive muxed by height desc, then manifests. The resolver probes each
 /// in order (see get_stream_with_yt_dlp).
 fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFormat> {
-    let usable = |f: &YtDlpFormat| f.url.as_ref().map_or(false, |u| !u.is_empty()) || f.manifest_url.is_some();
+    // Storyboards (sb*, protocol mhtml) are scrubber-preview IMAGES, never a
+    // stream (round 6: one was served to <video> -> MediaError 4).
+    let usable = |f: &YtDlpFormat| {
+        f.protocol.as_deref() != Some("mhtml")
+            && (f.url.as_ref().is_some_and(|u| !u.is_empty()) || f.manifest_url.is_some())
+    };
     let progressive = |f: &YtDlpFormat| {
         f.url.as_ref().map_or(false, |u| !u.is_empty())
             && f.protocol.as_deref().map_or(true, |p| p.starts_with("http"))
@@ -1118,6 +1183,8 @@ mod tests {
 
     fn fmt(url: &str, vcodec: Option<&str>, acodec: Option<&str>, abr: Option<f64>, height: Option<u32>) -> YtDlpFormat {
         YtDlpFormat {
+            format_id: None,
+            available_at: None,
             url: Some(url.into()),
             manifest_url: None,
             http_headers: None,
@@ -1269,6 +1336,154 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(&body[..], b"GOOD", "must have fallen through the 403 candidate to the working one: {}", s.url);
+    }
+
+    /// Fake upstream for the round-6 tests: `/late*` 403s until `avail_at`
+    /// (unix secs) and serves video/mp4 after; `/sb*` is a storyboard sprite
+    /// answering 206 image/webp (what i.ytimg.com does). Returns its port.
+    async fn spawn_round6_upstream(avail_at: u64) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let early = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let early_srv = early.clone();
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = upstream.local_addr().unwrap().port();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            loop {
+                let Ok((mut sock, _)) = upstream.accept().await else { break };
+                let early = early_srv.clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        let mut buf = vec![0u8; 4096];
+                        let n = match sock.read(&mut buf).await { Ok(0) | Err(_) => break, Ok(n) => n };
+                        let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let path = req.lines().next().unwrap_or("").split_whitespace().nth(1).unwrap_or("").to_string();
+                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+                        let (status, ct, body) = if path.contains("sb") {
+                            ("206 Partial Content", "image/webp", "IMG!")
+                        } else if now < avail_at as f64 {
+                            early.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            ("403 Forbidden", "text/plain", "")
+                        } else {
+                            ("206 Partial Content", "video/mp4", "GOOD")
+                        };
+                        let resp = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: {ct}\r\nContent-Length: {}\r\nContent-Range: bytes 0-3/100\r\nConnection: keep-alive\r\n\r\n{body}",
+                            body.len()
+                        );
+                        if sock.write_all(resp.as_bytes()).await.is_err() { break; }
+                    }
+                });
+            }
+        });
+        (port, early)
+    }
+
+    fn extractor_with_stub_formats(formats_json: &str) -> (Extractor, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("yt-dlp");
+        std::fs::write(&bin, format!("#!/bin/sh\nprintf '%s\\n' '{{\"formats\":{formats_json}}}'\n")).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Works);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set(bin.display().to_string()).unwrap();
+        (ex, dir)
+    }
+
+    /// Round 6 root cause (measured live 2026-11-05): yt-dlp -J formats carry
+    /// `available_at` (~4 s after extraction) and googlevideo 403s every
+    /// request before it. The resolver must WAIT for it, not probe at once
+    /// and fall through. Upstream 403s until avail_at; the ONLY real format
+    /// is that one, so success proves the wait happened.
+    #[tokio::test]
+    async fn resolver_waits_for_available_at_before_probing() {
+        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 2;
+        let (port, early) = spawn_round6_upstream(avail).await;
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/late.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail},\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
+        ));
+        let s = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await.expect("must wait for available_at, then succeed");
+        let body = reqwest::Client::new().get(&s.url).header("Range", "bytes=0-3").send().await.unwrap().bytes().await.unwrap();
+        assert_eq!(&body[..], b"GOOD", "{}", s.url);
+        // The PROBE itself must wait: a premature request costs a 403 plus a
+        // full yt-dlp re-extraction in the proxy's refresh path.
+        assert_eq!(early.load(std::sync::atomic::Ordering::SeqCst), 0, "no request may reach upstream before available_at");
+    }
+
+    /// Round 6 masking bug (measured live): with every real format 403ing, the
+    /// resolver fell through to a storyboard 'format' (protocol mhtml,
+    /// image/webp) and handed WebKit an IMAGE (MediaError 4, 'Stream error').
+    /// A storyboard must never be returned as a stream — fail honestly.
+    #[tokio::test]
+    async fn resolver_never_returns_a_storyboard_image() {
+        let far = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600;
+        let (port, _early) = spawn_round6_upstream(far).await;
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/late.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"protocol\":\"https\",\"http_headers\":{{\"User-Agent\":\"t\"}}}},\
+             {{\"format_id\":\"sb0\",\"url\":\"http://127.0.0.1:{port}/sb/M0.jpg\",\"ext\":\"mhtml\",\"vcodec\":\"none\",\"acodec\":\"none\",\"protocol\":\"mhtml\",\"http_headers\":{{\"User-Agent\":\"t\"}}}},\
+             {{\"format_id\":\"x\",\"url\":\"http://127.0.0.1:{port}/sb/disguised.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"protocol\":\"https\",\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
+        ));
+        let r = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await;
+        assert!(r.is_err(), "an image must never be served as a stream: {:?}", r.map(|s| s.url));
+    }
+
+    /// Round 6: the proxy refresh must keep the format the stream started on
+    /// (top-ranked 'a' differs from the playing 'b' here) and must hand back
+    /// the fresh URL only once its available_at has passed.
+    #[tokio::test]
+    async fn refresh_keeps_the_playing_format_and_waits_for_available_at() {
+        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() + 2.0;
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"a\",\"url\":\"http://x/a-144\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":144,\"protocol\":\"https\"}},\
+             {{\"format_id\":\"b\",\"url\":\"http://x/b-360\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail}}}]"
+        ));
+        let refresh = ex.refresh_ytdlp_url("vid", false, Some("b".into())).unwrap();
+        let (url, _h) = refresh().await.expect("refresh result");
+        let returned_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+        assert_eq!(url, "http://x/b-360", "refresh must keep the playing format");
+        assert!(returned_at >= avail, "must not return before available_at (returned {:.2}s early)", avail - returned_at);
+    }
+
+    /// LIVE (network + real yt-dlp; run with --ignored): the video that
+    /// failed on 2026-11-05 must resolve to real media through the proxy and
+    /// stream (2 MB video / 256 KB audio), for both video and audio-only.
+    #[tokio::test]
+    #[ignore]
+    async fn live_round6_youtube_resolves_to_streamable_media() {
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Broken);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
+        for fmt_kind in ["video", "audio"] {
+            let s = ex.get_stream_with_yt_dlp("tuN5h65fhBk", Some(fmt_kind), None).await.expect("resolve");
+            let r = reqwest::Client::new().get(&s.url).header("Range", "bytes=0-").send().await.unwrap();
+            let ct = r.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            assert_eq!(r.status(), 206, "{fmt_kind}: {}", s.url);
+            assert!(ct.starts_with("video/") || ct.starts_with("audio/"), "{fmt_kind}: content-type {ct}");
+            // googlevideo throttles audio-only to ~2x playback rate (measured:
+            // 32 KB/s for 129 kbps, ttfb 77 ms), so read less audio than video.
+            let want = if fmt_kind == "audio" { 256_000 } else { 2_000_000 };
+            let mut got = 0usize;
+            let mut stream = r.bytes_stream();
+            while let Some(chunk) = futures_util::StreamExt::next(&mut stream).await {
+                got += chunk.unwrap().len();
+                if got >= want { break; }
+            }
+            assert!(got >= want, "{fmt_kind}: only {got} bytes");
+            eprintln!("LIVE {fmt_kind}: 206 {ct}, streamed {got} bytes via {}", s.url);
+        }
+    }
+
+    #[test]
+    fn rank_excludes_mhtml_storyboards() {
+        let mut sb = fmt("https://i.ytimg.com/sb/x/M0.jpg", Some("none"), Some("none"), None, Some(45));
+        sb.protocol = Some("mhtml".into());
+        let real = fmt("https://v/360", Some("avc1"), Some("mp4a"), None, Some(360));
+        for want_audio in [true, false] {
+            let ranked = rank_yt_dlp_formats(&[sb.clone(), real.clone()], want_audio);
+            assert!(ranked.iter().all(|f| f.protocol.as_deref() != Some("mhtml")), "audio={want_audio}: {:?}", ranked.iter().map(|f| f.url.clone()).collect::<Vec<_>>());
+        }
     }
 
     #[test]

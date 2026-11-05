@@ -489,6 +489,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       setPlaying(false);
       console.warn('media element error, streamUrl =', streamUrl);
+      // Which layer failed (round 6 diagnosis: code 4 = an image was served).
+      // code: 1 aborted, 2 network, 3 decode, 4 src not supported.
+      console.warn(
+        `media element error detail: tag=${el.tagName} code=${el.error?.code} msg=${JSON.stringify(el.error?.message ?? '')} networkState=${el.networkState} readyState=${el.readyState} currentSrc=${el.currentSrc}`,
+      );
       addToast({
         title: 'Stream error',
         description: 'The media element failed to load this stream. The instance may be unhealthy — try another one.',
