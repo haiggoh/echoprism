@@ -22,13 +22,15 @@ describe('mock IPC router', () => {
 
   it('get_feed returns the fixture episodes', async () => {
     const episodes = await mockInvoke<Episode[]>('get_feed');
-    // 4 original fixtures + the D6/D7 two-stream show (4 episodes)
-    expect(episodes).toHaveLength(8);
+    // 4 original fixtures + the D6/D7 two-stream show (4 episodes) + the
+    // round 6 long-title transport fixture (ep-video-long)
+    expect(episodes).toHaveLength(9);
     const titles = episodes.map((e) => e.title).join('|');
     expect(titles).toContain('video');
     expect(titles).toContain('podcast');
     expect(titles).toContain('Some More News');
     expect(titles).toContain('Even More News');
+    expect(titles).toContain('A deliberately very long episode title');
   });
 
   it('get_episode resolves by id and rejects unknown ids', async () => {

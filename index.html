@@ -11,7 +11,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   </head>
   <body class="bg-bg text-text antialiased">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Round 6 Task 6 (echoprism-splash-screen): static pre-splash, so the
+           first frame is not blank while the JS bundle loads. Measured in the
+           dev build 2026-11-05: main.tsx only evaluates at ~880 ms, and the
+           React splash then lasted ~12 ms. React replaces this on mount.
+           Geometry copied from src/components/ui/PrismLogo.tsx
+           (PRISM_GEOMETRY); colours from tailwind.config.ts. -->
+      <div id="pre-splash" style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #0A0E1A;">
+        <svg width="112" height="60" viewBox="0 0 120 64" fill="none" aria-hidden="true" style="animation: pre-splash-pulse 1.6s ease-in-out infinite;">
+          <polygon points="60.00,8.00 85.52,56.00 34.48,56.00" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.45)" stroke-width="1.8" stroke-linejoin="round" />
+          <path d="M -6 20.53 L 45.71 34.88 L 60 40" stroke="#00D4C8" stroke-width="3.6" />
+          <path d="M -6 59.13 L 42.65 40.64 L 60 40" stroke="#FF8C42" stroke-width="3.6" />
+          <path d="M 60 40 L 72.81 32.08 L 174.2 21.4 L 178.8 30.0 L 77.36 40.65 Z" fill="#FFFFFF" opacity="0.9" />
+        </svg>
+      </div>
+      <style>
+        @keyframes pre-splash-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      </style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

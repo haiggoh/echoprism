@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -19,9 +19,32 @@ import { PlayerProvider } from './components/PlayerProvider';
 import { SplashScreen } from './components/SplashScreen';
 import { settingsCommands } from './hooks/useTauriCommands';
 
+/** Round 6 Task 6 (echoprism-splash-screen): the React splash stays until init
+ *  has finished AND at least this long has passed since mount. Measured in the
+ *  dev build 2026-11-05: the first settings read resolves ~12 ms after the
+ *  splash first renders, so without this floor the splash was on screen for
+ *  only milliseconds and nobody saw it (the pre-JS frame is covered by the
+ *  static pre-splash in index.html). */
+export const SPLASH_MIN_MS = 900;
+
 function AppRoutes() {
   const navigate = useNavigate();
   const [initialized, setInitialized] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
+  const mountedAtRef = useRef(Date.now());
+
+  // Minimum display time: once init has finished, keep the splash up until
+  // SPLASH_MIN_MS since mount (fake-timer friendly — all via Date.now/setTimeout).
+  useEffect(() => {
+    if (!initialized) return;
+    const remaining = SPLASH_MIN_MS - (Date.now() - mountedAtRef.current);
+    if (remaining <= 0) {
+      setSplashDone(true);
+      return;
+    }
+    const timer = setTimeout(() => setSplashDone(true), remaining);
+    return () => clearTimeout(timer);
+  }, [initialized]);
 
   // Check if onboarding is needed
   useEffect(() => {
@@ -41,8 +64,9 @@ function AppRoutes() {
     checkInit();
   }, [navigate]);
 
-  if (!initialized) {
+  if (!initialized || !splashDone) {
     // Batch 4 item 9 (owner 2026-11-02): a real splash — pulsing logo + version.
+    // Round 6 Task 6: also held for SPLASH_MIN_MS so it is actually seen.
     return <SplashScreen />;
   }
 
