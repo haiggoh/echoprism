@@ -510,7 +510,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
     };
-  }, [activeEl, setPlaybackState, queueNext, addToast, setPlaying]);
+  }, [activeEl, streamUrl, setPlaybackState, queueNext, addToast, setPlaying]);
 
   // Keep both elements' volume/rate in sync so a format switch is seamless.
   useEffect(() => {
