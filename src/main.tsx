@@ -34,6 +34,20 @@ window.addEventListener('unhandledrejection', (e) => {
   }).catch(() => {})
 })
 
+// Round 5 (2026-11-05): forward console.warn/error to the Rust log too — the
+// webview console never reaches the terminal on its own, and media-element
+// load errors (the "Stream error" toast) were invisible there. Never throws.
+for (const level of ['warn', 'error'] as const) {
+  const orig = console[level].bind(console)
+  console[level] = (...args: unknown[]) => {
+    orig(...args)
+    void invoke('log_frontend_error', {
+      kind: `console-${level}`,
+      message: args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : String(a))).join(' '),
+    }).catch(() => {})
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

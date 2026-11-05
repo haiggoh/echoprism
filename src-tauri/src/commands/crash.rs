@@ -36,6 +36,9 @@ pub async fn log_frontend_error(
         .map_err(|e| format!("no app data dir: {e}"))?;
     let home = std::env::var("HOME").unwrap_or_default();
     let message = crash::sanitize(&message, &home);
+    // Round 5: also to the terminal — the webview console never reaches it
+    // otherwise, and media-element load errors were invisible there.
+    tracing::warn!("[webview] {kind}: {message}");
     let record = CrashRecord {
         signature: crash::signature(&kind, &message),
         kind,
