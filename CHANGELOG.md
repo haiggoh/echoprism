@@ -7,6 +7,15 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.9] - 2026-11-05
+
+### Fixed — audio-only playback of YouTube videos (owner 2026-11-05)
+
+- yt-dlp stream candidates are now PROBED (1-byte Range GET, through the local proxy when headers are present) and the first that answers 200/206 wins — live-measured: the same googlevideo format answered 403 on one edge and 206 on another within minutes, which is why audio-only still failed intermittently. Chosen host+status is logged.
+- PlayerProvider discards a mid-flight resolve whose format was toggled (re-resolves for the new format) and logs the streamUrl on media-element errors.
+
+Gates: cargo 182/182, vitest 347/347, tsc clean, eslint clean. Live e2e (real yt-dlp → proxy → 206) green.
+
 ## [0.1.8] - 2026-11-04
 
 ### Fixed
