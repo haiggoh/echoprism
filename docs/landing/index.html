@@ -33,6 +33,9 @@
   .card p { color: var(--muted); font-size: .95rem; }
   code { background: var(--surface); border: 1px solid var(--border); border-radius: .4rem; padding: .15rem .45rem; font-size: .9em; }
   pre { background: var(--surface); border: 1px solid var(--border); border-radius: .6rem; padding: 1rem; overflow-x: auto; font-size: .9rem; }
+  /* install cards: commands must stay fully visible (a clipped install command reads as broken) */
+  .card pre { background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; padding: .75rem; margin-top: .5rem; }
+  code { overflow-wrap: anywhere; }
   footer { border-top: 1px solid var(--border); padding: 1.5rem 0 3rem; color: var(--muted); font-size: .9rem; }
   footer a { color: var(--muted); }
   a.cta { display: inline-block; margin-top: 1.5rem; background: var(--accent); color: #06281c; font-weight: 600; text-decoration: none; padding: .7rem 1.4rem; border-radius: .6rem; }
@@ -55,7 +58,7 @@
     <p>EchoPrism puts YouTube videos and podcast episodes in one library, one
     queue, one player — and its smart links pair the two streams of the same
     show, so a story you started on video continues as audio on your walk.</p>
-    <a class="cta" href="#install">Build it from source</a>
+    <a class="cta" href="#install">Get EchoPrism</a>
   </div>
 
   <div class="shots">
@@ -75,17 +78,34 @@
 
   <section id="install">
     <h2>Install</h2>
-    <p>The app is free, open source (MIT) and built from source — no signing
-    identity, no installer wizard:</p>
-    <pre>git clone https://github.com/haiggoh/echoprism
+    <p>EchoPrism is free and open source (MIT), for macOS on Apple Silicon.
+    Pick whichever way suits you:</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Homebrew</h3>
+        <p>One command from the EchoPrism tap:</p>
+        <pre>brew install --cask haiggoh/tap/echoprism</pre>
+      </div>
+      <div class="card">
+        <h3>Download</h3>
+        <p>Grab the <code>.dmg</code> from the
+        <a href="https://github.com/haiggoh/echoprism/releases/latest" style="color: var(--accent)">latest release</a>,
+        open it and drag EchoPrism to Applications.</p>
+      </div>
+      <div class="card">
+        <h3>Build from source</h3>
+        <p>To build it yourself, or to hack on it:</p>
+        <pre>git clone https://github.com/haiggoh/echoprism
 cd echoprism
 scripts/build-from-source.sh</pre>
-    <p>The script checks prerequisites, builds the app bundle and a dmg, and
-    prints where everything landed. Unsigned build: right-click the app and
-    choose <strong>Open</strong> on first launch, or run
+        <p>The script checks prerequisites, builds the app bundle and a dmg,
+        and prints where everything landed.</p>
+      </div>
+    </div>
+    <p style="margin-top: 1.25rem; color: var(--muted)">The app is not
+    notarized yet: on first launch, right-click it and choose
+    <strong>Open</strong>, or run
     <code>xattr -cr /Applications/EchoPrism.app</code>.</p>
-    <p>A Homebrew cask and GitHub Releases binaries follow the first tagged
-    release — the build workflow is already in the repository.</p>
   </section>
 
   <section id="privacy">
