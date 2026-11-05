@@ -124,11 +124,21 @@ export function MiniPlayer() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-4 h-[60px]">
+      {/* Round 6 Task 5 (echoprism-centre-transport): at >=1000px a 3-column
+          grid puts the transport in the EXACT centre column of the bar — flex
+          justify-between left it wherever the side groups' widths happened to
+          end. Below 1000px the actions group (~270-425px) plus a centred
+          transport (~360px) cannot both fit, so the row falls back to the old
+          flex layout there. Measured (Playwright probe): the grid overlaps
+          the actions group at 800-900px, is clean at 1000/1200/1280px with
+          play-button delta <= 0.5px. The side grid columns are
+          minmax(0,1fr), so they shrink and the title truncates instead of
+          overlapping the centre. */}
+      <div className="flex items-center justify-between px-4 h-[60px] min-[1000px]:grid min-[1000px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         {/* Episode info. Round 6 Task 3 (echoprism-visible-playback-and-restore):
             a video playing in the background is brought back by clicking the
             thumbnail OR the title — both are real buttons that open the player. */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             className="flex-shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -154,8 +164,9 @@ export function MiniPlayer() {
           </button>
         </div>
 
-        {/* The ONE set of transport controls */}
-        <div className="flex items-center gap-4">
+        {/* The ONE set of transport controls — the grid's centre column, so it
+            sits exactly at the bar's centre. */}
+        <div className="flex items-center gap-4 justify-self-center">
           {/* Live-test batch 2 Task 1b/1c: shuffle IS wired — it just had no
               pressed state and an unreadable glyph. Shared ShuffleButton. */}
           <ShuffleButton
@@ -240,16 +251,17 @@ export function MiniPlayer() {
           </button>
         </div>
 
-        {/* Right side: PrismConvergeToggle + Audio toggle + Speed + Volume + time */}
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-text-muted tabular-nums hidden md:block">
+        {/* Right side: PrismConvergeToggle + Audio toggle + Speed + Volume + time
+            — the grid's third column, pinned to the right edge. */}
+        <div className="flex items-center gap-4 justify-self-end">
+          <span className="text-sm text-text-muted tabular-nums hidden xl:block">
             {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
 
           {/* Live-test Task 7: playback speed. Hidden on narrow layouts,
               where the bar is already crowded — the full player has it
               always. */}
-          <div className="w-24 hidden md:block">
+          <div className="w-24 hidden xl:block">
             <SpeedControl />
           </div>
 

@@ -136,6 +136,22 @@ export const mockDb: MockDb = {
       updated_at: now,
     },
     {
+      // Round 6 Task 5 (Review Focus 5): a very long title to prove the
+      // transport stays centred and the title truncates at minWidth 800.
+      id: 'ep-video-long',
+      channel_id: 'ch-1',
+      external_id: 'long-vid-001',
+      title:
+        'video: A deliberately very long episode title that must truncate in the bottom bar at the minimum window width of 800 pixels without pushing the transport off centre',
+      video_id: 'long-vid-001',
+      duration_seconds: 613,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-13T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
       id: 'ep-pod-1',
       channel_id: 'ch-2',
       external_id: 'deep-dive-042',
