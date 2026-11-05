@@ -124,19 +124,33 @@ export function MiniPlayer() {
       </div>
 
       <div className="flex items-center justify-between px-4 h-[60px]">
-        {/* Episode info */}
+        {/* Episode info. Round 6 Task 3 (echoprism-visible-playback-and-restore):
+            a video playing in the background is brought back by clicking the
+            thumbnail OR the title — both are real buttons that open the player. */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <Thumbnail
-            src={episode.thumbnail_url}
-            alt=""
-            className="w-10 h-10 rounded-md object-cover flex-shrink-0"
-          />
-          <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="flex-shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={`Open player artwork for ${episode.title || 'episode'}`}
+            onClick={() => navigate(`/player/${episode.id}`)}
+          >
+            <Thumbnail
+              src={episode.thumbnail_url}
+              alt=""
+              className="w-10 h-10 rounded-md object-cover"
+            />
+          </button>
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={`Open player: ${episode.title || 'episode'}`}
+            onClick={() => navigate(`/player/${episode.id}`)}
+          >
             <p className="font-medium text-text truncate">{episode.title || 'Unknown'}</p>
             <p className="text-sm text-text-muted truncate">
               {episode.channel?.title || 'Unknown channel'}
             </p>
-          </div>
+          </button>
         </div>
 
         {/* The ONE set of transport controls */}
