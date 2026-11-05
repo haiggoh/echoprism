@@ -362,6 +362,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // server catches up to the requested position (seen on long podcasts whose
   // CDN is slow to range). That must NOT kill playback — tracked via this ref.
   const seekingRef = useRef(false);
+  // Round 6 Task 1 (echoprism-audio-switch-position): a `currentTime` written
+  // before `loadedmetadata` is reset by the media load algorithm (WebKit), so
+  // the position restore at src-change is ALSO held here and re-applied on
+  // `loadedmetadata`; `timeupdate` is ignored while it is pending (cleared on
+  // `seeked`), so the fresh element's first timeupdate (0) cannot clobber the
+  // stored position.
+  const pendingRestoreRef = useRef<number | null>(null);
   const seek = useCallback(
     (position: number) => {
       setPlaybackState({ position_seconds: position });
@@ -423,7 +430,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // jsdom reflects the raw attribute, which is why unit tests missed it).
     if (activeEl.getAttribute('src') !== streamUrl) {
       activeEl.src = streamUrl;
-      activeEl.currentTime = playbackState?.position_seconds ?? 0;
+      const restore = playbackState?.position_seconds ?? 0;
+      // Held for loadedmetadata: the eager write below only survives where the
+      // browser honours a pre-metadata currentTime.
+      pendingRestoreRef.current = restore;
+      activeEl.currentTime = restore;
       // The HTML media spec RESETS playbackRate to 1 whenever a new src is
       // loaded, and the element NODE is reused for every episode, so the
       // [playbackRate, videoEl] effect below never sees the change — leaving
@@ -454,10 +465,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const el = activeEl;
     if (!el) return;
-    const onTime = () => setPlaybackState({ position_seconds: el.currentTime });
+    const onTime = () => {
+      // Round 6 Task 1: while a position restore is pending, the fresh
+      // element's timeupdate (0) must not overwrite the stored position.
+      if (pendingRestoreRef.current !== null) return;
+      setPlaybackState({ position_seconds: el.currentTime });
+    };
     const onMeta = () => {
       if (Number.isFinite(el.duration) && el.duration > 0) {
         setPlaybackState({ duration_seconds: el.duration });
+      }
+      // Round 6 Task 1: re-apply the restore now that the write survives.
+      if (pendingRestoreRef.current !== null) {
+        el.currentTime = pendingRestoreRef.current;
       }
     };
     // Repeat 'one' loops on the NATURAL end only (a manual Next still skips),
@@ -473,6 +493,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queueNext();
     };
     const onError = () => {
+      // Round 6 Task 1: a failed load fires error WITHOUT seeked — clear the
+      // pending restore here too, so onTime can never be frozen by a ref that
+      // no seeked will ever clear.
+      pendingRestoreRef.current = null;
       // Batch 4 item 6: an error right after a seek is the server catching up
       // to the requested position — downgrade to a warning, keep playing.
       if (seekingRef.current) {
@@ -502,6 +526,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
     const onSeeked = () => {
       seekingRef.current = false;
+      pendingRestoreRef.current = null;
     };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);

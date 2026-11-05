@@ -142,3 +142,178 @@ describe('Live-test batch 2 Task 3: Audio only must actually switch streams', ()
     stream.mockRestore();
   });
 });
+
+describe('Round 6 Task 1: the audio-only toggle keeps the playhead [echoprism-audio-switch-position]', () => {
+  /**
+   * Simulate the measured WebKit behaviour: a `currentTime` write made BEFORE
+   * `loadedmetadata` is reset by the media load algorithm, so the fresh
+   * element starts at 0 and its first `timeupdate` carries 0.
+   */
+  function webkitPreMetaReset(el: HTMLMediaElement) {
+    const proto = Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype, 'currentTime');
+    if (!proto || typeof proto.get !== 'function' || typeof proto.set !== 'function') {
+      throw new Error('currentTime descriptor not found on the prototype');
+    }
+    const protoGet = proto.get;
+    const protoSet = proto.set;
+    let metaLoaded = false;
+    Object.defineProperty(el, 'currentTime', {
+      configurable: true,
+      get: () => protoGet.call(el),
+      set: (v: number) => {
+        if (metaLoaded) protoSet.call(el, v);
+        // before metadata the write is lost — exactly the reported bug
+      },
+    });
+    return { markMetadataLoaded: () => { metaLoaded = true; } };
+  }
+
+  function mockStream() {
+    return vi.spyOn(episodeCommands, 'stream').mockImplementation((id: string, format?: string) =>
+      Promise.resolve({ url: `https://mock/${format ?? 'video'}/${id}.m3u8`, format: format ?? 'video' }));
+  }
+
+  const storedPosition = () => usePlayerStore.getState().playbackState?.position_seconds;
+
+  it('restores the stored position after loadedmetadata, not before', async () => {
+    const stream = mockStream();
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const webkit = webkitPreMetaReset(audio);
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('ep-vid-1', 'video'));
+    const video = container.querySelector('video') as HTMLVideoElement;
+    await waitFor(() => expect(video.getAttribute('src')).toBe('https://mock/video/ep-vid-1.m3u8'));
+
+    // Owner's repro: play, seek to ~2:00, then toggle audio-only.
+    await act(async () => { api.seek(120); });
+    expect(storedPosition()).toBe(120);
+
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio'));
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+
+    // The fresh element is at 0 (the pre-metadata write was lost); its
+    // timeupdate must NOT clobber the stored position.
+    await act(async () => { fireEvent(audio, new Event('timeupdate')); });
+    expect(storedPosition(), 'the store position survives the fresh element\'s 0').toBe(120);
+
+    // After metadata loads, the stored position is applied to the element.
+    await act(async () => {
+      webkit.markMetadataLoaded();
+      fireEvent(audio, new Event('loadedmetadata'));
+    });
+    expect(audio.currentTime).toBe(120);
+
+    await act(async () => {
+      fireEvent(audio, new Event('seeked'));
+      fireEvent(audio, new Event('timeupdate'));
+    });
+    expect(storedPosition()).toBe(120);
+    stream.mockRestore();
+  });
+
+  it('toggling audio-only while paused keeps the stored position', async () => {
+    const stream = mockStream();
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const webkit = webkitPreMetaReset(audio);
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('ep-vid-1', 'video'));
+    await act(async () => { api.pause(); });
+    await act(async () => { api.seek(120); });
+    expect(storedPosition()).toBe(120);
+
+    // Toggle while paused: no resolve yet (paused), then press play.
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await act(async () => { api.togglePlay(); });
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio'));
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+
+    await act(async () => { fireEvent(audio, new Event('timeupdate')); });
+    expect(storedPosition()).toBe(120);
+    await act(async () => {
+      webkit.markMetadataLoaded();
+      fireEvent(audio, new Event('loadedmetadata'));
+    });
+    expect(audio.currentTime).toBe(120);
+    stream.mockRestore();
+  });
+
+  it('audio→video→audio within one resolve keeps the position and ends on audio', async () => {
+    const stream = mockStream();
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const webkit = webkitPreMetaReset(audio);
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('ep-vid-1', 'video'));
+    await act(async () => { api.seek(120); });
+
+    // Rapid double toggle before the ~7 s resolve finishes.
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await act(async () => { fireEvent.click(screen.getByText('audio-off')); });
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio'));
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+    await act(async () => { fireEvent(audio, new Event('timeupdate')); });
+    expect(storedPosition(), 'the position is never reset to 0 mid-toggle-storm').toBe(120);
+    await act(async () => {
+      webkit.markMetadataLoaded();
+      fireEvent(audio, new Event('loadedmetadata'));
+    });
+    expect(audio.currentTime).toBe(120);
+    stream.mockRestore();
+  });
+});
+
+describe('Round 6 Task 2: seeking works in audio-only [echoprism-audio-only-seek]', () => {
+  function mockStream() {
+    return vi.spyOn(episodeCommands, 'stream').mockImplementation((id: string, format?: string) =>
+      Promise.resolve({ url: `https://mock/${format ?? 'video'}/${id}.m3u8`, format: format ?? 'video' }));
+  }
+
+  const storedPosition = () => usePlayerStore.getState().playbackState?.position_seconds;
+
+  it('seek() in audio-only mode moves the audio element, not a stale video element', async () => {
+    const stream = mockStream();
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const video = container.querySelector('video') as HTMLVideoElement;
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(video.getAttribute('src')).toBe('https://mock/video/ep-vid-1.m3u8'));
+
+    // Toggle to audio-only; the audio element takes over the stream.
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio'));
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+    await act(async () => {
+      fireEvent(audio, new Event('loadedmetadata'));
+      fireEvent(audio, new Event('seeked'));
+    });
+
+    // Review Focus 3 shape: seek far past what a throttled stream has buffered
+    // (80% of a 1 h episode).
+    await act(async () => { api.seek(2880); });
+    expect(audio.currentTime, 'the ACTIVE audio element carries the seek').toBe(2880);
+    expect(storedPosition()).toBe(2880);
+    // A stale video element must not still be the seek target.
+    expect(video.currentTime).not.toBe(2880);
+
+    // The element reports the completed seek; the store follows.
+    await act(async () => {
+      fireEvent(audio, new Event('seeked'));
+      fireEvent(audio, new Event('timeupdate'));
+    });
+    expect(storedPosition()).toBe(2880);
+    stream.mockRestore();
+  });
+});
