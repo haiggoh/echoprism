@@ -7,6 +7,20 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.11] - 2026-11-05
+
+### Fixed — YouTube playback "Stream error" (owner 2026-11-05 ~12:40, verified working in the dev build)
+
+- Root cause measured live: yt-dlp's `-J` formats carry an `available_at` timestamp (~4 s after extraction), and googlevideo answers **403 to every request before it** (same URL: t+0 403, t+2…8 s 206). The resolver probed at once; the proxy's refresh re-extracted a *new* not-yet-available URL and retried at once (403 again). The 0.1.10 note "URLs expire within seconds" was this effect, read inverted. The resolver and the refresh path now wait for `available_at` (capped at 10 s) — the same wait yt-dlp's own downloader does ("Sleeping N seconds as required by the site"). Expect a ~4–6 s pause before YouTube playback starts.
+- The visible error was a masking bug: with every real format 403ing, the candidate loop fell through to a **storyboard** "format" (scrubber sprites, `i.ytimg.com` `image/webp`); a 1-byte probe accepted it and WebKit was handed an image (MediaError 4). Storyboards are now excluded and a probe answered with `image/*` or `text/*` is rejected.
+- Audio-only playback of YouTube stopped at exactly 5:00 (MediaError 2): the stream proxy had a 300 s *total* request timeout, and googlevideo throttles audio-only to ~2× playback rate (~32 KB/s), so one request streams for many minutes. The proxy now uses a 15 s connect + 60 s idle-read timeout.
+- A proxy refresh keeps the format the stream started on instead of the top-ranked one.
+- The media-error log line now carries `MediaError.code`, `networkState` and `readyState`.
+
+Known, next: switching to audio-only restarts at 0:00 instead of the playhead; seeking in audio-only does not work.
+
+Gates: cargo 188/188 (+5 new, each mutation-checked red; +1 live test, real yt-dlp → proxy → 206 video/mp4 2 MB and audio/mp4 256 KB), vitest 347/347, tsc clean, eslint clean.
+
 ## [0.1.10] - 2026-11-05
 
 ### Fixed — YouTube playback stuck / failing entirely (owner 2026-11-05 ~10:50)
