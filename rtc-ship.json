@@ -5,5 +5,6 @@
   "tag_prefix": "v",
   "default_branch": "master",
   "test_workers": 12,
-  "test_cmd": "./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vitest run && ./node_modules/.bin/eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0 && (cd src-tauri && cargo test --lib && cargo build)"
+  "test_cmd": "./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vitest run && ./node_modules/.bin/eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0 && (cd src-tauri && cargo test --lib && cargo build)",
+  "_version_surfaces": "echoprism has 5 version surfaces (package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock, CHANGELOG.md); this file can declare only one json manifest, so tests/test_version_consistency.sh is the gate (rtc-ship runs it in place of its built-in check). --bump-versions writes package.json + CHANGELOG only: bump the 3 src-tauri surfaces too, the gate refuses a split. Do NOT set version_file to tauri.conf.json - it would be overwritten with a bare version string."
 }
