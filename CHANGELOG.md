@@ -7,6 +7,14 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.13] - 2026-11-11
+
+### Fixed — preferences could not persist on real installs (live-confirmed)
+
+- Measured cause: `get_preferences` errored `Preferences not found` when the `user_preferences` row was absent, and the settings command saves via read-modify-write (`db.get_preferences()` then `update_preferences`) — so on any install whose database came from migrations alone (every real install: the row existed only in `scripts/seed.sql` and the test fixtures), reading AND saving preferences failed. Live-confirmed 2026-11-11: the audio-only toggle's save failed and the preference did not persist (log: two read failures, one save failure).
+- Fix: `migrate_data` now `INSERT OR IGNORE`s the `user_preferences` row for `current-user`, mirroring the existing `users` seed — same trap, one table over, as that seed's own comment records. Every column has a schema `DEFAULT`, so the seed names only the key; existing profiles pick the row up on their next launch (migrations re-run idempotently at every startup).
+- Tests: three new tests derive their state from `migrations::run` alone — fresh install, save round-trip, and a pre-seed database (schema only) gaining the row on re-migration. All three were red before the fix and green after (191 passed / 0 failed total). The db fixtures had been satisfying the requirement implicitly (`fresh_pool` inserts the users row by hand), which is why the 188-test suite never caught it.
+
 ## [0.1.12] - 2026-11-05
 
 ### Fixed — the audio-only toggle restarted at 0:00 (owner 2026-11-05)
