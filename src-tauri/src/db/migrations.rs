@@ -62,5 +62,15 @@ async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
     pool.execute("INSERT OR IGNORE INTO users (id) VALUES ('current-user')")
         .await
         .map_err(|e| e.to_string())?;
+    // Same story, one table over: the user_preferences row was only seeded
+    // by scripts/seed.sql and the test fixtures. get_preferences treats a
+    // missing row as an error and the settings command saves via
+    // read-modify-write, so on a real install reading AND saving preferences
+    // failed with "Preferences not found" (live-confirmed 2026-11-11: the
+    // audio-only toggle could not persist). Every column has a schema
+    // DEFAULT, so the seed names only the key.
+    pool.execute("INSERT OR IGNORE INTO user_preferences (user_id) VALUES ('current-user')")
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -3760,6 +3760,54 @@ mod search_source_tests {
         pool
     }
 
+    // The preferences row must exist after migrations alone — the app never
+    // inserts it (the d7 settings command is read-modify-write through
+    // get_preferences), so a missing row breaks both read AND save on real
+    // installs. The fixtures used to satisfy this implicitly (seed.sql +
+    // fresh_pool's explicit users insert); these tests derive everything
+    // from migrations::run so a missing seed cannot pass again.
+    #[tokio::test]
+    async fn preferences_row_exists_on_a_fresh_install() {
+        let pool = fresh_pool().await;
+        let prefs = get_preferences(&pool)
+            .await
+            .expect("preferences row after migrations");
+        assert!(!prefs.audio_only_default);
+        assert_eq!(prefs.theme, Theme::System);
+    }
+
+    #[tokio::test]
+    async fn preferences_row_save_round_trips_on_a_fresh_install() {
+        let pool = fresh_pool().await;
+        let mut prefs = get_preferences(&pool).await.expect("read");
+        prefs.audio_only_default = true;
+        update_preferences(&pool, prefs).await.expect("save");
+        let reread = get_preferences(&pool).await.expect("re-read");
+        assert!(reread.audio_only_default, "audio-only default did not persist");
+    }
+
+    #[tokio::test]
+    async fn preferences_row_appears_when_migrations_rerun_on_a_pre_seed_database() {
+        // A profile created before the seed existed has schema but no row.
+        // The next launch re-runs migrations::run (schema is IF NOT EXISTS),
+        // so migrate_data must add the missing row — the owner's real
+        // profile is exactly this case.
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        query(include_str!("../../sql/schema.sql"))
+            .execute(&pool)
+            .await
+            .expect("schema only");
+        crate::db::migrations::run(&pool).await.expect("run migrations");
+        let prefs = get_preferences(&pool)
+            .await
+            .expect("preferences row after re-migration");
+        assert!(!prefs.audio_only_default);
+    }
+
     fn user_instance(id: &str, url: &str, ctype: InstanceType) -> Instance {
         Instance {
             id: id.to_string(),
