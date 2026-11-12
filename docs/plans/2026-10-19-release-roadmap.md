@@ -13,6 +13,11 @@
 3. **Crash reports, if collected, are opt-in and must never be read raw by the owner:**
    a GitHub Action files issues automatically so GitHub issues are the single source of
    truth (see 4f).
+4. **iOS runs via free personal provisioning for the foreseeable future (owner,
+   2026-11-12):** sideload to the owner's own devices, accepting the 7-day expiry and
+   re-sign ritual; no Apple Developer membership, so no TestFlight and no App Store —
+   which also retires the 3d store-rejection risk for personal installs. The re-sign
+   ritual should become a one-command script.
 
 ## Where things stand (2026-10-19)
 
@@ -252,7 +257,13 @@ Right now the app has nothing real to search or play.
 - **2d.** Native Mac polish: the menu bar, media keys and Now Playing (the media plugin
   is already loaded), and the window remembering its size and position.
 
-## Step 3 — iPhone port — DEFERRED (decision 1)
+## Step 3 — iPhone port — DEFERRED (decision 1) — PERSONAL SIDELOAD UNBLOCKED (decision 4, 2026-11-12)
+
+**Status 2026-11-12 (decision 4):** the distribution model is the free personal team —
+own devices only, 7-day expiry accepted, re-sign ritual to be scripted down to one
+command. No membership, no TestFlight, no App Store, so **3d's review risk no longer
+gates anything**. What remains for a personal port: 3b (tab bar layout, 44pt targets,
+hover replacements), 3c (background audio, lock screen, PiP), and the re-sign script.
 
 - **3a. Tauri can build for iOS, but it needs an Apple Developer account ($99 a year),
   Xcode setup and app signing. — ADJUSTED:** TestFlight itself requires the paid Apple
