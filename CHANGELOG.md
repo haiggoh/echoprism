@@ -7,6 +7,15 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.14] - 2026-11-12
+
+### Fixed — release bundles no longer trip Gatekeeper's "damaged" verdict
+
+- Measured cause: the bundler left a `linker-signed` binary with an inconsistent bundle resource seal — `codesign --verify` failed "code has no resources but signature indicates they must be present" — and with Homebrew's `com.apple.quarantine` applied, macOS arm64 rejected the app as "damaged" and recommended the Trash. The same binary had run fine when launched from the terminal, which is how it shipped four releases unnoticed (quarantined Finder launches were the only path that refused).
+- Fix: the release workflow ad-hoc signs the bundle (`codesign --force --deep --sign -`) before packaging, so the seal is consistent; quarantined installs now get the ordinary "unidentified developer" first-launch flow instead of "damaged".
+- The landing page's remedy command was also broken: `xattr -cr` fails on current macOS (`xattr` dropped `-r`); the documented form is now `xattr -d com.apple.quarantine /Applications/EchoPrism.app`.
+- Also in this release: React Router v7 future flags opted in (silences two advisory warns per launch), and `node_modules` is untracked (17,437 files were committed despite `.gitignore`; npm rewrites kept re-dirtying every checkout and tripping the ship gate's dirty check — fresh clones now install a proper ignored tree).
+
 ## [0.1.13] - 2026-11-11
 
 ### Fixed — preferences could not persist on real installs (live-confirmed)
