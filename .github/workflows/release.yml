@@ -41,6 +41,9 @@ jobs:
       - name: Build the app bundle (app only; dmg comes from hdiutil below)
         run: npm run tauri:build -- --bundles app
 
+      - name: Ad-hoc sign the bundle (consistent resource seal; unsigned distribution per roadmap decision 2)
+        run: codesign --force --deep --sign - "src-tauri/target/release/bundle/macos/EchoPrism.app"
+
       - name: Package the dmg (plain UDZO, no Finder AppleScript)
         run: |
           version=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
