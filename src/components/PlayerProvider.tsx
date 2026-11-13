@@ -362,6 +362,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // server catches up to the requested position (seen on long podcasts whose
   // CDN is slow to range). That must NOT kill playback — tracked via this ref.
   const seekingRef = useRef(false);
+  // Round 9 recovery: the position the user sought, kept in a REF because the
+  // error handler's closure can be a render old (a store read there restored
+  // 0 in the jsdom test) — refs are immune to that staleness.
+  const soughtRef = useRef<number | null>(null);
   // Round 6 Task 1 (echoprism-audio-switch-position): a `currentTime` written
   // before `loadedmetadata` is reset by the media load algorithm (WebKit), so
   // the position restore at src-change is ALSO held here and re-applied on
@@ -382,6 +386,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // must not leave the flag sticky (review 2026-11-03).
       if (el) {
         seekingRef.current = true;
+        soughtRef.current = position;
         el.currentTime = position;
       }
     },
@@ -509,11 +514,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // seeked, and the flag must not downgrade every later genuine error
         // (review 2026-11-03).
         seekingRef.current = false;
+        // Round 9 instrument (echoprism-audio-only-large): the swallowed error
+        // was invisible — log the same detail the non-seek path logs, so a
+        // stall is diagnosable from the log alone (which layer 403'd, and on
+        // which streamUrl).
+        console.warn('seek-suppressed media error, streamUrl =', streamUrl);
+        console.warn(
+          `seek-suppressed error detail: tag=${el.tagName} code=${el.error?.code} msg=${JSON.stringify(el.error?.message ?? '')} networkState=${el.networkState} readyState=${el.readyState} currentSrc=${el.currentSrc}`,
+        );
         addToast({
-          title: 'Seeking…',
-          description: 'This stream is slow to jump in — playback continues.',
+          title: 'Recovering playback…',
+          description: 'The stream dropped on that jump — re-resolving from your position.',
           variant: 'warning',
         });
+        // Round 9 recovery: an element that fired `error` NEVER recovers by
+        // itself — returning here stranded playback behind the toast (the
+        // owner's "takes minutes or never"; small jumps stayed inside the
+        // buffer and never hit the failed request, which is why only large
+        // seeks stalled). Re-run the proven toggle machinery: hold the sought
+        // position for the loadedmetadata restore and clear the stream so the
+        // single resolve effect re-resolves the current episode/format fresh.
+        pendingRestoreRef.current = soughtRef.current ?? playbackState?.position_seconds ?? null;
+        setStreamUrl(null);
         return;
       }
       setPlaying(false);

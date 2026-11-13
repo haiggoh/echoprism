@@ -79,7 +79,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('batch 4 item 6: seek errors must not kill playback', () => {
-  it('an error during a seek downgrades to a warning toast and playback continues', async () => {
+  it('an error during a seek downgrades to a recovery: toast + re-resolve (round 9)', async () => {
     const { container } = renderPlayer();
     await waitFor(() => expect(api).toBeDefined());
     await act(async () => {
@@ -97,7 +97,7 @@ describe('batch 4 item 6: seek errors must not kill playback', () => {
     });
 
         expect(usePlayerStore.getState().isPlaying).toBe(true);
-    expect(await screen.findByText('Seeking…')).toBeTruthy();
+    expect(await screen.findByText('Recovering playback…')).toBeTruthy();
     expect(screen.queryByText('Stream error')).toBeNull();
 
     // Review 2026-11-03: the flag clears on the error path too — a SECOND error

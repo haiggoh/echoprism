@@ -345,3 +345,99 @@ describe('Round 6 Task 2: seeking works in audio-only [echoprism-audio-only-seek
     stream.mockRestore();
   });
 });
+
+describe('Round 9: a seek-suppressed media error is diagnosable and recovers [echoprism-audio-only-large]', () => {
+  /**
+   * The owner's stall: an out-of-buffer seek (expired upstream URL on a
+   * direct-served stream) makes the element fire `error`; the Batch 4 guard
+   * swallowed it with a toast claiming "playback continues" — but an errored
+   * element never recovers by itself, so playback was stranded until the user
+   * poked it. Small jumps stayed inside the buffer and never hit the network,
+   * which is why only large seeks stalled.
+   *
+   * Discriminants: dropping the diagnostic warns fails test 1; dropping the
+   * re-resolve or the position re-apply fails test 2.
+   */
+  function mockStream() {
+    return vi.spyOn(episodeCommands, 'stream').mockImplementation((id: string, format?: string) =>
+      Promise.resolve({ url: `https://mock/${format ?? 'video'}/${id}.m3u8`, format: format ?? 'video' }));
+  }
+
+  const storedPosition = () => usePlayerStore.getState().playbackState?.position_seconds;
+
+  it('a seek-adjacent media error logs the element diagnostics (was: swallowed silently)', async () => {
+    const stream = mockStream();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const video = container.querySelector('video') as HTMLVideoElement;
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(video.getAttribute('src')).toBe('https://mock/video/ep-vid-1.m3u8'));
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+    await act(async () => {
+      fireEvent(audio, new Event('loadedmetadata'));
+      fireEvent(audio, new Event('seeked'));
+    });
+
+    // The out-of-buffer seek whose request fails: error fires with the seek
+    // guard armed (no `seeked` ever came).
+    await act(async () => { api.seek(2880); });
+    await act(async () => { fireEvent(audio, new Event('error')); });
+
+    expect(
+      warnSpy.mock.calls.some((c) => typeof c[0] === 'string' && c[0].includes('seek-suppressed')),
+      'the swallowed error must carry the seek-suppressed marker',
+    ).toBe(true);
+    expect(
+      warnSpy.mock.calls.some((c) => typeof c[0] === 'string' && c[0].includes('currentSrc')),
+      'the diagnostic detail (code/networkState/currentSrc) must be logged',
+    ).toBe(true);
+    warnSpy.mockRestore();
+    stream.mockRestore();
+  });
+
+  it('a seek-adjacent media error recovers: re-resolve + re-apply the sought position', async () => {
+    const stream = mockStream();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+    const video = container.querySelector('video') as HTMLVideoElement;
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(video.getAttribute('src')).toBe('https://mock/video/ep-vid-1.m3u8'));
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+    await act(async () => {
+      fireEvent(audio, new Event('loadedmetadata'));
+      fireEvent(audio, new Event('seeked'));
+    });
+    const resolvesBefore = stream.mock.calls.length;
+
+    await act(async () => { api.seek(2880); });
+    await act(async () => { fireEvent(audio, new Event('error')); });
+
+    // THE discriminant: the errored element is revived — the stream is
+    // re-resolved for the SAME format (not stranded), and the sought position
+    // is re-applied once the fresh element loads metadata.
+    await waitFor(() => {
+      expect(stream.mock.calls.length, 'the recovery must re-resolve the stream').toBeGreaterThan(resolvesBefore);
+      expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio');
+    });
+    await waitFor(() => {
+      expect(video.paused, 'the video stream must stay released (paused, not playing)').toBe(true);
+    });
+    await act(async () => { fireEvent(audio, new Event('loadedmetadata')); });
+    expect(audio.currentTime, 'the sought position (2880) is re-applied by the recovery').toBe(2880);
+    await act(async () => {
+      fireEvent(audio, new Event('seeked'));
+      fireEvent(audio, new Event('timeupdate'));
+    });
+    expect(storedPosition()).toBe(2880);
+    warnSpy.mockRestore();
+    stream.mockRestore();
+  });
+});
