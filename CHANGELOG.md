@@ -7,6 +7,22 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.15] - 2026-11-13
+
+### Fixed — a failed seek recovers instead of stranding playback; the database stops starving under load
+
+- **Seek recovery (the audio-only large-seek stall, owner-confirmed 2026-11-12):** an out-of-buffer seek whose request fails fired a media `error` that the guard swallowed with a toast claiming "playback continues" while the errored element was permanently dead — small jumps stayed inside the element's buffer and never hit the failed request, which is why only large seeks stalled. The swallowed path now logs full element diagnostics (which layer failed, on which streamUrl) and RECOVERS: re-resolves the stream and re-applies the sought position. Live instrument: the upstream serves 90%-offset Ranges in ~0.5s, exonerating googlevideo.
+- **Database pool capacity 5 → 10 + WAL:** `Failed to load episode: pool timed out while waiting for an open connection` (owner dev log, ×5) — the 5-connection pool starved under per-keystroke search stores + concurrent feed refresh + smart-link matching, and sqlx's 30s default acquire turned that into outright failures. WAL keeps searches reading while feed refreshes write; the pool config is extracted and test-pinned (8 simultaneous checkouts, writer serialization).
+- **Corporate-WiFi TLS:** reqwest now uses `rustls-tls-native-roots` — the macOS keychain's roots load, so a corporate TLS-interception CA validates instead of failing every request (the P7S1-Corp retest itself stays with the owner).
+- **Search ordering:** the podcast directory renders ABOVE the episode results (owner preference: directories first).
+- **Play-bar padding:** the fixed mini player no longer covers the page's last row — the scroll container gains the bar's height while an episode is loaded (the owner's unreachable Subscribe button).
+- **Clippy 20 → 0**, including a real hazard: the SponsorBlock cache's write guard was held across an await point, blocking every other cache reader/writer for the whole suspension.
+
+### Known issues carried forward
+
+- Initial playback still pays the full resolve chain (instance fallback on every resolve + yt-dlp + `available_at`); the stream-ahead design (instance short-circuit, hover prefetch, queue pre-roll) is in `docs/plans/2026-11-13-stream-ahead.md` awaiting an owner look at options 1–2.
+- The corporate-WiFi retest and a repro of the Play-now queue-append report are with the owner.
+
 ## [0.1.14] - 2026-11-12
 
 ### Fixed — release bundles no longer trip Gatekeeper's "damaged" verdict
