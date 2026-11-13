@@ -13,6 +13,117 @@ pub struct Database {
     pool: SqlitePool,
 }
 
+/// The production SQLite configuration, extracted so tests exercise the SAME
+/// options the app ships and a config flip is one place. `acquire` is a
+/// parameter: production uses 5 s, tests shrink it to keep the
+/// capacity-discrimination test fast.
+///
+/// Fixed values (echoprism-sqlite-pool, round 9): 10 connections — the old 5
+/// starved under the search+refresh+smart-link load (owner log 2026-11-13:
+/// 'pool timed out while waiting for an open connection' on episode loads;
+/// the capacity test reproduces it at checkout 5); WAL so feed-refresh writes
+/// do not block searches at commit; busy_timeout explicit (sqlx defaults 5 s
+/// — kept, now visible and owned here).
+pub(crate) fn production_pool(path: &std::path::Path, acquire: std::time::Duration) -> SqlitePool {
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .foreign_keys(true);
+    sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(acquire)
+        .connect_lazy_with(options)
+}
+
+#[cfg(test)]
+mod pool_config_tests {
+    use super::production_pool;
+
+    fn temp_db(tag: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "echoprism-pooltest-{}-{tag}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    /// Capacity (echoprism-sqlite-pool): the app's search + refresh +
+    /// smart-link load holds MANY connections at once; the 5-connection cap
+    /// starved later acquires for sqlx's 30 s default and surfaced in the
+    /// webview as 'pool timed out while waiting for an open connection'. The
+    /// production config must support at least 8 simultaneous checkouts.
+    #[tokio::test]
+    async fn pool_supports_eight_simultaneous_checkouts() {
+        let path = temp_db("cap");
+        let pool = production_pool(&path, std::time::Duration::from_millis(500));
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        // Pre-warm: the capacity test must measure CHECKOUTS, not cold-connect
+        // latency — 8 simultaneous lazy opens each run the WAL-setup pragmas,
+        // which can outlive a shrunken test acquire window (measured: the
+        // un-warmed variant failed on connect latency, not capacity).
+        let mut warm = Vec::new();
+        for _ in 0..8 {
+            warm.push(pool.acquire().await.unwrap());
+        }
+        drop(warm);
+        let mut held = Vec::new();
+        for i in 0..8 {
+            let conn = pool
+                .acquire()
+                .await
+                .unwrap_or_else(|e| panic!("checkout {i} starved: {e}"));
+            held.push(conn);
+        }
+        assert_eq!(held.len(), 8);
+    }
+
+    /// Writer contention: two concurrent write transactions must serialize via
+    /// busy_timeout — the pre-fix config had none, so the second writer died
+    /// with an immediate 'database is locked' instead of waiting its turn.
+    #[tokio::test]
+    async fn concurrent_writers_serialize_via_busy_timeout() {
+        let path = temp_db("busy");
+        let pool = production_pool(&path, std::time::Duration::from_secs(5));
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let p1 = pool.clone();
+        let writer_a = tokio::spawn(async move {
+            let mut tx = p1.begin().await.unwrap();
+            sqlx::query("INSERT INTO t (v) VALUES ('a')")
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            // Hold A's write lock long enough that B's insert collides with it.
+            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            tx.commit().await.unwrap();
+        });
+
+        let p2 = pool.clone();
+        let writer_b = tokio::spawn(async move {
+            // Start while A holds its write; must WAIT (busy_timeout), not die.
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let mut tx = p2.begin().await.unwrap();
+            sqlx::query("INSERT INTO t (v) VALUES ('b')")
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+        });
+
+        writer_a.await.unwrap();
+        writer_b.await.unwrap();
+    }
+}
+
 impl Database {
     /// Read access to the pool for commands that compose their own queries
     /// (notifications, history hydration).
@@ -37,12 +148,7 @@ impl Database {
         std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
 
         let db_path = app_dir.join("echoprism.db");
-        let database_url = format!("sqlite://{}?mode=rwc", db_path.display());
-
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_lazy(&database_url)
-            .map_err(|e| e.to_string())?;
+        let pool = production_pool(&db_path, std::time::Duration::from_secs(5));
 
         let db = Self { pool };
         db.migrate().await?;
