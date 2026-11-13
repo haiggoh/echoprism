@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -15,7 +15,7 @@ import { ChannelsScreen } from './components/screens/ChannelsScreen';
 import { ChannelScreen } from './components/screens/ChannelScreen';
 import { SmartLinksScreen } from './components/screens/SmartLinksScreen';
 import { OnboardingScreen } from './components/screens/OnboardingScreen';
-import { PlayerProvider } from './components/PlayerProvider';
+import { PlayerProvider, usePlayer } from './components/PlayerProvider';
 import { SplashScreen } from './components/SplashScreen';
 import { settingsCommands } from './hooks/useTauriCommands';
 
@@ -26,6 +26,23 @@ import { settingsCommands } from './hooks/useTauriCommands';
  *  only milliseconds and nobody saw it (the pre-JS frame is covered by the
  *  static pre-splash in index.html). */
 export const SPLASH_MIN_MS = 900;
+
+/** Round 9 (echoprism-ui-the-play-bar): the mini player is `fixed bottom-0`
+ *  (~67px tall) — without compensating bottom padding the page's LAST row sits
+ *  behind it and cannot be scrolled into view (the owner could not reach a
+ *  channel page's Subscribe button). The padding follows the bar's own
+ *  visibility condition (currentEpisode), so idle pages keep their full height. */
+export function MainScroller({ children }: { children: ReactNode }) {
+  const { currentEpisode } = usePlayer();
+  return (
+    <main
+      className={`flex-1 overflow-auto ${currentEpisode ? 'pb-[68px]' : ''}`}
+      id="main-content"
+    >
+      {children}
+    </main>
+  );
+}
 
 function AppRoutes() {
   const navigate = useNavigate();
@@ -76,7 +93,7 @@ function AppRoutes() {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-auto" id="main-content">
+          <MainScroller>
             <Routes>
               <Route path="/onboarding" element={<OnboardingScreen />} />
               <Route path="/feed" element={<FeedScreen />} />
@@ -95,7 +112,7 @@ function AppRoutes() {
               <Route path="/" element={<Navigate to="/feed" replace />} />
               <Route path="*" element={<Navigate to="/feed" replace />} />
             </Routes>
-          </main>
+          </MainScroller>
           <MiniPlayer />
         </div>
       </div>
