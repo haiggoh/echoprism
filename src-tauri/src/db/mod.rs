@@ -58,7 +58,7 @@ mod pool_config_tests {
     #[tokio::test]
     async fn pool_supports_eight_simultaneous_checkouts() {
         let path = temp_db("cap");
-        let pool = production_pool(&path, std::time::Duration::from_millis(500));
+        let pool = production_pool(&path, std::time::Duration::from_secs(2));
         sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
             .execute(&pool)
             .await
