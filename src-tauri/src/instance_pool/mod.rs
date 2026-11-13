@@ -105,7 +105,7 @@ impl InstancePool {
         // Update instance health
         let mut instances = self.instances.write().await;
         if let Some(inst) = instances.get_mut(id) {
-            inst.health = health.clone();
+            inst.health = health;
             inst.latency_ms = Some(latency);
             inst.last_checked = Some(now_str.clone());
         }

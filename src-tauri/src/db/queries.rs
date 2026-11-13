@@ -1319,7 +1319,7 @@ pub async fn list_linked_channels(
             confirmed_links: ids.len() as i64,
         })
         .collect();
-    out.sort_by(|a, b| b.confirmed_links.cmp(&a.confirmed_links));
+    out.sort_by_key(|a| std::cmp::Reverse(a.confirmed_links));
     Ok(out)
 }
 

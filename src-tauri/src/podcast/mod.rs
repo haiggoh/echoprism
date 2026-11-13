@@ -105,7 +105,7 @@ impl PodcastManager {
             // did), because a stored '' defeats the `IS NULL` backfill guard and
             // renders an empty <img src> in the list.
             .filter(|u| !u.trim().is_empty())
-            .or_else(|| channel.image().and_then(|img| Some(img.url.clone())).filter(|u| !u.trim().is_empty()));
+            .or_else(|| channel.image().map(|img| img.url.clone()).filter(|u| !u.trim().is_empty()));
 
         let mut episodes = Vec::new();
         for item in channel.items {

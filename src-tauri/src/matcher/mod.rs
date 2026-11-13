@@ -121,7 +121,7 @@ impl Scorer {
         // inside the longer choice, and require FULL coverage of the shorter.
         self.fuzzy
             .fuzzy_indices(longer, shorter)
-            .map_or(false, |(_, idx)| idx.len() == shorter.chars().count())
+            .is_some_and(|(_, idx)| idx.len() == shorter.chars().count())
     }
 
     /// Greedy bipartite word match (exact first, then fuzzy) → Jaccard over
@@ -353,7 +353,7 @@ impl Scorer {
             return 0.5;
         }
 
-        let diff = if dur1 > dur2 { dur1 - dur2 } else { dur2 - dur1 };
+        let diff = dur1.abs_diff(dur2);
         if diff <= config.max_duration_diff_seconds {
             1.0 - (diff as f64 / config.max_duration_diff_seconds as f64)
         } else {
@@ -525,7 +525,7 @@ impl EpisodeMatcher {
         let db = app_handle.state::<Arc<Database>>().inner().clone();
 
         Self {
-            db: db,
+            db,
             scorer: Scorer::new(),
             matching_config: config.unwrap_or_default(),
         }

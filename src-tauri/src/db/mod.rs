@@ -5,7 +5,7 @@ pub mod queries;
 
 use crate::types::*;
 use crate::db::queries::DbResult;
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::SqlitePool;
 use tauri::Manager;
 
 #[derive(Clone)]

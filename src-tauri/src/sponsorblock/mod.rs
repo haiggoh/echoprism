@@ -56,14 +56,19 @@ impl SponsorBlockManager {
         // Fetch from SponsorBlock API
         let segments = self.fetch_from_api(video_id).await?;
         
-        // Cache the result (24 hours)
-        let mut cache = self.cache.write();
-        cache.insert(video_id.to_string(), SponsorBlockCacheEntry {
-            segments: segments.clone(),
-            fetched_at: chrono::Utc::now(),
-            expires_at: chrono::Utc::now() + chrono::Duration::hours(24),
-        });
-        
+        // Cache the result (24 hours). The guard is scoped to the insert and
+        // dropped BEFORE the await below: a std::sync guard held across an
+        // await point can block every other reader/writer for the whole
+        // suspension (clippy await_holding_lock, round 9).
+        {
+            let mut cache = self.cache.write();
+            cache.insert(video_id.to_string(), SponsorBlockCacheEntry {
+                segments: segments.clone(),
+                fetched_at: chrono::Utc::now(),
+                expires_at: chrono::Utc::now() + chrono::Duration::hours(24),
+            });
+        }
+
         // Also save to database for persistence
         self.save_to_db(video_id, &segments).await?;
         

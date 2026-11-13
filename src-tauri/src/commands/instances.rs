@@ -14,7 +14,7 @@ pub async fn list_instances(db: State<'_, Database>, pool: State<'_, InstancePoo
     // Merge DB instances with pool health status
     Ok(instances.into_iter().map(|mut inst| {
         if let Some(pool_inst) = pool_instances.iter().find(|p| p.id == inst.id) {
-            inst.health = pool_inst.health.clone();
+            inst.health = pool_inst.health;
             inst.latency_ms = pool_inst.latency_ms;
         }
         inst

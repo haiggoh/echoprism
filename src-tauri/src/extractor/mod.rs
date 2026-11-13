@@ -247,8 +247,8 @@ impl Extractor {
             .map_err(|e| format!("Failed to parse streams: {}", e))?;
 
         let stream = streams.into_iter()
-            .filter(|s| format.map_or(true, |f| s.format.contains(f)))
-            .filter(|s| quality.map_or(true, |q| s.quality.contains(q)))
+            .filter(|s| format.is_none_or(|f| s.format.contains(f)))
+            .filter(|s| quality.is_none_or(|q| s.quality.contains(q)))
             .max_by_key(|s| s.quality.parse::<u32>().unwrap_or(0))
             .ok_or("No suitable stream found")?;
 
@@ -275,12 +275,10 @@ impl Extractor {
             let vid = vid.clone();
             let format_id = format_id.clone();
             Box::pin(async move {
-                let args = vec![
-                    "--no-playlist".to_string(),
+                let args = ["--no-playlist".to_string(),
                     "--no-warnings".to_string(),
                     "-J".to_string(),
-                    format!("https://www.youtube.com/watch?v={vid}"),
-                ];
+                    format!("https://www.youtube.com/watch?v={vid}")];
                 let out = crate::netpath::run_with_netpath(
                     &netpath,
                     |v4| {
@@ -328,7 +326,7 @@ impl Extractor {
         let output = self.yt_dlp_output(&args).await?;
         let dump: YtDlpDump = serde_json::from_slice(&output.stdout)
             .map_err(|e| format!("yt-dlp -J parse failed: {e}"))?;
-        let want_audio = format.map_or(false, |f| f.eq_ignore_ascii_case("audio"));
+        let want_audio = format.is_some_and(|f| f.eq_ignore_ascii_case("audio"));
         // Round 5 (owner 2026-11-05: audio-only of YouTube still failed): a
         // googlevideo edge can 403 a URL that another edge served fine a
         // minute ago (measured live: same format, 403 then 206). So don't pick
@@ -621,7 +619,7 @@ fn select_piped_stream(
 ) -> Result<StreamUrl, String> {
     let want_audio = matches!(format, Some(f) if f.eq_ignore_ascii_case("audio"));
     let quality_ok = |s: &PipedStreamEntry| {
-        quality.map_or(true, |q| s.quality.as_deref().map_or(false, |sq| sq.contains(q)))
+        quality.is_none_or(|q| s.quality.as_deref().is_some_and(|sq| sq.contains(q)))
     };
     let into_url = |best: PipedStreamEntry| StreamUrl {
         url: best.url,
@@ -648,7 +646,7 @@ fn select_piped_stream(
             .filter(|s| {
                 s.format
                     .as_deref()
-                    .map_or(true, |f| !matches!(f.to_ascii_uppercase().as_str(), "HLS" | "DASH"))
+                    .is_none_or(|f| !matches!(f.to_ascii_uppercase().as_str(), "HLS" | "DASH"))
             })
             .max_by_key(|s| piped_quality_rank(&s.quality));
         if let Some(best) = best {
@@ -865,6 +863,7 @@ fn parse_invidious_search(body: &str) -> Result<Vec<VideoInfo>, String> {
 ///     resolution plus the separate audio rendition, and WebKit's native HLS
 ///     joins them and adapts quality itself (measured 2026-10-22: 16 avc1
 ///     variants with AUDIO groups, fetchable without extra headers).
+///
 /// A yt-dlp `-J` dump, reduced to the fields stream selection needs.
 #[derive(Debug, Deserialize)]
 struct YtDlpDump {
@@ -894,7 +893,7 @@ struct YtDlpFormat {
 }
 
 fn is_none_codec(c: &Option<String>) -> bool {
-    c.as_deref().map_or(true, |c| c == "none")
+    c.as_deref().is_none_or(|c| c == "none")
 }
 
 /// Longest we wait for a format's `available_at`: a bogus far-future value
@@ -943,8 +942,8 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
             && (f.url.as_ref().is_some_and(|u| !u.is_empty()) || f.manifest_url.is_some())
     };
     let progressive = |f: &YtDlpFormat| {
-        f.url.as_ref().map_or(false, |u| !u.is_empty())
-            && f.protocol.as_deref().map_or(true, |p| p.starts_with("http"))
+        f.url.as_ref().is_some_and(|u| !u.is_empty())
+            && f.protocol.as_deref().is_none_or(|p| p.starts_with("http"))
     };
     let cands: Vec<YtDlpFormat> = formats.iter().filter(|f| usable(f)).cloned().collect();
     if want_audio {
