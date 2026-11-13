@@ -534,7 +534,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // seeks stalled). Re-run the proven toggle machinery: hold the sought
         // position for the loadedmetadata restore and clear the stream so the
         // single resolve effect re-resolves the current episode/format fresh.
-        pendingRestoreRef.current = soughtRef.current ?? playbackState?.position_seconds ?? null;
+        pendingRestoreRef.current = soughtRef.current;
         setStreamUrl(null);
         return;
       }
