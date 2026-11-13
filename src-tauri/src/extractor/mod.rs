@@ -1537,6 +1537,95 @@ mod tests {
         eprintln!("LIVE audio mid-stream seek: total={total} start={start} cr={cr2} got={got} bytes");
     }
 
+    /// Round 9 (echoprism-audio-only-large): the owner's stall — audio-only seeks
+    /// to a LARGE offset hang "minutes", small jumps work. Discriminate the
+    /// upstream from the frontend: a 90%-offset Range with timing, then a second
+    /// Range after a 10 s wall-clock gap (the URL-expiry window; the direct-URL
+    /// path here deliberately bypasses the proxy's refresh). A stall reproduces
+    /// as this test exceeding its own bound. `--ignored` live: network + yt-dlp.
+    #[tokio::test]
+    #[ignore]
+    async fn live_round9_audio_only_large_offset_seek_with_timing() {
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Broken);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
+        let s = ex
+            .get_stream_with_yt_dlp("tuN5h65fhBk", Some("audio"), None)
+            .await
+            .expect("resolve audio");
+        let client = reqwest::Client::new();
+        let head = client
+            .get(&s.url)
+            .header("Range", "bytes=0-")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(head.status(), 206, "probe: {}", s.url);
+        let cr = head
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let total: u64 = cr
+            .rsplit('/')
+            .next()
+            .unwrap_or("0")
+            .parse()
+            .expect("total size after / in Content-Range");
+        drop(head);
+
+        let far = total * 9 / 10;
+        let t0 = std::time::Instant::now();
+        let r = client
+            .get(&s.url)
+            .header("Range", format!("bytes={far}-"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 206, "90%-offset range must be honoured: {}", s.url);
+        let cr_far = r
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            cr_far.starts_with(&format!("bytes {far}-")),
+            "Content-Range must start at the 90% offset, got {cr_far}"
+        );
+        let first = t0.elapsed();
+        drop(r);
+
+        // Second jump after a wall-clock gap: minutes into listening, the
+        // element re-requests — if the URL has expired by then, the element
+        // sees a 403 on a plain seek (the proxy's refresh only covers URLs it
+        // serves, not this direct path).
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        let back = total / 4;
+        let t1 = std::time::Instant::now();
+        let r2 = client
+            .get(&s.url)
+            .header("Range", format!("bytes={back}-"))
+            .send()
+            .await
+            .unwrap();
+        let status2 = r2.status();
+        let second = t1.elapsed();
+        eprintln!(
+            "LIVE round9 large-offset: total={total} far={far} first={first:?} status2={status2} second={second:?} (direct URL, no proxy refresh)"
+        );
+        assert!(
+            first < std::time::Duration::from_secs(30),
+            "90%-offset Range took {first:?} — the upstream stall class"
+        );
+        assert_eq!(
+            status2, 206,
+            "second seek after 10s must still serve (got {status2}) — a 403 means the expiry window is shorter than listening gaps and plain seeks see it"
+        );
+    }
+
     #[test]
     fn rank_excludes_mhtml_storyboards() {
         let mut sb = fmt("https://i.ytimg.com/sb/x/M0.jpg", Some("none"), Some("none"), None, Some(45));
