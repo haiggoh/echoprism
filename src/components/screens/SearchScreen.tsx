@@ -126,6 +126,15 @@ export function SearchScreen() {
           />
         )}
 
+        {/* 2e: the iTunes directory — owner 2026-11-13 (echoprism-search-owner-
+            wants): DIRECTORIES FIRST, episodes further down. 'all' and
+            'podcast' filters only, so the live-smoke criterion (podcast AND
+            videos in one search) holds on the default tab and 'video'/'queue'
+            cost no third-party query. */}
+        {showResults && (filter === 'all' || filter === 'podcast') && (
+          <PodcastDirectorySection query={submittedQuery} />
+        )}
+
         {showResults && !isLoading && !error && episodes && episodes.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {episodes.map((episode) => (
@@ -139,13 +148,6 @@ export function SearchScreen() {
               />
             ))}
           </div>
-        )}
-
-        {/* 2e: the iTunes directory — 'all' and 'podcast' filters only, so the
-            live-smoke criterion (podcast AND videos in one search) holds on
-            the default tab and 'video'/'queue' cost no third-party query. */}
-        {showResults && (filter === 'all' || filter === 'podcast') && (
-          <PodcastDirectorySection query={submittedQuery} />
         )}
       </div>
     </div>

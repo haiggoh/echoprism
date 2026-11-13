@@ -134,4 +134,19 @@ describe('2e: podcast directory on the Search screen', () => {
       expect(screen.queryByText('Search failed')).toBeNull();
     });
   });
+
+  it('round 9 (echoprism-search-owner-wants): the directory renders ABOVE the episode results', async () => {
+    const { container } = renderSearch();
+    submitQuery('news'); // matches episode titles (Some/Even More News) AND the directory's 'News' genre
+    await screen.findByText('The Weekly Signal'); // directory result present
+    await screen.findByText('Some More News: Why Billionaires Should Not Exist'); // episode cards present
+
+    const heading = screen.getByRole('heading', { name: /podcast directory/i });
+    const grid = container.querySelector('div.grid');
+    expect(grid, 'the episode results grid rendered').toBeTruthy();
+    expect(
+      heading.compareDocumentPosition(grid as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the directory heading must PRECEDE the episode grid (owner 2026-11-13: directories first, episodes further down)',
+    ).toBeTruthy();
+  });
 });
