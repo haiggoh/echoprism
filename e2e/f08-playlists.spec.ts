@@ -10,6 +10,10 @@ import { expect, test } from '@playwright/test';
  * a full page load would reset it.
  */
 test('F08: save queue as playlist → listed → replay fills the queue in order', async ({ page }) => {
+  // Round 10: seed add-to-END through the real Settings flow (the card's
+  // aria-label stays 'Add to end'; the default is now 'Play next').
+  await page.goto('/settings');
+  await page.getByText('Add to End', { exact: true }).click();
   await page.goto('/feed');
 
   const firstCard = page.locator('article', { hasText: 'How Invidious pools actually work' }).first();

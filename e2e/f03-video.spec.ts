@@ -16,7 +16,7 @@ test('F03-H1 (subset): clicking a video card plays it in the player', async ({ p
 
   await page
     .locator('article', { hasText: 'How Invidious pools actually work' })
-    .getByRole('button', { name: 'Play now' })
+    .getByRole('button', { name: 'Play now' }).first()
     .click();
   await expect(page).toHaveURL(/\/player\/ep-video-1$/);
 

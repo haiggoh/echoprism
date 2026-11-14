@@ -10,9 +10,11 @@ async function criticalSeriousCount(page: import('@playwright/test').Page): Prom
   const results = await new AxeBuilder({ page }).analyze();
   const serious = results.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious');
   if (serious.length > 0) {
-    // Fail with the rule ids + sample targets so the findings are actionable.
+    // Fail with the rule ids + sample targets + node HTML so the findings are
+    // actionable (round 10: a bare target selector named the CLASS, not the
+    // element — the HTML names the actual button/label to fix).
     const summary = serious
-      .map((v) => `${v.id}(${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`)
+      .map((v) => `${v.id}(${v.impact}): ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')} :: ${(n.html ?? '').slice(0, 200)}`).join(' | ')}`)
       .join('; ');
     throw new Error(`axe violations — ${summary}`);
   }
@@ -31,7 +33,7 @@ test('axe: no critical/serious violations on feed, settings, player', async ({ p
   await page.goto('/feed');
   await page
     .locator('article', { hasText: 'How Invidious pools actually work' })
-    .getByRole('button', { name: 'Play now' })
+    .getByRole('button', { name: 'Play now' }).first()
     .click();
   await expect(page).toHaveURL(/\/player\/ep-video-1$/);
   await expect(page.locator('video')).toBeVisible();

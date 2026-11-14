@@ -33,7 +33,7 @@ test('F06-H1 (subset): both families linked at search; each plays its D7 default
   await expect(emnCard.getByText('Link')).toBeVisible();
 
   // D7: the SMN-titled episode plays VIDEO (seeded rule ch-3 → video).
-  await smnCard.getByRole('button', { name: 'Play now' }).click();
+  await smnCard.getByRole('button', { name: 'Play now' }).first().click();
   await expect(page).toHaveURL(/\/player\/ep-smn-1$/);
   const video = page.locator('video');
   await expect(video).toHaveAttribute('src', /\/mock-media\/ep-smn-1\.webm$/, { timeout: 10_000 });
@@ -55,7 +55,7 @@ test('F06-H1 (subset): both families linked at search; each plays its D7 default
   // the engine's hidden <audio> element.
   await page
     .locator('article', { hasText: 'Even More News: Why Billionaires Should Not Exist' })
-    .getByRole('button', { name: 'Play now' })
+    .getByRole('button', { name: 'Play now' }).first()
     .click();
   await expect(page).toHaveURL(/\/player\/ep-emn-1$/);
   const audio = page.locator('audio');

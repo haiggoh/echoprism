@@ -24,7 +24,7 @@ test('F07-H1: playing media lands in History', async ({ page }) => {
   await page.getByRole('link', { name: 'Feed' }).click();
   await page
     .locator('article', { hasText: 'How Invidious pools actually work' })
-    .getByRole('button', { name: 'Play now' })
+    .getByRole('button', { name: 'Play now' }).first()
     .click();
   await expect(page).toHaveURL(/\/player\//, { timeout: 10_000 });
   await page.waitForTimeout(1000); // the resolve completes → history row

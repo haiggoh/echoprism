@@ -15,7 +15,7 @@ test('F04-H1 (subset): clicking a podcast card resolves its audio stream', async
   // Owner decision 2026-11-02: a plain click queues; Play now plays.
   await page
     .locator('article', { hasText: 'RSS is winning again' })
-    .getByRole('button', { name: 'Play now' })
+    .getByRole('button', { name: 'Play now' }).first()
     .click();
   await expect(page).toHaveURL(/\/player\/ep-pod-1$/);
 
@@ -83,7 +83,7 @@ test('F04-H3 (Phase A): subscribing then clicking an episode resolves its enclos
   await page
     .getByTestId('directory-episode-row')
     .filter({ hasText: /Episode 117/ })
-    .getByRole('button', { name: 'Play now' })
+    .getByRole('button', { name: 'Play now' }).first()
     .click();
 
   await expect(page).toHaveURL(/\/player\//, { timeout: 10_000 });
