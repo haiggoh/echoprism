@@ -1,6 +1,6 @@
 [package]
 name = "echoprism"
-version = "0.1.16"
+version = "0.1.17"
 description = "EchoPrism - Two streams become one"
 authors = ["EchoPrism Team"]
 edition = "2021"

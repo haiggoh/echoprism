@@ -7,6 +7,13 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.17] - 2026-11-14
+
+### Fixed — the e2e suite is fully green on the shipped tree
+
+- The last 4 e2e failures were stale-spec plumbing, not app bugs: the queue specs' `goto('/feed')` after seeding the queue-behavior preference was a full page load that reset the in-memory mock DB — they now navigate via the sidebar link (client-side) after clicking the Preferences tab (the Settings screen defaults to Instances). 3/3 green.
+- The mini player's title button accessible name now uses a plain space between title and channel (`Open player: <title> <channel>`) — the em-dash broke the contiguous visible-text substring WCAG 2.5.3 requires, so axe flagged it even with the channel included. The axe failure message now prints 600 chars of the offending element's HTML.
+
 ## [0.1.16] - 2026-11-14
 
 ### Fixed — the e2e suite is green again, one real accessibility defect caught, and dead instances stop burning every resolve
