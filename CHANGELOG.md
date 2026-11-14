@@ -7,6 +7,14 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.16] - 2026-11-14
+
+### Fixed — the e2e suite is green again, one real accessibility defect caught, and dead instances stop burning every resolve
+
+- **e2e suite repaired (9 → 0 failures):** the failures were stale specs predating batch 4's UI — the card gained a second legitimate "Play now" button (Playwright strict-mode) and the queue button's label became Settings-driven. Specs now disambiguate (`.first()`) and seed add-to-end through the real Settings flow; the axe helper names the offending element's HTML in its failure message. Playwright's browser binary also needed installing in fresh checkouts (`npx playwright install`) — without it every test fails at launch.
+- **Accessibility:** axe caught a real one — the mini player's title button announced only the episode title while visibly showing the channel too (WCAG 2.5.3 label-in-name). Its accessible name now reads `Open player: <title> — <channel>`.
+- **Start latency (stream-ahead option 0):** `resolve_stream` now reports which instances were attempted and failed, and the command layer degrades them in the pool — previously selection filtered `Failed` instances but nothing ever *set* that state from a resolve attempt, so dead instances burned their timeout on every single play. Degraded instances are still tried (last in the health order), so the feedback loop is self-healing. Live-tested: two dead instances are reported by id and the yt-dlp fallback resolves.
+
 ## [0.1.15] - 2026-11-13
 
 ### Fixed — a failed seek recovers instead of stranding playback; the database stops starving under load
