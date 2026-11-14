@@ -117,11 +117,10 @@ impl Extractor {
     /// then fall back to the local yt-dlp binary — the same failover policy
     /// as search.
     /// Returns the resolved stream PLUS the ids of instances that were
-    /// attempted and failed, so the caller can degrade them in the pool:
-    /// selection filters `Failed` instances, but nothing ever SET that state
-    /// from resolve attempts, so a dead instance kept burning its timeout on
-    /// every resolve (round 9 option 0, echoprism-initial-playback).
-    pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<(StreamUrl, Vec<String>), String> {
+    /// attempted and failed PLUS the id of the instance that served (if any),
+    /// so the caller can feed the pool's health + failure-streak bookkeeping
+    /// (rounds 9/13, echoprism-initial-playback).
+    pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<(StreamUrl, Vec<String>, Option<String>), String> {
         // Handover 2026-10-22 item 3: the silent fallbacks logged nothing. An
         // empty candidate list means every instance is Failed (skipped by
         // order_for_search); reaching yt-dlp after attempts means all of them
@@ -136,7 +135,7 @@ impl Extractor {
         for instance in candidates {
             attempted += 1;
             match self.get_stream_from_instance(video_id, instance, format, quality).await {
-                Ok(stream) => return Ok((stream, failed_ids)),
+                Ok(stream) => return Ok((stream, failed_ids, Some(instance.id.clone()))),
                 Err(e) => {
                     tracing::debug!("instance {} failed for {video_id}: {e}", instance.url);
                     failed_ids.push(instance.id.clone());
@@ -149,7 +148,7 @@ impl Extractor {
             );
         }
         let stream = self.get_stream_with_yt_dlp(video_id, format, quality).await?;
-        Ok((stream, failed_ids))
+        Ok((stream, failed_ids, None))
     }
 
     /// Phase E: the hover-preview storyboard for one video. Piped instances
@@ -1576,7 +1575,7 @@ mod tests {
             updated_at: "2026-11-14T00:00:00Z".to_string(),
         };
         let candidates = [dead("dead-a", 1), dead("dead-b", 2)];
-        let (stream, failed_ids) = ex
+        let (stream, failed_ids, serving) = ex
             .resolve_stream("tuN5h65fhBk", Some("audio"), None, &candidates)
             .await
             .expect("yt-dlp fallback must resolve after both instances fail");
@@ -1585,6 +1584,7 @@ mod tests {
             vec!["dead-a".to_string(), "dead-b".to_string()],
             "both attempted instances must be reported as failed"
         );
+        assert_eq!(serving, None, "yt-dlp fallback means no instance served");
         assert!(stream.url.starts_with("http"), "fallback stream must be playable");
     }
 
@@ -2062,13 +2062,15 @@ mod tests {
             created_at: now.clone(),
             updated_at: now,
         };
-        let (stream, failed_instances) = extractor
+        let piped_id = piped.id.clone();
+        let (stream, failed_instances, serving) = extractor
             .resolve_stream("dQw4w9WgXcQ", None, None, &[piped])
             .await
             .expect("live stream resolution");
+        assert_eq!(serving.as_deref(), Some(piped_id.as_str()), "the instance that served must be reported");
         println!(
-            "LIVE stream: {} ({}, {}) failed_instances={failed_instances:?}",
-            stream.url, stream.format, stream.quality
+            "LIVE stream: {} ({}, {}) failed_instances={failed_instances:?} serving={:?}",
+            stream.url, stream.format, stream.quality, serving.as_deref()
         );
         assert!(
             stream.url.starts_with("http"),

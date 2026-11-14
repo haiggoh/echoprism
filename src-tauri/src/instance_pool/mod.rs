@@ -18,6 +18,36 @@ pub struct InstancePool {
     db: Arc<Database>,
     app_handle: AppHandle,
     pub auto_failover: Arc<RwLock<bool>>,
+    /// Per-instance consecutive RESOLVE-attempt failure streak (round 13).
+    /// Degraded only reorders; at FAIL_STREAK_LIMIT the instance goes Failed
+    /// and is excluded from candidates — the 5-min background probe is the
+    /// only way back to Healthy (test_instance clears the streak on success).
+    pub resolve_fail_streaks: Arc<RwLock<HashMap<String, u32>>>,
+}
+
+/// After how many consecutive resolve failures an instance is marked Failed.
+pub const FAIL_STREAK_LIMIT: u32 = 3;
+
+/// Pure streak bookkeeping, unit-tested without a Tauri harness: increments the
+/// streak and flips health to Failed at the limit; a success resets it.
+pub fn apply_resolve_outcome(
+    streaks: &mut HashMap<String, u32>,
+    health: &mut InstanceHealth,
+    id: &str,
+    failed: bool,
+) {
+    if failed {
+        let n = streaks.entry(id.to_string()).or_insert(0);
+        *n += 1;
+        if *n >= FAIL_STREAK_LIMIT && *health != InstanceHealth::Failed {
+            *health = InstanceHealth::Failed;
+        }
+    } else {
+        streaks.remove(id);
+        if *health == InstanceHealth::Failed {
+            *health = InstanceHealth::Unknown;
+        }
+    }
 }
 
 impl InstancePool {
@@ -33,6 +63,7 @@ impl InstancePool {
             db: Arc::new(db),
             app_handle,
             auto_failover: Arc::new(RwLock::new(true)),
+            resolve_fail_streaks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
     
@@ -106,6 +137,18 @@ impl InstancePool {
             }
         }
     }
+
+    /// Round 13 refinement: note a resolve-attempt outcome for one instance —
+    /// failures build a streak that flips the instance to Failed at
+    /// FAIL_STREAK_LIMIT (excluded from candidates); a success (or a passing
+    /// probe) resets it. Pure logic lives in apply_resolve_outcome (unit-tested).
+    pub async fn note_resolve_outcome(&self, id: &str, failed: bool) {
+        let mut streaks = self.resolve_fail_streaks.write().await;
+        let mut instances = self.instances.write().await;
+        if let Some(inst) = instances.get_mut(id) {
+            apply_resolve_outcome(&mut streaks, &mut inst.health, id, failed);
+        }
+    }
     
     pub async fn test_instance(&self, id: &str) -> Result<InstanceHealth, String> {
         let instance = self.get(id).await.ok_or("Instance not found")?;
@@ -121,6 +164,10 @@ impl InstancePool {
             inst.health = health;
             inst.latency_ms = Some(latency);
             inst.last_checked = Some(now_str.clone());
+        }
+        // A passing probe also clears any resolve-failure streak (revival).
+        if health == InstanceHealth::Healthy {
+            self.resolve_fail_streaks.write().await.remove(id);
         }
 
         Ok(health)
@@ -198,6 +245,7 @@ impl Clone for InstancePool {
             db: self.db.clone(),
             app_handle: self.app_handle.clone(),
             auto_failover: self.auto_failover.clone(),
+            resolve_fail_streaks: self.resolve_fail_streaks.clone(),
         }
     }
 }
@@ -408,5 +456,32 @@ mod health_probe_tests {
             "live body must carry the Piped marker"
         );
         println!("LIVE piped probe: {} → 200 with marker", url);
+    }
+
+    #[test]
+    fn resolve_failure_streak_flips_to_failed_at_the_limit_and_success_resets() {
+        use super::{apply_resolve_outcome, FAIL_STREAK_LIMIT};
+        let mut streaks = HashMap::new();
+        let mut health = InstanceHealth::Healthy;
+        let id = "inst-1";
+
+        for i in 1..FAIL_STREAK_LIMIT {
+            apply_resolve_outcome(&mut streaks, &mut health, id, true);
+            assert_eq!(health, InstanceHealth::Healthy, "streak {i} below the limit keeps the instance");
+            assert_eq!(streaks[id], i);
+        }
+        apply_resolve_outcome(&mut streaks, &mut health, id, true);
+        assert_eq!(health, InstanceHealth::Failed, "at the limit the instance is excluded from candidates");
+        assert_eq!(streaks[id], FAIL_STREAK_LIMIT);
+
+        // A success (a serving instance, or a passing probe) resets the streak.
+        apply_resolve_outcome(&mut streaks, &mut health, id, false);
+        assert!(!streaks.contains_key(id), "streak cleared on success");
+        assert_eq!(health, InstanceHealth::Unknown, "Failed lifts to Unknown on success, re-admitted by the probe");
+
+        // A different instance's streak is independent.
+        apply_resolve_outcome(&mut streaks, &mut health, "inst-2", true);
+        assert_eq!(streaks.get("inst-1"), None);
+        assert_eq!(streaks["inst-2"], 1);
     }
 }
