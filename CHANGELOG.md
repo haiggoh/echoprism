@@ -7,6 +7,12 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.18] - 2026-11-14
+
+### Fixed — the last axe violation: the mini player's title button now has a matching accessible name
+
+- WCAG 2.5.3 `label-content-name-mismatch`: the title button's two `<p>` elements concatenated in `textContent` with **no separator**, so no accessible name could ever contain the visible text. Title and channel now render in one `<p>` (separator inside the span), and the accessible name reads `Open player: <title> — <channel>` — the DOM text and the name match exactly. This was the last failing e2e spec (suite: 34 passed / 1 failed → 35/35 with this).
+
 ## [0.1.17] - 2026-11-14
 
 ### Fixed — the e2e suite is fully green on the shipped tree
