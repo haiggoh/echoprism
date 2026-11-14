@@ -13,8 +13,9 @@ test('F08: save queue as playlist → listed → replay fills the queue in order
   // Round 10: seed add-to-END through the real Settings flow (the card's
   // aria-label stays 'Add to end'; the default is now 'Play next').
   await page.goto('/settings');
+  await page.getByRole('tab', { name: 'Preferences' }).click();
   await page.getByText('Add to End', { exact: true }).click();
-  await page.goto('/feed');
+  await page.getByRole('link', { name: 'Feed' }).click();
 
   const firstCard = page.locator('article', { hasText: 'How Invidious pools actually work' }).first();
   const secondCard = page.locator('article', { hasText: 'Big Buck Bunny' }).first();

@@ -159,7 +159,7 @@ export function MiniPlayer() {
           <button
             type="button"
             className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            aria-label={`Open player: ${miniTitle} — ${miniChannel}`}
+            aria-label={`Open player: ${miniTitle} ${miniChannel}`}
             onClick={() => navigate(`/player/${episode.id}`)}
           >
             <p className="font-medium text-text truncate">{episode.title || 'Unknown'}</p>

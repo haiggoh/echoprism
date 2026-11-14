@@ -16,8 +16,9 @@ test('F05-H1: add from feed, reorder, remove, clear', async ({ page }) => {
   // choice; these specs test add-to-END, so seed it through the real
   // Settings flow (the card's aria-label stays 'Add to end' either way).
   await page.goto('/settings');
+  await page.getByRole('tab', { name: 'Preferences' }).click();
   await page.getByText('Add to End', { exact: true }).click();
-  await page.goto('/feed');
+  await page.getByRole('link', { name: 'Feed' }).click();
 
   const firstCard = page.locator('article', { hasText: 'How Invidious pools actually work' }).first();
   const secondCard = page.locator('article', { hasText: 'Big Buck Bunny' }).first();
@@ -78,8 +79,9 @@ test('F05-H1: add from feed, reorder, remove, clear', async ({ page }) => {
 test('F05-E1: dragging an item onto itself leaves the queue unchanged', async ({ page }) => {
   // Same add-to-END seeding as F05-H1 (round 10).
   await page.goto('/settings');
+  await page.getByRole('tab', { name: 'Preferences' }).click();
   await page.getByText('Add to End', { exact: true }).click();
-  await page.goto('/feed');
+  await page.getByRole('link', { name: 'Feed' }).click();
 
   const firstCard = page.locator('article', { hasText: 'How Invidious pools actually work' }).first();
   const secondCard = page.locator('article', { hasText: 'Big Buck Bunny' }).first();

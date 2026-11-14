@@ -14,7 +14,7 @@ async function criticalSeriousCount(page: import('@playwright/test').Page): Prom
     // actionable (round 10: a bare target selector named the CLASS, not the
     // element — the HTML names the actual button/label to fix).
     const summary = serious
-      .map((v) => `${v.id}(${v.impact}): ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')} :: ${(n.html ?? '').slice(0, 200)}`).join(' | ')}`)
+      .map((v) => `${v.id}(${v.impact}): ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')} :: ${(n.html ?? '').slice(0, 600)}`).join(' | ')}`)
       .join('; ');
     throw new Error(`axe violations — ${summary}`);
   }
