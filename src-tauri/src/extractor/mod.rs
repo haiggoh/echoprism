@@ -116,7 +116,12 @@ impl Extractor {
     /// Resolve a playable stream URL: try each candidate instance in order,
     /// then fall back to the local yt-dlp binary — the same failover policy
     /// as search.
-    pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<StreamUrl, String> {
+    /// Returns the resolved stream PLUS the ids of instances that were
+    /// attempted and failed, so the caller can degrade them in the pool:
+    /// selection filters `Failed` instances, but nothing ever SET that state
+    /// from resolve attempts, so a dead instance kept burning its timeout on
+    /// every resolve (round 9 option 0, echoprism-initial-playback).
+    pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<(StreamUrl, Vec<String>), String> {
         // Handover 2026-10-22 item 3: the silent fallbacks logged nothing. An
         // empty candidate list means every instance is Failed (skipped by
         // order_for_search); reaching yt-dlp after attempts means all of them
@@ -127,11 +132,15 @@ impl Extractor {
             );
         }
         let mut attempted = 0usize;
+        let mut failed_ids = Vec::new();
         for instance in candidates {
             attempted += 1;
             match self.get_stream_from_instance(video_id, instance, format, quality).await {
-                Ok(stream) => return Ok(stream),
-                Err(e) => tracing::debug!("instance {} failed for {video_id}: {e}", instance.url),
+                Ok(stream) => return Ok((stream, failed_ids)),
+                Err(e) => {
+                    tracing::debug!("instance {} failed for {video_id}: {e}", instance.url);
+                    failed_ids.push(instance.id.clone());
+                }
             }
         }
         if attempted > 0 {
@@ -139,7 +148,8 @@ impl Extractor {
                 "resolve_stream({video_id}, format={format:?}): all {attempted} instance(s) failed — falling back to yt-dlp"
             );
         }
-        self.get_stream_with_yt_dlp(video_id, format, quality).await
+        let stream = self.get_stream_with_yt_dlp(video_id, format, quality).await?;
+        Ok((stream, failed_ids))
     }
 
     /// Phase E: the hover-preview storyboard for one video. Piped instances
@@ -1536,6 +1546,48 @@ mod tests {
         eprintln!("LIVE audio mid-stream seek: total={total} start={start} cr={cr2} got={got} bytes");
     }
 
+    /// Round 9 option 0 (echoprism-initial-playback): resolve attempts on DEAD
+    /// instances must report their ids so the caller can degrade them in the
+    /// pool — without the feedback, selection kept re-trying dead instances
+    /// (whose health nobody ever set from a resolve attempt) and every play
+    /// burned their timeout first. Live: needs network + yt-dlp; the fallback
+    /// path is the production one.
+    #[tokio::test]
+    #[ignore]
+    async fn live_round10_dead_instances_report_failed_ids() {
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Broken);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
+        let dead = |id: &str, port: u16| Instance {
+            id: id.to_string(),
+            url: format!("http://127.0.0.1:{port}"),
+            instance_type: InstanceType::Piped,
+            health: InstanceHealth::Healthy,
+            latency_ms: Some(5),
+            last_checked: None,
+            auto_failover: true,
+            supports_sabr: false,
+            supports_age_restricted: false,
+            region: None,
+            country: None,
+            pinned: false,
+            created_at: "2026-11-14T00:00:00Z".to_string(),
+            updated_at: "2026-11-14T00:00:00Z".to_string(),
+        };
+        let candidates = [dead("dead-a", 1), dead("dead-b", 2)];
+        let (stream, failed_ids) = ex
+            .resolve_stream("tuN5h65fhBk", Some("audio"), None, &candidates)
+            .await
+            .expect("yt-dlp fallback must resolve after both instances fail");
+        assert_eq!(
+            failed_ids,
+            vec!["dead-a".to_string(), "dead-b".to_string()],
+            "both attempted instances must be reported as failed"
+        );
+        assert!(stream.url.starts_with("http"), "fallback stream must be playable");
+    }
+
     /// Round 9 (echoprism-audio-only-large): the owner's stall — audio-only seeks
     /// to a LARGE offset hang "minutes", small jumps work. Discriminate the
     /// upstream from the frontend: a 90%-offset Range with timing, then a second
@@ -2010,11 +2062,14 @@ mod tests {
             created_at: now.clone(),
             updated_at: now,
         };
-        let stream = extractor
+        let (stream, failed_instances) = extractor
             .resolve_stream("dQw4w9WgXcQ", None, None, &[piped])
             .await
             .expect("live stream resolution");
-        println!("LIVE stream: {} ({}, {})", stream.url, stream.format, stream.quality);
+        println!(
+            "LIVE stream: {} ({}, {}) failed_instances={failed_instances:?}",
+            stream.url, stream.format, stream.quality
+        );
         assert!(
             stream.url.starts_with("http"),
             "resolved stream must be a playable http(s) URL"

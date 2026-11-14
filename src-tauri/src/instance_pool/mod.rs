@@ -93,6 +93,19 @@ impl InstancePool {
         let instances = self.instances.read().await;
         instances.get(id).cloned()
     }
+
+    /// Mark an instance Degraded after a failed resolve attempt (round 9
+    /// option 0). Degraded — not Failed — deliberately: order_for_search
+    /// still TRIES degraded instances (sorted last), so the next resolve can
+    /// prove the instance healthy again; Failed would exclude it outright.
+    pub async fn mark_degraded(&self, id: &str) {
+        let mut instances = self.instances.write().await;
+        if let Some(instance) = instances.get_mut(id) {
+            if instance.health == InstanceHealth::Healthy || instance.health == InstanceHealth::Unknown {
+                instance.health = InstanceHealth::Degraded;
+            }
+        }
+    }
     
     pub async fn test_instance(&self, id: &str) -> Result<InstanceHealth, String> {
         let instance = self.get(id).await.ok_or("Instance not found")?;

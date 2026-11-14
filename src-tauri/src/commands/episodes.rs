@@ -248,9 +248,15 @@ pub async fn stream_episode(
     }
     let video_id = video_id_for(&episode);
     let candidates = crate::instance_pool::order_for_search(&pool.get_all().await);
-    let stream = extractor
+    let (stream, failed_instances) = extractor
         .resolve_stream(&video_id, format.as_deref(), quality.as_deref(), &candidates)
         .await?;
+    // Round 9 option 0: resolve-attempt failures degrade the instances, so
+    // the next resolve skips them in the health sort (Degraded still gets
+    // TRIED — the marker is self-healing, unlike Failed).
+    for id in &failed_instances {
+        pool.mark_degraded(id).await;
+    }
     Ok(stream_info_from(stream))
 }
 
