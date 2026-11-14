@@ -51,6 +51,11 @@ export function MiniPlayer() {
   const seekStripRef = useRef<HTMLDivElement>(null);
 
   const totalDuration = duration || episode?.duration_seconds || 0;
+  // Round 10 (axe label-content-name-mismatch): the title button's VISIBLE
+  // content is the title AND the channel line — the accessible name must
+  // contain both, or speech-input users cannot invoke it by what they see.
+  const miniTitle = episode?.title || 'Unknown';
+  const miniChannel = episode?.channel?.title || 'Unknown channel';
   const progressPct =
     totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0;
 
@@ -154,7 +159,7 @@ export function MiniPlayer() {
           <button
             type="button"
             className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            aria-label={`Open player: ${episode.title || 'episode'}`}
+            aria-label={`Open player: ${miniTitle} — ${miniChannel}`}
             onClick={() => navigate(`/player/${episode.id}`)}
           >
             <p className="font-medium text-text truncate">{episode.title || 'Unknown'}</p>
