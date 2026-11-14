@@ -29,6 +29,12 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // Round 13 (echoprism-dev-mode-vite): only src/ is app code — docs/, e2e/
+    // and src-tauri/ changes (every ship's commit) forced full page reloads
+    // and raced tauri's cargo rebuilds into HMR 'module script failed' bursts.
+    watch: {
+      ignored: ['**/docs/**', '**/e2e/**', '**/src-tauri/**', '**/target/**', '**/node_modules/**'],
+    },
   },
   clearScreen: false,
   envPrefix: ['VITE_', 'TAURI_'],
