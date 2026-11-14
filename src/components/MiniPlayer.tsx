@@ -159,12 +159,15 @@ export function MiniPlayer() {
           <button
             type="button"
             className="min-w-0 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            aria-label={`Open player: ${miniTitle} ${miniChannel}`}
+            aria-label={`Open player: ${miniTitle} — ${miniChannel}`}
             onClick={() => navigate(`/player/${episode.id}`)}
           >
-            <p className="font-medium text-text truncate">{episode.title || 'Unknown'}</p>
-            <p className="text-sm text-text-muted truncate">
-              {episode.channel?.title || 'Unknown channel'}
+            {/* One text run so the DOM textContent and the accessible name
+                match exactly — two <p>s concatenate with NO space, which is
+                what axe's label-content-name-mismatch flagged (WCAG 2.5.3). */}
+            <p className="font-medium text-text truncate">
+              {miniTitle}
+              <span className="text-sm font-normal text-text-muted"> — {miniChannel}</span>
             </p>
           </button>
         </div>
