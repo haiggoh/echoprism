@@ -7,6 +7,14 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.19] - 2026-11-14
+
+### Fixed — dead instances are now skipped after repeated resolve failures; dev mode stops reloading on every commit
+
+- **Stream latency (stream-ahead option 0, refined):** `resolve_stream` reports which instances were attempted and failed *and* which one served; each failure increments a per-instance streak, and at 3 consecutive failures the instance is marked `Failed` and excluded from candidates entirely — previously it was only reordered last, so its timeout still burned on every resolve (dev log 2026-11-14). The 5-minute background probe is the only way back to Healthy (it clears the streak on a passing probe). Pure streak logic unit-tested; suite 194/194.
+- **Dev mode:** vite no longer watches `docs/`, `e2e/`, `src-tauri/` — every ship's commit there forced a full page reload and raced tauri's rebuilds into HMR failures.
+- Also verified this round: clippy is at 0 (the old warning waypoint is stale), and the duplicate `reqwest` major is the macOS system-proxy path (`system-configuration`) — deliberately kept, it is load-bearing on the corporate network.
+
 ## [0.1.18] - 2026-11-14
 
 ### Fixed — the last axe violation: the mini player's title button now has a matching accessible name
