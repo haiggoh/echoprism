@@ -14,24 +14,21 @@ extern "C" {
     fn ep_netmonitor_stop();
 }
 
-static mut TX: Option<tokio::sync::mpsc::UnboundedSender<(bool, bool)>> = None;
+static TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<(bool, bool)>> =
+    std::sync::OnceLock::new();
 
 extern "C" fn ep_netmonitor_cb(expensive: bool, constrained: bool) {
-    unsafe {
-        let tx = &raw const TX;
-        if let Some(tx) = &*tx {
-            let _ = tx.send((expensive, constrained));
-        }
+    // OnceLock: the callback fires on a GCD thread; no data race (final-review minor).
+    if let Some(tx) = TX.get() {
+        let _ = tx.send((expensive, constrained));
     }
 }
 
 /// Start the path monitor; every path update is sent on `tx` as
 /// (isExpensive, isConstrained).
 pub fn start_monitor(tx: tokio::sync::mpsc::UnboundedSender<(bool, bool)>) {
-    unsafe {
-        TX = Some(tx);
-        ep_netmonitor_start(ep_netmonitor_cb);
-    }
+    let _ = TX.set(tx);
+    unsafe { ep_netmonitor_start(ep_netmonitor_cb) }
 }
 
 /// Stop the monitor (tests / teardown).

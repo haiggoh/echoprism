@@ -7,6 +7,24 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.20] - 2026-11-16
+
+### Added — browser-fast playback start (YouTube ≈ ad-blocked browser, audio-only never slower, podcasts instant)
+
+- **Start-up timer**: every play logs click → URL → first frame with per-stage timings (instances / yt-dlp / gate / probe) and `path` (pre-resolved vs cold); last 50 kept, one greppable `startup total_ms=` line per play, plus `recent_startups` for the owner dogfood.
+- **Pre-resolve cache**: hover dwell (400 ms) and the next 2 queue items pre-resolve into a gate-passed cache keyed by (episode, mode); a click during a pending pre-resolve awaits the single in-flight resolve; concurrent prefetches capped at 2; entries expire at the googlevideo `expire` param minus 10 min; errors never cached; media error invalidates before re-resolve. Measured live: warm click ≈ 13 µs (cache hit).
+- **Polled `available_at` gate**: the googlevideo lock is now polled directly (1-byte Range GET every 300 ms, 10 s ceiling) instead of sleeping until `available_at` — measured ~2 s saved per cold resolve (the lock opens ~2 s early). Polling never goes through the stream proxy (whose 403 handler would re-run yt-dlp per poll).
+- **Per-capability instance health**: stream eligibility is judged by `/streams/<id>` (probe id `jNQXAC9IVRw`), not `/search` — bot-blocked instances no longer cost ~0.8 s per click or get re-admitted every 5 min.
+- **Capped adaptive HLS video**: video resolves to the HLS master served by the local proxy, filtered to the cap (Apple's player starts on the first listed variant; measured with a real WKWebView that it limits variants to the element's pixel size, so one master at the fullscreen cap suffices). HLS URLs are not `available_at`-gated (measured) — cold video skips the gate entirely. Progressive format rides along as a one-shot fallback.
+- **Faster cold extraction**: yt-dlp runs with `player_client=mediaconnect` on every extraction (measured fastest client set keeping both audio-only and HLS formats).
+- **Audio-only purity**: audio-only never falls back to a muxed video format (Piped or yt-dlp) — it errors and falls through to yt-dlp instead of fetching video bytes.
+- **Podcast tracker stripping**: known tracker prefixes (podtrac, pdst.fm, pscrb.fm, mgln.ai, chartable, op3, vpixl) are stripped from enclosure URLs (measured 5-hop megaphone chain → 1 redirect, 206 in ~0.3–2 s), with the original URL as a one-shot fallback; queue-origin prefetch pre-follows remaining redirects; hover never triggers podcast requests. Toggle in Settings.
+- **Settings → Playback quality**: windowed/fullscreen caps (480–2160/no cap), start quality, data saver (forces 480p), audio-only-on-metered with restore/ask, podcast tracker toggle.
+- **Audio only on metered networks (Mac, opt-in)**: NWPathMonitor `isExpensive`/`isConstrained` drives an origin-tracked audio-only switch that restores your own choice on a normal network (or asks), with an "auto" badge.
+
+### Fixed
+- Live-test follow-ups from the startup measurements folded in (gate timing stamps, fallback ordering).
+
 ## [0.1.19] - 2026-11-14
 
 ### Fixed — dead instances are now skipped after repeated resolve failures; dev mode stops reloading on every commit

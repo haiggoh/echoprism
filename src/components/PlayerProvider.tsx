@@ -188,6 +188,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Task 1: measure this play from the click onward (only the latest
       // play is measured; a later click replaces the pending record).
       startupTimer.click(ep.id, ep.video_id ? `youtube-${formatFor(mode)}` : 'podcast');
+      errorRetryRef.current = null; // new play → one fresh auto-retry allowed
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
       // Live-test Task 8: playing an episode that is ALREADY a queue item must
@@ -248,6 +249,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // REMEMBERED. The stored value is read once at mount; a toggle the user makes
   // before that read lands wins (the late read must not overwrite it).
   const audioModeTouched = useRef(false);
+  // Task 12 review: one automatic re-resolve per episode on a dead CACHED stream.
+  const errorRetryRef = useRef<string | null>(null);
+  // Whether the currently loaded streamUrl came from the cache (a cache hit
+  // failing is the dead-entry case → auto-retry; a cold resolve failing is a
+  // genuine error → the danger toast stands).
+  const lastStreamCacheHitRef = useRef(false);
   // Task 11: origin tracking for the metered audio-only rule — the auto rule
   // drives the SAME isAudioMode state but never writes the stored preference.
   const audioOriginRef = useRef<AudioOnlyOrigin>('user');
@@ -404,6 +411,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (currentEpisodeRef.current?.id === ep.id) {
           // Task 1: the URL is committed — stop the click→URL leg.
           startupTimer.urlReady(ep.id, info.timings);
+          lastStreamCacheHitRef.current = info.timings?.cache_hit ?? false;
           setStreamUrl(info.url);
           setFallbackUrl(info.fallback_url ?? null);
           // Live-test finding: history had no writer. One row per actual
@@ -643,6 +651,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // single resolve effect re-resolves the current episode/format fresh.
         pendingRestoreRef.current = soughtRef.current;
         setStreamUrl(null);
+        return;
+      }
+      // Final-review finding: a dead CACHE entry (no fallback URL) must fall
+      // back to a FRESH resolve without a user-visible error — retry the
+      // resolve ONCE per episode (guard against an error→resolve→error loop),
+      // and only then surface the destructive toast. A COLD resolve failing is
+      // a genuine error and keeps the toast path (existing tests pin that).
+      const retryEp = currentEpisodeRef.current;
+      if (retryEp && lastStreamCacheHitRef.current && errorRetryRef.current !== retryEp.id) {
+        errorRetryRef.current = retryEp.id;
+        console.warn('media element error, re-resolving once, streamUrl =', streamUrl);
+        setStreamUrl(null);
+        setResolveTick((t) => t + 1);
         return;
       }
       setPlaying(false);
