@@ -370,16 +370,16 @@ Prefixes (spec §2.6): `podtrac.com/pts/redirect.<ext>/`, `dts.podtrac.com/redir
 `async fn follow_redirects(url: &str) -> Result<String, String>` (1-byte Range GET, returns the
 final URL) used ONLY by `prefetch_stream` with `origin=="queue"`.
 
-- [ ] **Step 1: failing tests** (table): measured megaphone chain →
+- [x] **Step 1: failing tests** (table): measured megaphone chain →
       `https://traffic.megaphone.fm/VMP1004386376.mp3`; podtrac-only; chartable+podtrac nested;
       query preserved; `unknown_prefix_untouched`; `truncated_prefix_untouched`
       (`https://pdst.fm/e/` with nothing after). Frontend:
       `stripped_url_error_retries_original_once` (second error → normal error path, no loop).
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** GREEN.
-- [ ] **Live check:** `curl -4 -s -L -o /dev/null -r 0-65535 -w '%{num_redirects} %{time_starttransfer}\n'`
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** GREEN.
+- [x] **Live check:** `curl -4 -s -L -o /dev/null -r 0-65535 -w '%{num_redirects} %{time_starttransfer}\n'`
       on one stripped enclosure from the dev DB, read via `sqlite3 -readonly` (never write it).
-- [ ] **Discriminant:** remove `mgln.ai` from the list → megaphone row RED; revert.
-- [ ] **Step 5:** commit `feat(podcast): skip tracker redirects with original-URL fallback`.
+- [x] **Discriminant:** remove `mgln.ai` from the list → megaphone row RED; revert.
+- [x] **Step 5:** commit `feat(podcast): skip tracker redirects with original-URL fallback`.
 
 **🧪 Receipt 7** + offload cross-check.
 
@@ -389,7 +389,7 @@ final URL) used ONLY by `prefetch_stream` with `origin=="queue"`.
 `-J` invocation: resolve, refresh, storyboard); write findings to
 `docs/plans/2026-11-15-cold-path-findings.md`.
 
-- [ ] **Step 1 (measure, scratch script outside the repo, `--help` supported):** for 3 videos
+- [x] **Step 1 (measure, scratch script outside the repo, `--help` supported):** for 3 videos
       (`9bZkp7q19f0`, `jNQXAC9IVRw`, `kJQP7kiw5Fk`) time `yt-dlp --force-ipv4 -J` with the default
       client set and with candidates such as `--extractor-args "youtube:player_client=tv"`,
       `…=web_safari`, `…=ios`, `…player_skip=webpage,configs`. For each: extraction time,

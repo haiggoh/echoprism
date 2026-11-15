@@ -249,4 +249,34 @@ describe('PlayerProvider queue look-ahead and media error', () => {
     await waitFor(() => expect(invalidateMock).toHaveBeenCalledWith(ep.id));
     await waitFor(() => expect(streamMock).toHaveBeenCalledTimes(2), { timeout: 2000 });
   });
+
+  it('stripped_url_error_retries_original_once', async () => {
+    // Task 7: the backend resolved a tracker-stripped URL and kept the
+    // original as fallback_url. First error → play the original ONCE (no
+    // re-resolve, no invalidation); second error → normal path, no loop.
+    const ep = makeEpisode();
+    const stripped = 'https://cdn.example.com/ep.webm';
+    const original = 'https://podtrac.com/pts/redirect.mp3/https://cdn.example.com/ep.webm';
+    streamMock.mockResolvedValue({ url: stripped, format: 'video', fallback_url: original });
+    renderEngine();
+    await act(async () => {
+      api.play(ep);
+    });
+    await waitFor(() => expect(probeVideo.src).toContain(stripped));
+
+    await act(async () => {
+      fireEvent(probeVideo, new Event('error'));
+    });
+    await waitFor(() => expect(probeVideo.src).toContain('podtrac.com'));
+    // the fallback is the same cache entry — no re-resolve happened
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(invalidateMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent(probeVideo, new Event('error'));
+    });
+    await waitFor(() => expect(invalidateMock).toHaveBeenCalledWith(ep.id));
+    // second error → normal error path, no re-resolve loop
+    expect(streamMock).toHaveBeenCalledTimes(1);
+  });
 });

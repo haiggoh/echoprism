@@ -209,25 +209,38 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
         return None;
     }
     let nonempty = |u: Option<&str>| u.map(str::trim).filter(|u| !u.is_empty()).map(|u| u.to_string());
+    // Task 7: strip tracker redirects (default on until the Task 10
+    // preference lands); the ORIGINAL url rides along as fallback_url so a
+    // stripped URL that fails at play time retries the original once.
+    let strip_with_fallback = |url: String| {
+        let stripped = crate::podcast::tracker_strip::strip_trackers(&url);
+        if stripped != url {
+            (stripped, Some(url))
+        } else {
+            (url, None)
+        }
+    };
     if let Some(url) = nonempty(episode.audio_url.as_deref()) {
+        let (url, fallback_url) = strip_with_fallback(url);
         return Some(StreamInfo {
             url,
             headers: None,
             format: "audio".into(),
             timings: None,
-            fallback_url: None,
+            fallback_url,
         });
     }
     // Video-only podcast episode (e.g. "Was jetzt? – Die Woche" publishes a
     // single video/mp4 enclosure): the mp4 plays in the <video> element, and
     // under audio-only the <audio> element plays its audio track.
     if let Some(url) = nonempty(episode.video_url.as_deref()) {
+        let (url, fallback_url) = strip_with_fallback(url);
         return Some(StreamInfo {
             url,
             headers: None,
             format: "video".into(),
             timings: None,
-            fallback_url: None,
+            fallback_url,
         });
     }
     None
@@ -266,15 +279,27 @@ async fn resolve_episode_to_cached(
     quality: Option<&str>,
     pool: &InstancePool,
     extractor: &Arc<crate::extractor::Extractor>,
+    pre_follow: bool,
 ) -> std::result::Result<crate::stream_cache::CachedStream, String> {
     use crate::stream_cache::{expiry_from_url, CachedStream};
     // Phase A: the enclosure path first — playing the episode's own audio
     // beats routing an RSS guid into yt-dlp.
-    if let Some(info) = enclosure_stream_for(episode, format) {
+    if let Some(mut info) = enclosure_stream_for(episode, format) {
         tracing::info!(
             "Resolving '{}' from its podcast enclosure (episode has no video stream)",
             episode.title
         );
+        // Task 7: queue pre-follow ONLY — resolve the stripped enclosure's
+        // remaining redirect now so the play is a direct hit. Never on hover
+        // (prefetch_gate already blocks podcast hovers at the command).
+        if pre_follow {
+            if let Ok(final_url) = crate::podcast::tracker_strip::follow_redirects(&info.url).await {
+                if final_url != info.url {
+                    tracing::info!("queue pre-follow: {} -> {}", info.url, final_url);
+                    info.url = final_url;
+                }
+            }
+        }
         let expires_at = expiry_from_url(&info.url, std::time::Instant::now());
         return Ok(CachedStream {
             primary: info,
@@ -321,7 +346,7 @@ pub async fn stream_episode(
             let pool = pool.clone();
             let extractor = extractor.clone();
             async move {
-                resolve_episode_to_cached(&episode, format.as_deref(), quality.as_deref(), &pool, &extractor).await
+                resolve_episode_to_cached(&episode, format.as_deref(), quality.as_deref(), &pool, &extractor, false).await
             }
         })
         .await?;
@@ -350,6 +375,7 @@ pub async fn prefetch_stream(
         episode_id,
         mode: StreamMode::from_format(format.as_deref()),
     };
+    let pre_follow = origin == "queue"; // Task 7: queue pre-follow only, never hover
     let cache = cache.inner().clone();
     let pool = pool.inner().clone();
     let extractor = extractor.inner().clone();
@@ -360,7 +386,7 @@ pub async fn prefetch_stream(
             let pool = pool.clone();
             let extractor = extractor.clone();
             async move {
-                resolve_episode_to_cached(&episode, format.as_deref(), None, &pool, &extractor).await
+                resolve_episode_to_cached(&episode, format.as_deref(), None, &pool, &extractor, pre_follow).await
             }
         })
         .await;

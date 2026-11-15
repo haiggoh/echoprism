@@ -1,5 +1,7 @@
 //! Podcast RSS/Atom/JSON Feed parser with OPML import/export
 
+pub mod tracker_strip;
+
 use crate::types::*;
 use crate::db::Database;
 use tauri::{AppHandle, Manager};

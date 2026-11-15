@@ -95,6 +95,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  // Task 7: the ORIGINAL URL when the resolved one was tracker-stripped —
+  // on a media error the engine plays this ONCE before invalidating.
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   // What the CURRENT playback resolves through — per-play (D7 chain mode or
   // the toggle at play time). Kept separate from isAudioMode, the user's
@@ -335,6 +338,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           // Task 1: the URL is committed — stop the click→URL leg.
           startupTimer.urlReady(ep.id, info.timings);
           setStreamUrl(info.url);
+          setFallbackUrl(info.fallback_url ?? null);
           // Live-test finding: history had no writer. One row per actual
           // playback start — here, where the resolve SUCCEEDED (media that
           // fails to resolve never played, so it never enters history).
@@ -351,6 +355,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (currentEpisodeRef.current?.id !== ep.id) return;
         setPlaying(false);
         setStreamUrl(null);
+        setFallbackUrl(null);
         addToast({
           title: 'Playback unavailable',
           description:
@@ -525,6 +530,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // pending restore here too, so onTime can never be frozen by a ref that
       // no seeked will ever clear.
       pendingRestoreRef.current = null;
+      // Task 7: the resolved (stripped) URL failed and an original fallback
+      // exists → play the fallback ONCE. No re-resolve, no invalidation yet;
+      // if the fallback errors too, src === fallbackUrl and the normal path
+      // below runs (invalidate + re-resolve) — no loop.
+      if (fallbackUrl && streamUrl && streamUrl !== fallbackUrl) {
+        setStreamUrl(fallbackUrl);
+        return;
+      }
       // Task 5: the cached stream is dead — invalidate it BEFORE any
       // re-resolve below, so the cache cannot serve the same dead entry again.
       const errEp = currentEpisodeRef.current;
@@ -602,7 +615,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('error', onError);
       el.removeEventListener('playing', onPlaying);
     };
-  }, [activeEl, streamUrl, setPlaybackState, queueNext, addToast, setPlaying]);
+  }, [activeEl, streamUrl, fallbackUrl, setPlaybackState, queueNext, addToast, setPlaying]);
 
   // Keep both elements' volume/rate in sync so a format switch is seamless.
   useEffect(() => {
