@@ -41,6 +41,8 @@ impl Extractor {
     async fn yt_dlp_output(&self, args: &[String]) -> Result<std::process::Output, String> {
         let yt_dlp = self.find_yt_dlp().await?;
         let netpath = self.netpath.clone();
+        let mut args = args.to_vec();
+        with_extractor_args(&mut args);
         crate::netpath::run_with_netpath(
             &self.netpath,
             |v4| {
@@ -300,10 +302,11 @@ impl Extractor {
             let vid = vid.clone();
             let format_id = format_id.clone();
             Box::pin(async move {
-                let args = ["--no-playlist".to_string(),
+                let mut args = vec!["--no-playlist".to_string(),
                     "--no-warnings".to_string(),
                     "-J".to_string(),
                     format!("https://www.youtube.com/watch?v={vid}")];
+                with_extractor_args(&mut args);
                 let out = crate::netpath::run_with_netpath(
                     &netpath,
                     |v4| {
@@ -966,6 +969,23 @@ fn is_none_codec(c: &Option<String>) -> bool {
     c.as_deref().is_none_or(|c| c == "none")
 }
 
+/// Task 8: the single player-client set for every `-J` extraction (resolve,
+/// refresh, storyboard). Measured 2026-11-15 (IPv4, 3 videos): mediaconnect is
+/// the fastest client that keeps BOTH audio-only and HLS formats (default
+/// 2.5–5.1 s vs mediaconnect 2.2–4.0 s per extraction; tv/web_safari/ios/web
+/// fail or drop formats on this network). See
+/// docs/plans/2026-11-15-cold-path-findings.md.
+pub(crate) const YT_DLP_EXTRACTOR_ARGS: &str = "youtube:player_client=mediaconnect";
+
+/// Append the shared extractor args to any `-J` invocation (search's
+/// --dump-json calls are untouched).
+fn with_extractor_args(args: &mut Vec<String>) {
+    if args.iter().any(|a| a == "-J") {
+        args.push("--extractor-args".to_string());
+        args.push(YT_DLP_EXTRACTOR_ARGS.to_string());
+    }
+}
+
 /// Longest we wait for a format's `available_at` gate: a bogus far-future
 /// value must not hang playback.
 const MAX_AVAILABLE_AT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -1581,6 +1601,7 @@ mod tests {
         ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
         for fmt_kind in ["video", "audio"] {
             let s = ex.get_stream_with_yt_dlp("tuN5h65fhBk", Some(fmt_kind), None).await.expect("resolve");
+            println!("live {fmt_kind}: timings={:?}", s.timings);
             let r = reqwest::Client::new().get(&s.url).header("Range", "bytes=0-").send().await.unwrap();
             let ct = r.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
             assert_eq!(r.status(), 206, "{fmt_kind}: {}", s.url);
@@ -2497,6 +2518,49 @@ mod tests {
         assert_eq!(runs, 1, "polling must never trigger the proxy refresh (yt-dlp re-extraction); runs={runs}");
         assert!(s.url.starts_with("http://127.0.0.1:"), "headered URL is registered as a proxy token AFTER the gate: {}", s.url);
         let _ = std::fs::remove_file(&counter);
+    }
+
+    // ---- Task 8: one extractor-args constant on every -J invocation ----
+
+    /// Fake yt-dlp that APPENDS its argv (one line per invocation) to
+    /// `args_log` and prints a minimal one-format dump for -J calls.
+    fn extractor_with_argv_log(args_log: &std::path::Path) -> (Extractor, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("yt-dlp");
+        let log = args_log.display().to_string();
+        std::fs::write(&bin, format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{log}'\nprintf '%s\\n' '{{\"formats\":[{{\"url\":\"http://127.0.0.1:1/x.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"protocol\":\"https\"}}]}}'\n"
+        )).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Works);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set(bin.display().to_string()).unwrap();
+        (ex, dir)
+    }
+
+    #[tokio::test]
+    async fn extractor_args_applied_to_every_invocation() {
+        let log = std::env::temp_dir().join(format!("ep-argv-{}", std::process::id()));
+        let _ = std::fs::remove_file(&log);
+        let (ex, _d) = extractor_with_argv_log(&log);
+        // resolve path (-J), refresh path (-J), storyboard path (-J):
+        let _ = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await;
+        if let Some(refresh) = ex.refresh_ytdlp_url("vid", false, None) {
+            let _ = refresh().await;
+        }
+        let _ = ex.storyboard_with_yt_dlp("vid").await;
+        let content = std::fs::read_to_string(&log).unwrap_or_default();
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert!(lines.len() >= 3, "expected ≥3 yt-dlp invocations (resolve, refresh, storyboard), got {}", lines.len());
+        for line in &lines {
+            assert!(
+                line.contains("--extractor-args") && line.contains(YT_DLP_EXTRACTOR_ARGS),
+                "every -J invocation must carry the shared extractor args; offending argv: {line}"
+            );
+        }
+        let _ = std::fs::remove_file(&log);
     }
 
     // ---- Task 6: audio-only never selects a video format ----

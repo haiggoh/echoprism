@@ -395,19 +395,19 @@ final URL) used ONLY by `prefetch_stream` with `origin=="queue"`.
       `…=web_safari`, `…=ios`, `…player_skip=webpage,configs`. For each: extraction time,
       presence of an audio-only `m4a`/`opus` format, presence of an `m3u8_native` format,
       `available_at` presence. ≤ 30 runs total.
-- [ ] **Step 2 (HLS lock):** for the HLS `manifest_url`, `curl -4` the master, one variant
+- [x] **Step 2 (HLS lock):** for the HLS `manifest_url`, `curl -4` the master, one variant
       playlist and one segment immediately after extraction and every 300 ms — record 403/200
       timeline and whether any request needs headers.
-- [ ] **Step 3:** pick the fastest client set that keeps BOTH audio-only and HLS formats;
+- [x] **Step 3:** pick the fastest client set that keeps BOTH audio-only and HLS formats;
       failing test `extractor_args_applied_to_every_invocation` (fake yt-dlp script records argv,
       as the existing tests at :1105-1165 do); implement; GREEN.
-- [ ] **Step 4:** live cold measurement through the real resolve path (ignored live test) for
+- [x] **Step 4:** live cold measurement through the real resolve path (ignored live test) for
       video and audio — record totals against the ≤ 5 s target.
-- [ ] **Gate:** if cold ≤ 5 s is still missed, write the numbers + remaining options (e.g. a
+- [x] **Gate:** if cold ≤ 5 s is still missed, write the numbers + remaining options (e.g. a
       persistent extractor process) into the findings doc, add a waypoint
       `echoprism: cold start still > 5 s — options in cold-path-findings.md` marked as needing the
       owner, and CONTINUE with the remaining tasks. Do not build a persistent extractor unasked.
-- [ ] **Step 5:** commit `perf(extractor): restrict yt-dlp player clients for faster cold resolves`.
+- [x] **Step 5:** commit `perf(extractor): restrict yt-dlp player clients for faster cold resolves`.
 
 **🧪 Receipt 8** + offload cross-check (dispatch the findings doc + raw numbers for an
 independent arithmetic check).
