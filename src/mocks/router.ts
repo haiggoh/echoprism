@@ -121,6 +121,11 @@ const handlers: Record<string, Handler> = {
     return { url: `/mock-media/${ep.id}.webm`, format: 'video' };
   },
 
+  // Task 4/5: prefetch/invalidate are no-ops in the mock world (the mock has
+  // no cache; stream_episode always re-resolves fixtures).
+  prefetch_stream: () => undefined,
+  invalidate_stream: () => undefined,
+
   // Phase 3: import_youtube_subscriptions mirrors the Rust command (and its
   // ImportResult contract). The mock has no Invidious to call, so it registers
   // the fixture YouTube channels ONCE and reports 0 on any later run — the

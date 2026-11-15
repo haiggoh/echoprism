@@ -327,16 +327,16 @@ void }` (400 ms dwell, no-op when `!episode.video_id`); `upcomingQueueEpisodes(s
 n: number): Episode[]` (pure; next `n` after `currentIndex`, wraps when `repeatMode==='all'`,
 returns `[]` when `shuffle` is on — the next item is unpredictable).
 
-- [ ] **Step 1: failing tests.** `hover_dwell_prefetches_after_400ms_not_before`;
+- [x] **Step 1: failing tests.** `hover_dwell_prefetches_after_400ms_not_before`;
       `pointer_leave_before_dwell_cancels`; `podcast_card_hover_never_prefetches`;
       `prefetch_key_includes_mode` (audio-only on → `format:'audio'`);
       `upcoming_queue_wraps_on_repeat_all_and_is_empty_on_shuffle`;
       `media_error_invalidates_and_reresolves`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement; queue look-ahead fires on `currentIndex` /
+- [x] **Step 2:** FAIL. **Step 3:** implement; queue look-ahead fires on `currentIndex` /
       `items` change with `origin:'queue'`.
-- [ ] **Step 4:** GREEN (`npm run test:run`), e2e smoke `npm run test:e2e -- e2e/f03-video.spec.ts`.
-- [ ] **Discriminant:** set dwell to 0 → first test RED; revert.
-- [ ] **Step 5:** commit `feat(player): pre-resolve on hover dwell and for the next 2 queue items`.
+- [x] **Step 4:** GREEN (`npm run test:run`), e2e smoke `npm run test:e2e -- e2e/f03-video.spec.ts`.
+- [x] **Discriminant:** set dwell to 0 → first test RED; revert.
+- [x] **Step 5:** commit `feat(player): pre-resolve on hover dwell and for the next 2 queue items`.
 
 **🧪 Receipt 5** + offload cross-check.
 
@@ -345,7 +345,7 @@ returns `[]` when `shuffle` is on — the next item is unpredictable).
 **Files:** Modify `extractor/mod.rs` `select_piped_stream` (:640-665) and `rank_yt_dlp_formats`
 (:958-966). Tests in the extractor tests module.
 
-- [ ] **Step 1: failing tests.** `piped_audio_request_with_no_audio_streams_errs` (fixture with
+- [x] **Step 1: failing tests.** `piped_audio_request_with_no_audio_streams_errs` (fixture with
       empty `audioStreams` + muxed video → `Err`, so resolution falls to yt-dlp);
       `ytdlp_audio_rank_contains_no_video_codec` (every candidate has `vcodec` none).
 - [ ] **Step 2:** FAIL. **Step 3:** drop the muxed-video and manifest fallbacks from the audio

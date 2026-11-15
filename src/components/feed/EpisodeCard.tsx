@@ -4,6 +4,7 @@ import { Thumbnail } from '../ui/Thumbnail';
 import { PlayIcon } from '../ui/PlayIcon';
 import { HeadphonesIcon } from '../ui/HeadphonesIcon';
 import { useHoverPreview } from '../../hooks/useHoverPreview';
+import { usePrefetchStream } from '../../hooks/usePrefetchStream';
 import { EpisodePreview } from '../ui/EpisodePreview';
 
 interface EpisodeCardProps {
@@ -23,6 +24,18 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
   // Podcast-shaped episodes carry no video_id, so the hook stays idle for
   // them by construction.
   const { spec, frameIndex, onPointerEnter, onPointerLeave } = useHoverPreview(episode.video_id);
+  // Task 5: the same hover dwell also pre-resolves the stream (400 ms), so a
+  // click lands on a gate-passed cache entry. Composed, not replaced: the
+  // preview handlers keep their own behaviour.
+  const prefetch = usePrefetchStream(episode);
+  const handlePointerEnter = () => {
+    onPointerEnter();
+    prefetch.onPointerEnter();
+  };
+  const handlePointerLeave = () => {
+    onPointerLeave();
+    prefetch.onPointerLeave();
+  };
   // F05: dragging the card carries the episode so the queue screen can drop it.
   const setDraggedEpisode = useQueueStore((s) => s.setDraggedEpisode);
   const formatTime = (seconds?: number) => {
@@ -53,8 +66,8 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
       {/* Thumbnail */}
       <div
         className="relative aspect-video overflow-hidden bg-bg-elevated"
-        onPointerEnter={onPointerEnter}
-        onPointerLeave={onPointerLeave}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
       >
         {/* Live-test Task 9: an episode's own art, else its CHANNEL's. A
             podcast episode without its own <itunes:image> is the normal case,

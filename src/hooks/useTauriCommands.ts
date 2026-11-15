@@ -51,6 +51,11 @@ export const episodeCommands = {
     invoke<Episode[]>('search_episodes', { q, params }),
   stream: (episodeId: string, format?: string) =>
     invoke<StreamInfo>('stream_episode', { episodeId, format }),
+  /** Task 4: pre-resolve ahead of the click. origin: 'hover' | 'queue'. */
+  prefetch: (episodeId: string, format: string | undefined, origin: 'hover' | 'queue') =>
+    invoke<void>('prefetch_stream', { episodeId, format, origin }),
+  /** Task 4/5: drop the cached stream for an episode (media error → re-resolve). */
+  invalidate: (episodeId: string) => invoke<void>('invalidate_stream', { episodeId }),
 };
 
 // Podcast commands (podcasts.rs) — wired in 2e; the backend existed since 1c.

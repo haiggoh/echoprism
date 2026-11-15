@@ -12,6 +12,7 @@ import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
 import { readStoredPlaybackRate, writeStoredPlaybackRate } from './player/SpeedControl';
 import { startupTimer } from '../lib/startupTimer';
+import { upcomingQueueEpisodes, QUEUE_LOOKAHEAD } from '../hooks/usePrefetchStream';
 import { useToasts } from './ui/Toaster';
 import { Channel, Episode, PlayMode, PlayModeRule } from '../types';
 
@@ -524,6 +525,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // pending restore here too, so onTime can never be frozen by a ref that
       // no seeked will ever clear.
       pendingRestoreRef.current = null;
+      // Task 5: the cached stream is dead — invalidate it BEFORE any
+      // re-resolve below, so the cache cannot serve the same dead entry again.
+      const errEp = currentEpisodeRef.current;
+      if (errEp) {
+        // Optional chain: partial test mocks of useTauriCommands (see above).
+        episodeCommands.invalidate?.(errEp.id).catch(() => {
+          /* invalidation is best-effort; the re-resolve still runs */
+        });
+      }
       // Batch 4 item 6: an error right after a seek is the server catching up
       // to the requested position — downgrade to a warning, keep playing.
       if (seekingRef.current) {
@@ -613,6 +623,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // episode queued twice is two items, so advancing between them still plays.
   // Item ids survive setPlayMode/position rewrites, so unrelated edits are
   // ignored too.
+  // Task 5: queue look-ahead — pre-resolve the next QUEUE_LOOKAHEAD items
+  // (origin 'queue') whenever the cursor or the items move. The format sent
+  // is the CURRENT play mode, so the cached entry matches a click.
+  const shuffle = useQueueStore((s) => s.shuffle);
+  useEffect(() => {
+    for (const ep of upcomingQueueEpisodes({ items, currentIndex, repeatMode, shuffle }, QUEUE_LOOKAHEAD)) {
+      // Optional chain: engine tests partially mock useTauriCommands without
+      // prefetch — same convention as smartLinkCommands below; tsc guards the
+      // real app, where the export always exists.
+      episodeCommands
+        .prefetch?.(ep.id, playbackFormatRef.current === 'audio' ? 'audio' : 'video', 'queue')
+        .catch(() => {
+          /* best-effort */
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- playbackFormatRef is a ref; the store slices are the real deps
+  }, [items, currentIndex, repeatMode, shuffle]);
+
   const lastItemIdRef = useRef<string | undefined>(items[currentIndex]?.id);
   useEffect(() => {
     const item = items[currentIndex];
