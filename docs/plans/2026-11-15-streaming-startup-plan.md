@@ -303,15 +303,15 @@ String>, ceiling: Duration, interval: Duration) -> Result<PollOutcome, String>` 
 - In-flight dedupe: one shared future per key (e.g. `tokio::sync::OnceCell` in a `DashMap`, or
   `futures::future::Shared`); errors are NOT cached (entry removed on Err).
 
-- [ ] **Step 1: failing tests.** `click_during_prefetch_awaits_single_resolve` (resolver counter
+- [x] **Step 1: failing tests.** `click_during_prefetch_awaits_single_resolve` (resolver counter
       == 1 for a prefetch + concurrent get); `errors_are_not_cached`; `expired_entry_re_resolves`;
       `prefetch_concurrency_is_capped_at_two` (5 prefetches with a blocking resolver → max 2
       in flight); `expiry_from_url_parses_expire_param` (table incl. missing param);
       `hover_prefetch_of_podcast_makes_no_request` (fake upstream request counter stays 0).
-- [ ] **Step 2:** FAIL. **Step 3:** implement; `stream_episode` resolves through
+- [x] **Step 2:** FAIL. **Step 3:** implement; `stream_episode` resolves through
       `get_or_resolve`, sets `timings.cache_hit`.
-- [ ] **Step 4:** GREEN. **Discriminant:** remove the dedupe map lookup → first test RED; revert.
-- [ ] **Step 5:** commit `feat(stream): gate-passed stream cache with in-flight dedupe and prefetch`.
+- [x] **Step 4:** GREEN. **Discriminant:** remove the dedupe map lookup → first test RED; revert.
+- [x] **Step 5:** commit `feat(stream): gate-passed stream cache with in-flight dedupe and prefetch`.
 
 **🧪 Receipt 4** + offload cross-check.
 

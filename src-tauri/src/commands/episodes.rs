@@ -187,6 +187,7 @@ fn stream_info_from(stream: crate::extractor::StreamUrl) -> StreamInfo {
         headers: stream.headers,
         format: stream.format,
         timings: stream.timings,
+        fallback_url: None,
     }
 }
 
@@ -214,6 +215,7 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
             headers: None,
             format: "audio".into(),
             timings: None,
+            fallback_url: None,
         });
     }
     // Video-only podcast episode (e.g. "Was jetzt? – Die Woche" publishes a
@@ -225,44 +227,28 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
             headers: None,
             format: "video".into(),
             timings: None,
+            fallback_url: None,
         });
     }
     None
 }
 
-#[command]
-pub async fn stream_episode(
-    db: State<'_, Database>,
-    pool: State<'_, InstancePool>,
-    extractor: State<'_, Arc<crate::extractor::Extractor>>,
-    episode_id: String,
-    format: Option<String>,
-    quality: Option<String>,
+/// The YouTube resolve path, shared by stream_episode and prefetch_stream.
+/// Task 2: candidates exclude instances whose STREAM probe failed; resolve
+/// failures feed the STREAM health maps only.
+async fn resolve_youtube_stream(
+    pool: &InstancePool,
+    extractor: &Arc<crate::extractor::Extractor>,
+    video_id: &str,
+    format: Option<&str>,
+    quality: Option<&str>,
 ) -> std::result::Result<StreamInfo, String> {
-    let episode = db.get_episode(&episode_id).await?;
-    // Phase A: the enclosure path first — playing the episode's own audio
-    // beats routing an RSS guid into yt-dlp.
-    if let Some(info) = enclosure_stream_for(&episode, format.as_deref()) {
-        tracing::info!(
-            "Resolving '{}' from its podcast enclosure (episode has no video stream)",
-            episode.title
-        );
-        return Ok(info);
-    }
-    let video_id = video_id_for(&episode);
-    // Task 2: stream candidates are ordered like search candidates but exclude
-    // instances whose STREAM probe failed (/streams 500 = bot-blocked even
-    // when /search is 200) — the ~0.8 s per click on dead instances and the
-    // 5-min re-admission loop both came from judging streams by /search.
     let all = pool.get_all().await;
     let stream_health = pool.stream_health.read().await.clone();
     let candidates = crate::instance_pool::order_for_stream(&all, &stream_health);
     let (stream, failed_instances, serving_instance) = extractor
-        .resolve_stream(&video_id, format.as_deref(), quality.as_deref(), &candidates)
+        .resolve_stream(video_id, format, quality, &candidates)
         .await?;
-    // Resolve-attempt failures feed the STREAM health/streak maps only (round
-    // 13 machinery, moved to the stream side by Task 2); the search health of
-    // the instance is untouched. The instance that served clears its streak.
     for id in &failed_instances {
         pool.note_stream_resolve_outcome(id, true).await;
     }
@@ -272,7 +258,126 @@ pub async fn stream_episode(
     Ok(stream_info_from(stream))
 }
 
-#[derive(serde::Serialize)]
+/// Build the cache entry for one episode: the enclosure path (podcasts, no
+/// extractor) or the YouTube resolve path.
+async fn resolve_episode_to_cached(
+    episode: &Episode,
+    format: Option<&str>,
+    quality: Option<&str>,
+    pool: &InstancePool,
+    extractor: &Arc<crate::extractor::Extractor>,
+) -> std::result::Result<crate::stream_cache::CachedStream, String> {
+    use crate::stream_cache::{expiry_from_url, CachedStream};
+    // Phase A: the enclosure path first — playing the episode's own audio
+    // beats routing an RSS guid into yt-dlp.
+    if let Some(info) = enclosure_stream_for(episode, format) {
+        tracing::info!(
+            "Resolving '{}' from its podcast enclosure (episode has no video stream)",
+            episode.title
+        );
+        let expires_at = expiry_from_url(&info.url, std::time::Instant::now());
+        return Ok(CachedStream {
+            primary: info,
+            fallback: None,
+            expires_at,
+        });
+    }
+    let video_id = video_id_for(episode);
+    let info = resolve_youtube_stream(pool, extractor, &video_id, format, quality).await?;
+    let expires_at = expiry_from_url(&info.url, std::time::Instant::now());
+    Ok(CachedStream {
+        primary: info,
+        fallback: None,
+        expires_at,
+    })
+}
+
+#[command]
+pub async fn stream_episode(
+    db: State<'_, Database>,
+    pool: State<'_, InstancePool>,
+    extractor: State<'_, Arc<crate::extractor::Extractor>>,
+    cache: State<'_, Arc<crate::stream_cache::StreamCache>>,
+    episode_id: String,
+    format: Option<String>,
+    quality: Option<String>,
+) -> std::result::Result<StreamInfo, String> {
+    use crate::stream_cache::{CacheKey, StreamMode};
+    let episode = db.get_episode(&episode_id).await?;
+    // Task 4: resolve through the gate-passed cache; a click during a pending
+    // pre-resolve joins the in-flight resolve (never a second yt-dlp).
+    let key = CacheKey {
+        episode_id: episode_id.clone(),
+        mode: StreamMode::from_format(format.as_deref()),
+    };
+    let cache = cache.inner().clone();
+    let pool = pool.inner().clone();
+    let extractor = extractor.inner().clone();
+    let cached = cache
+        .get_or_resolve(key, move || {
+            let episode = episode.clone();
+            let format = format.clone();
+            let quality = quality.clone();
+            let pool = pool.clone();
+            let extractor = extractor.clone();
+            async move {
+                resolve_episode_to_cached(&episode, format.as_deref(), quality.as_deref(), &pool, &extractor).await
+            }
+        })
+        .await?;
+    Ok(cached.primary)
+}
+
+/// Pre-resolve an episode ahead of the click. `origin`: "hover" | "queue".
+/// BACKEND CHOKE POINT: hover on a podcast episode returns Ok WITHOUT any
+/// network request (hover must not inflate listening stats).
+#[command]
+pub async fn prefetch_stream(
+    db: State<'_, Database>,
+    pool: State<'_, InstancePool>,
+    extractor: State<'_, Arc<crate::extractor::Extractor>>,
+    cache: State<'_, Arc<crate::stream_cache::StreamCache>>,
+    episode_id: String,
+    format: Option<String>,
+    origin: String,
+) -> std::result::Result<(), String> {
+    use crate::stream_cache::{prefetch_gate, CacheKey, StreamMode};
+    let episode = db.get_episode(&episode_id).await?;
+    if !prefetch_gate(&episode, &origin) {
+        return Ok(());
+    }
+    let key = CacheKey {
+        episode_id,
+        mode: StreamMode::from_format(format.as_deref()),
+    };
+    let cache = cache.inner().clone();
+    let pool = pool.inner().clone();
+    let extractor = extractor.inner().clone();
+    cache
+        .prefetch(key, move || {
+            let episode = episode.clone();
+            let format = format.clone();
+            let pool = pool.clone();
+            let extractor = extractor.clone();
+            async move {
+                resolve_episode_to_cached(&episode, format.as_deref(), None, &pool, &extractor).await
+            }
+        })
+        .await;
+    Ok(())
+}
+
+/// Drop all cached entries for an episode (frontend media error → re-resolve).
+#[command]
+pub async fn invalidate_stream(
+    cache: State<'_, Arc<crate::stream_cache::StreamCache>>,
+    episode_id: String,
+) -> std::result::Result<(), String> {
+    cache.invalidate(&episode_id);
+    Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
 pub struct StreamInfo {
     pub url: String,
     pub headers: Option<std::collections::HashMap<String, String>>,
@@ -281,6 +386,10 @@ pub struct StreamInfo {
     /// enclosure path (until Task 7 stamps it) and when unavailable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timings: Option<crate::startup_timer::ResolveTimings>,
+    /// Task 4: the URL to fall back to when `url` fails at play time — the
+    /// podcast original URL (Task 7) or the progressive format (Task 9).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_url: Option<String>,
 }
 
 #[cfg(test)]

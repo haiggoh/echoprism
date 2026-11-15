@@ -13,6 +13,7 @@ mod instance_pool;
 mod extractor;
 mod netpath;
 mod startup_timer;
+mod stream_cache;
 mod stream_proxy;
 mod matcher;
 mod channel_art;
@@ -114,6 +115,9 @@ pub fn run() {
             // Start-up timing (Task 1): the last 50 measured plays.
             app.manage(startup_timer::StartupLog::default());
 
+            // Task 4: gate-passed stream cache, max 2 concurrent pre-resolves.
+            app.manage(Arc::new(stream_cache::StreamCache::new(2)));
+
             // Initialize matcher
             let matcher = matcher::EpisodeMatcher::new(app.handle().clone(), None);
             app.manage(Arc::new(matcher));
@@ -186,6 +190,8 @@ pub fn run() {
             commands::episodes::get_episode,
             commands::episodes::search_episodes,
             commands::episodes::stream_episode,
+            commands::episodes::prefetch_stream,
+            commands::episodes::invalidate_stream,
 
             // Start-up timing (Task 1)
             startup_timer::report_startup,

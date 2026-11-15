@@ -427,6 +427,9 @@ export interface StreamInfo {
   /** Task 1: stage wall-times from the backend resolve path; absent on the
    *  podcast enclosure path (until it stamps one) and when unavailable. */
   timings?: ResolveTimings | null;
+  /** Task 4: URL to fall back to when `url` fails at play time (podcast
+   *  original URL — Task 7; progressive format — Task 9). */
+  fallback_url?: string | null;
 }
 
 /** Stage wall-times of one resolve, stamped inside the backend extractor.
