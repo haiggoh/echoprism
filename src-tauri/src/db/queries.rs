@@ -1452,6 +1452,13 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
             theme,
             cross_device_sync_enabled,
             card_click_action,
+            windowed_quality_cap,
+            fullscreen_quality_cap,
+            start_quality,
+            data_saver,
+            audio_only_on_metered,
+            metered_restore,
+            skip_podcast_trackers,
             updated_at
          FROM user_preferences WHERE user_id = 'current-user'"#
     )
@@ -1475,6 +1482,13 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         theme: Theme::from_str(&row.theme).unwrap_or(Theme::System),
         cross_device_sync_enabled: row.cross_device_sync_enabled != 0,
         card_click_action: CardClickAction::from_str(&row.card_click_action).unwrap_or_default(),
+        windowed_quality_cap: row.windowed_quality_cap.map(|v| v as u32),
+        fullscreen_quality_cap: row.fullscreen_quality_cap.map(|v| v as u32),
+        start_quality: StartQualityPref::from_str(&row.start_quality).unwrap_or_default(),
+        data_saver: row.data_saver != 0,
+        audio_only_on_metered: row.audio_only_on_metered != 0,
+        metered_restore: MeteredRestore::from_str(&row.metered_restore).unwrap_or_default(),
+        skip_podcast_trackers: row.skip_podcast_trackers != 0,
         updated_at: DateTimeUtc::from(row.updated_at),
     })
 }
@@ -1490,10 +1504,17 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
     let theme = prefs.theme.to_string();
     let cross_device_sync_enabled = prefs.cross_device_sync_enabled as i64;
     let card_click_action = prefs.card_click_action.to_string();
+    let start_quality = prefs.start_quality.to_string();
+    let metered_restore = prefs.metered_restore.to_string();
+    let data_saver = prefs.data_saver as i64;
+    let audio_only_on_metered = prefs.audio_only_on_metered as i64;
+    let skip_podcast_trackers = prefs.skip_podcast_trackers as i64;
+    let windowed_quality_cap = prefs.windowed_quality_cap.map(|v| v as i64);
+    let fullscreen_quality_cap = prefs.fullscreen_quality_cap.map(|v| v as i64);
     let now = chrono::Utc::now().to_rfc3339();
 
     query!(
-        "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, card_click_action = ?, updated_at = ? WHERE user_id = 'current-user'",
+        "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, card_click_action = ?, windowed_quality_cap = ?, fullscreen_quality_cap = ?, start_quality = ?, data_saver = ?, audio_only_on_metered = ?, metered_restore = ?, skip_podcast_trackers = ?, updated_at = ? WHERE user_id = 'current-user'",
         default_format,
         queue_behavior,
         audio_only_default,
@@ -1504,6 +1525,13 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
         theme,
         cross_device_sync_enabled,
         card_click_action,
+        windowed_quality_cap,
+        fullscreen_quality_cap,
+        start_quality,
+        data_saver,
+        audio_only_on_metered,
+        metered_restore,
+        skip_podcast_trackers,
         now
     ).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())

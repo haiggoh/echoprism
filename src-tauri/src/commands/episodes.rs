@@ -199,7 +199,7 @@ fn stream_info_from(stream: crate::extractor::StreamUrl) -> StreamInfo {
 /// green while the real shell could not play a single podcast episode).
 /// Video-shaped episodes return None — the 2d m4a/HLS path owns them — and
 /// so do empty enclosures.
-fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<StreamInfo> {
+fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>, strip: bool) -> Option<StreamInfo> {
     let has_video_id = episode
         .video_id
         .as_deref()
@@ -209,11 +209,15 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
         return None;
     }
     let nonempty = |u: Option<&str>| u.map(str::trim).filter(|u| !u.is_empty()).map(|u| u.to_string());
-    // Task 7: strip tracker redirects (default on until the Task 10
-    // preference lands); the ORIGINAL url rides along as fallback_url so a
-    // stripped URL that fails at play time retries the original once.
+    // Task 7: strip tracker redirects (Task 10 setting skip_podcast_trackers,
+    // default on); the ORIGINAL url rides along as fallback_url so a stripped
+    // URL that fails at play time retries the original once.
     let strip_with_fallback = |url: String| {
-        let stripped = crate::podcast::tracker_strip::strip_trackers(&url);
+        let stripped = if strip {
+            crate::podcast::tracker_strip::strip_trackers(&url)
+        } else {
+            url.clone()
+        };
         if stripped != url {
             (stripped, Some(url))
         } else {
@@ -280,11 +284,12 @@ async fn resolve_episode_to_cached(
     pool: &InstancePool,
     extractor: &Arc<crate::extractor::Extractor>,
     pre_follow: bool,
+    strip_trackers: bool,
 ) -> std::result::Result<crate::stream_cache::CachedStream, String> {
     use crate::stream_cache::{expiry_from_url, CachedStream};
     // Phase A: the enclosure path first — playing the episode's own audio
     // beats routing an RSS guid into yt-dlp.
-    if let Some(mut info) = enclosure_stream_for(episode, format) {
+    if let Some(mut info) = enclosure_stream_for(episode, format, strip_trackers) {
         tracing::info!(
             "Resolving '{}' from its podcast enclosure (episode has no video stream)",
             episode.title
@@ -335,6 +340,12 @@ pub async fn stream_episode(
         episode_id: episode_id.clone(),
         mode: StreamMode::from_format(format.as_deref()),
     };
+    // Task 10: the tracker-strip toggle comes from stored prefs (default on).
+    let strip_trackers = db
+        .get_preferences()
+        .await
+        .map(|p| p.skip_podcast_trackers)
+        .unwrap_or(true);
     let cache = cache.inner().clone();
     let pool = pool.inner().clone();
     let extractor = extractor.inner().clone();
@@ -346,7 +357,7 @@ pub async fn stream_episode(
             let pool = pool.clone();
             let extractor = extractor.clone();
             async move {
-                resolve_episode_to_cached(&episode, format.as_deref(), quality.as_deref(), &pool, &extractor, false).await
+                resolve_episode_to_cached(&episode, format.as_deref(), quality.as_deref(), &pool, &extractor, false, strip_trackers).await
             }
         })
         .await?;
@@ -376,6 +387,11 @@ pub async fn prefetch_stream(
         mode: StreamMode::from_format(format.as_deref()),
     };
     let pre_follow = origin == "queue"; // Task 7: queue pre-follow only, never hover
+    let strip_trackers = db
+        .get_preferences()
+        .await
+        .map(|p| p.skip_podcast_trackers)
+        .unwrap_or(true);
     let cache = cache.inner().clone();
     let pool = pool.inner().clone();
     let extractor = extractor.inner().clone();
@@ -386,7 +402,7 @@ pub async fn prefetch_stream(
             let pool = pool.clone();
             let extractor = extractor.clone();
             async move {
-                resolve_episode_to_cached(&episode, format.as_deref(), None, &pool, &extractor, pre_follow).await
+                resolve_episode_to_cached(&episode, format.as_deref(), None, &pool, &extractor, pre_follow, strip_trackers).await
             }
         })
         .await;
@@ -570,7 +586,7 @@ mod stream_tests {
 
         for requested in [Some("video"), Some("audio"), None] {
             let info =
-                enclosure_stream_for(&e, requested).unwrap_or_else(|| {
+                enclosure_stream_for(&e, requested, true).unwrap_or_else(|| {
                     panic!("enclosure must resolve for request {requested:?}")
                 });
             assert_eq!(info.url, "https://audio.example/ep100.mp3");
@@ -587,7 +603,7 @@ mod stream_tests {
         e.video_id = Some("z00Lhm3CqAM".into());
         e.audio_url = Some("https://audio.example/ignored.mp3".into());
         assert!(
-            enclosure_stream_for(&e, None).is_none(),
+            enclosure_stream_for(&e, None, true).is_none(),
             "video episodes keep the 2d path"
         );
     }
@@ -598,9 +614,9 @@ mod stream_tests {
     fn empty_enclosure_is_not_a_stream() {
         let mut e = episode_stub();
         e.audio_url = Some("   ".into());
-        assert!(enclosure_stream_for(&e, None).is_none());
+        assert!(enclosure_stream_for(&e, None, true).is_none());
         let e2 = episode_stub();
-        assert!(enclosure_stream_for(&e2, None).is_none());
+        assert!(enclosure_stream_for(&e2, None, true).is_none());
     }
 
     /// Video-only podcast episode (live-verified 2026-11-03: "Was jetzt? – Die
@@ -612,7 +628,7 @@ mod stream_tests {
         let mut e = episode_stub();
         e.video_url = Some("https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4".into());
         for requested in [Some("video"), Some("audio"), None] {
-            let info = enclosure_stream_for(&e, requested)
+            let info = enclosure_stream_for(&e, requested, true)
                 .unwrap_or_else(|| panic!("video enclosure must resolve for request {requested:?}"));
             assert_eq!(info.url, "https://mcdn.podbean.com/mf/web/abc/folge1_final.mp4");
             assert_eq!(info.format, "video");
@@ -625,7 +641,7 @@ mod stream_tests {
         let mut e = episode_stub();
         e.audio_url = Some("https://audio.example/ep.mp3".into());
         e.video_url = Some("https://video.example/ep.mp4".into());
-        let info = enclosure_stream_for(&e, None).expect("audio enclosure");
+        let info = enclosure_stream_for(&e, None, true).expect("audio enclosure");
         assert_eq!(info.url, "https://audio.example/ep.mp3");
         assert_eq!(info.format, "audio");
     }

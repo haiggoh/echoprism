@@ -111,6 +111,16 @@ pub fn run() {
             });
             netpath.spawn_probe();
             let extractor = extractor::Extractor::new(app.handle().clone(), netpath);
+            // Task 10: seed the extractor's HLS cap/start from stored prefs
+            // (update_settings pushes changes live afterwards).
+            if let Ok(prefs) = tauri::async_runtime::block_on(db_shared.get_preferences()) {
+                let (_windowed, fullscreen) = prefs.effective_caps();
+                *extractor.hls_cap.write().unwrap() = fullscreen;
+                *extractor.hls_start.write().unwrap() = match prefs.start_quality {
+                    types::StartQualityPref::Lowest => hls_master::StartQuality::Lowest,
+                    types::StartQualityPref::Cap => hls_master::StartQuality::Cap,
+                };
+            }
             app.manage(Arc::new(extractor));
 
             // Start-up timing (Task 1): the last 50 measured plays.

@@ -41,6 +41,15 @@ async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
     // existed (CREATE TABLE IF NOT EXISTS does not alter existing tables).
     let alters = [
         "ALTER TABLE user_preferences ADD COLUMN card_click_action TEXT NOT NULL DEFAULT 'queue'",
+        // Task 10 (playback quality / podcasts). NULL cap = no cap; the
+        // CHECK constraints mirror schema.sql for fresh installs.
+        "ALTER TABLE user_preferences ADD COLUMN windowed_quality_cap INTEGER NULL DEFAULT 720",
+        "ALTER TABLE user_preferences ADD COLUMN fullscreen_quality_cap INTEGER NULL DEFAULT 2160",
+        "ALTER TABLE user_preferences ADD COLUMN start_quality TEXT NOT NULL DEFAULT 'lowest' CHECK (start_quality IN ('lowest','cap'))",
+        "ALTER TABLE user_preferences ADD COLUMN data_saver INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_preferences ADD COLUMN audio_only_on_metered INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_preferences ADD COLUMN metered_restore TEXT NOT NULL DEFAULT 'restore' CHECK (metered_restore IN ('restore','ask'))",
+        "ALTER TABLE user_preferences ADD COLUMN skip_podcast_trackers INTEGER NOT NULL DEFAULT 1",
     ];
     for stmt in alters {
         // "duplicate column name" means this database already has the column.

@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n            user_id,\n            default_instance_id,\n            default_format,\n            queue_behavior,\n            audio_only_default,\n            auto_download_wifi,\n            sponsorblock_enabled,\n            sponsorblock_categories,\n            keyboard_shortcuts_enabled,\n            theme,\n            cross_device_sync_enabled,\n            card_click_action,\n            windowed_quality_cap,\n            fullscreen_quality_cap,\n            start_quality,\n            data_saver,\n            audio_only_on_metered,\n            metered_restore,\n            skip_podcast_trackers,\n            updated_at\n         FROM user_preferences WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_instance_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_format",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "queue_behavior",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "audio_only_default",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "auto_download_wifi",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "sponsorblock_enabled",
+        "ordinal": 6,
+        "type_info": "Int64"
+      },
+      {
+        "name": "sponsorblock_categories",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "keyboard_shortcuts_enabled",
+        "ordinal": 8,
+        "type_info": "Int64"
+      },
+      {
+        "name": "theme",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "cross_device_sync_enabled",
+        "ordinal": 10,
+        "type_info": "Int64"
+      },
+      {
+        "name": "card_click_action",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "windowed_quality_cap",
+        "ordinal": 12,
+        "type_info": "Int64"
+      },
+      {
+        "name": "fullscreen_quality_cap",
+        "ordinal": 13,
+        "type_info": "Int64"
+      },
+      {
+        "name": "start_quality",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "data_saver",
+        "ordinal": 15,
+        "type_info": "Int64"
+      },
+      {
+        "name": "audio_only_on_metered",
+        "ordinal": 16,
+        "type_info": "Int64"
+      },
+      {
+        "name": "metered_restore",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "skip_podcast_trackers",
+        "ordinal": 18,
+        "type_info": "Int64"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 19,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f79dedde770051059bd2c3b43a34076d950d4208812d428cbab3b6ceace97c30"
+}

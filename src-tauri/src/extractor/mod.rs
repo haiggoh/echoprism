@@ -12,6 +12,10 @@ pub struct Extractor {
     /// Which IP family reaches YouTube (crate::netpath): every yt-dlp call
     /// reads it, so a known-broken IPv6 network never costs a wait.
     netpath: std::sync::Arc<crate::netpath::NetPath>,
+    /// Task 10: the HLS master cap/start come from settings (effective caps
+    /// — data saver forces 480). Written by update_settings, read per resolve.
+    pub hls_cap: std::sync::Arc<std::sync::RwLock<Option<u32>>>,
+    pub hls_start: std::sync::Arc<std::sync::RwLock<crate::hls_master::StartQuality>>,
 }
 
 impl Extractor {
@@ -25,6 +29,8 @@ impl Extractor {
 
     pub(crate) fn from_parts(netpath: std::sync::Arc<crate::netpath::NetPath>) -> Self {
         Self {
+            hls_cap: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_FULLSCREEN_CAP)),
+            hls_start: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_START_QUALITY)),
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .user_agent("Mozilla/5.0 (compatible; EchoPrism/0.1)")
@@ -420,8 +426,8 @@ impl Extractor {
                     &manifest,
                     hls_headers,
                     self.refresh_ytdlp_url(video_id, want_audio, None, true),
-                    crate::hls_master::DEFAULT_FULLSCREEN_CAP,
-                    crate::hls_master::DEFAULT_START_QUALITY,
+                    *self.hls_cap.read().unwrap(),
+                    *self.hls_start.read().unwrap(),
                 );
                 let t_probe = std::time::Instant::now();
                 let check = probe.get(&hls_url).send().await;
@@ -2278,6 +2284,8 @@ mod tests {
                 .expect("http client"),
             yt_dlp_path: std::sync::OnceLock::new(),
             netpath: std::sync::Arc::new(crate::netpath::NetPath::in_memory()),
+            hls_cap: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_FULLSCREEN_CAP)),
+            hls_start: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_START_QUALITY)),
         };
         let now = Utc::now().to_rfc3339();
         let piped = Instance {

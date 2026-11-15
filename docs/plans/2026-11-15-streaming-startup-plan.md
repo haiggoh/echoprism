@@ -459,13 +459,13 @@ section, existing toggle/select patterns), `src/mocks/data.ts`.
 `audio_only_on_metered: bool` (false), `metered_restore: MeteredRestore` (`Restore` | `Ask`,
 default `Restore`), `skip_podcast_trackers: bool` (true).
 
-- [ ] **Step 1: failing tests.** `old_preferences_row_parses_with_new_defaults`;
+- [x] **Step 1: failing tests.** `old_preferences_row_parses_with_new_defaults`;
       `one_field_patch_updates_only_that_field` (pattern of `settings.rs:51-75`);
       `data_saver_forces_480_caps` (pure `fn effective_caps(&UserPreferences) -> (Option<u32>,
       Option<u32>)`); vitest: each new control sends a one-field patch.
-- [ ] **Steps 2–4:** FAIL → implement → GREEN; wire Tasks 7 and 9 to read these fields.
-- [ ] **Discriminant:** drop `#[serde(default)]` on one new field → first test RED; revert.
-- [ ] **Step 5:** commit `feat(settings): playback quality caps, data saver, tracker toggle`.
+- [x] **Steps 2–4:** FAIL → implement → GREEN; wire Tasks 7 and 9 to read these fields.
+- [x] **Discriminant:** drop `#[serde(default)]` on one new field → first test RED; revert.
+- [x] **Step 5:** commit `feat(settings): playback quality caps, data saver, tracker toggle`.
 
 **🧪 Receipt 10** + offload cross-check.
 

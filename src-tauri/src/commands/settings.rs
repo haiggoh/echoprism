@@ -12,11 +12,22 @@ pub async fn get_settings(db: State<'_,  Database>) -> std::result::Result<UserP
 #[command]
 pub async fn update_settings(
     db: State<'_,  Database>,
+    extractor: State<'_,  std::sync::Arc<crate::extractor::Extractor>>,
     prefs: UserPreferencesPatch,
 ) -> std::result::Result<(), String> {
     // A partial from the UI, merged over the stored row (see the tests below).
     let current = db.get_preferences().await?;
-    db.update_preferences(prefs.apply(current)).await
+    let merged = prefs.apply(current);
+    db.update_preferences(merged.clone()).await?;
+    // Task 10: the HLS master cap/start are read per resolve by the extractor
+    // — push the effective caps (data saver forces 480) into its live state.
+    let (_windowed, fullscreen) = merged.effective_caps();
+    *extractor.hls_cap.write().unwrap() = fullscreen;
+    *extractor.hls_start.write().unwrap() = match merged.start_quality {
+        StartQualityPref::Lowest => crate::hls_master::StartQuality::Lowest,
+        StartQualityPref::Cap => crate::hls_master::StartQuality::Cap,
+    };
+    Ok(())
 }
 
 #[cfg(test)]
@@ -72,6 +83,42 @@ mod tests {
         let patch: UserPreferencesPatch = serde_json::from_value(json!({})).unwrap();
         let merged = patch.apply(base());
         assert_eq!(serde_json::to_value(&merged).unwrap(), serde_json::to_value(base()).unwrap());
+    }
+
+    // ---- Task 10: playback quality / podcast settings ----
+
+    #[test]
+    fn old_preferences_row_parses_with_new_defaults() {
+        // The base() fixture predates the Task 10 fields — it must still
+        // parse, with the owner defaults filled in by serde.
+        let p: UserPreferences = base();
+        assert_eq!(p.windowed_quality_cap, Some(720), "default windowed cap");
+        assert_eq!(p.fullscreen_quality_cap, Some(2160), "default fullscreen cap");
+        assert_eq!(p.start_quality, StartQualityPref::Lowest);
+        assert!(!p.data_saver);
+        assert!(!p.audio_only_on_metered);
+        assert_eq!(p.metered_restore, MeteredRestore::Restore);
+        assert!(p.skip_podcast_trackers, "tracker stripping on by default");
+    }
+
+    #[test]
+    fn one_field_patch_updates_only_that_field() {
+        let patch: UserPreferencesPatch =
+            serde_json::from_value(json!({ "data_saver": true })).expect("one-field patch parses");
+        let merged = patch.apply(base());
+        assert!(merged.data_saver, "the patched field changed");
+        assert_eq!(merged.windowed_quality_cap, Some(720), "untouched field keeps its default");
+        assert_eq!(merged.theme.to_string(), "dark", "unrelated field untouched");
+    }
+
+    #[test]
+    fn data_saver_forces_480_caps() {
+        let mut p = base();
+        p.windowed_quality_cap = Some(1080);
+        p.fullscreen_quality_cap = Some(2160);
+        assert_eq!(p.effective_caps(), (Some(1080), Some(2160)));
+        p.data_saver = true;
+        assert_eq!(p.effective_caps(), (Some(480), Some(480)), "data saver forces 480p everywhere");
     }
 }
 

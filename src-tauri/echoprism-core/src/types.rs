@@ -106,6 +106,30 @@ pub enum CardClickAction {
     Queue,
 }
 
+/// Task 10: which HLS rung to start on (stored as TEXT 'lowest'/'cap').
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, strum::Display, strum::EnumString)]
+pub enum StartQualityPref {
+    #[default]
+    #[strum(serialize = "lowest")]
+    Lowest,
+    #[strum(serialize = "cap")]
+    Cap,
+}
+
+/// Task 10/11: what to do with audio-only when the network returns to normal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, strum::Display, strum::EnumString)]
+pub enum MeteredRestore {
+    #[default]
+    #[strum(serialize = "restore")]
+    Restore,
+    #[strum(serialize = "ask")]
+    Ask,
+}
+
+fn default_windowed_cap() -> Option<u32> { Some(720) }
+fn default_fullscreen_cap() -> Option<u32> { Some(2160) }
+fn default_skip_trackers() -> bool { true }
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserPreferences {
     pub user_id: String,
@@ -121,7 +145,38 @@ pub struct UserPreferences {
     pub cross_device_sync_enabled: bool,
     #[serde(default)]
     pub card_click_action: CardClickAction,
+    // ---- Task 10 (playback quality / podcasts); serde defaults so old rows parse ----
+    /// Windowed video cap in px height; None = no cap. Default 720.
+    #[serde(default = "default_windowed_cap")]
+    pub windowed_quality_cap: Option<u32>,
+    /// Fullscreen video cap in px height; None = no cap. Default 2160 (4K).
+    #[serde(default = "default_fullscreen_cap")]
+    pub fullscreen_quality_cap: Option<u32>,
+    #[serde(default)]
+    pub start_quality: StartQualityPref,
+    /// Data saver forces 480p everywhere.
+    #[serde(default)]
+    pub data_saver: bool,
+    /// Task 11: opt-in audio-only on metered (expensive/constrained) networks.
+    #[serde(default)]
+    pub audio_only_on_metered: bool,
+    #[serde(default)]
+    pub metered_restore: MeteredRestore,
+    /// Skip podcast tracker redirects (Task 7), on by default.
+    #[serde(default = "default_skip_trackers")]
+    pub skip_podcast_trackers: bool,
     pub updated_at: DateTimeUtc,
+}
+
+impl UserPreferences {
+    /// (windowed, fullscreen) caps after data saver: data saver forces 480p.
+    pub fn effective_caps(&self) -> (Option<u32>, Option<u32>) {
+        if self.data_saver {
+            (Some(480), Some(480))
+        } else {
+            (self.windowed_quality_cap, self.fullscreen_quality_cap)
+        }
+    }
 }
 
 /// Parity audit batch 3 (A2): what `update_settings` actually receives. Every
@@ -143,6 +198,14 @@ pub struct UserPreferencesPatch {
     pub theme: Option<Theme>,
     pub cross_device_sync_enabled: Option<bool>,
     pub card_click_action: Option<CardClickAction>,
+    // ---- Task 10 ----
+    pub windowed_quality_cap: Option<Option<u32>>,
+    pub fullscreen_quality_cap: Option<Option<u32>>,
+    pub start_quality: Option<StartQualityPref>,
+    pub data_saver: Option<bool>,
+    pub audio_only_on_metered: Option<bool>,
+    pub metered_restore: Option<MeteredRestore>,
+    pub skip_podcast_trackers: Option<bool>,
 }
 
 impl UserPreferencesPatch {
@@ -159,6 +222,14 @@ impl UserPreferencesPatch {
         if let Some(v) = self.theme { base.theme = v; }
         if let Some(v) = self.cross_device_sync_enabled { base.cross_device_sync_enabled = v; }
         if let Some(v) = self.card_click_action { base.card_click_action = v; }
+        // ---- Task 10 ----
+        if let Some(v) = self.windowed_quality_cap { base.windowed_quality_cap = v; }
+        if let Some(v) = self.fullscreen_quality_cap { base.fullscreen_quality_cap = v; }
+        if let Some(v) = self.start_quality { base.start_quality = v; }
+        if let Some(v) = self.data_saver { base.data_saver = v; }
+        if let Some(v) = self.audio_only_on_metered { base.audio_only_on_metered = v; }
+        if let Some(v) = self.metered_restore { base.metered_restore = v; }
+        if let Some(v) = self.skip_podcast_trackers { base.skip_podcast_trackers = v; }
         base
     }
 }

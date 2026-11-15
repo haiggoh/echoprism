@@ -448,6 +448,14 @@ export const mockDb: MockDb = {
     theme: 'system',
     cross_device_sync_enabled: false,
     card_click_action: 'queue', // owner decision 2026-11-02 (was D2 'auto')
+    // Task 10 defaults (mirror the backend serde/DB defaults):
+    windowed_quality_cap: 720,
+    fullscreen_quality_cap: 2160,
+    start_quality: 'lowest',
+    data_saver: false,
+    audio_only_on_metered: false,
+    metered_restore: 'restore',
+    skip_podcast_trackers: true,
     updated_at: now,
   },
 };

@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('dark','light','system')),
     cross_device_sync_enabled INTEGER NOT NULL DEFAULT 0,
     card_click_action TEXT NOT NULL DEFAULT 'queue' CHECK (card_click_action IN ('auto','play_now','load_paused','queue')),
+    -- Task 10: playback quality / podcast settings (NULL cap = no cap)
+    windowed_quality_cap INTEGER NULL DEFAULT 720,
+    fullscreen_quality_cap INTEGER NULL DEFAULT 2160,
+    start_quality TEXT NOT NULL DEFAULT 'lowest' CHECK (start_quality IN ('lowest','cap')),
+    data_saver INTEGER NOT NULL DEFAULT 0,
+    audio_only_on_metered INTEGER NOT NULL DEFAULT 0,
+    metered_restore TEXT NOT NULL DEFAULT 'restore' CHECK (metered_restore IN ('restore','ask')),
+    skip_podcast_trackers INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

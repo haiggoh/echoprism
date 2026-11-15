@@ -21,6 +21,20 @@ export interface UserPreferences {
   /** Owner decision 2026-11-02: 'queue' (default) adds at the queue_behavior
    *  position; 'auto' is retired (the backend reads a stored 'auto' as 'queue'). */
   card_click_action: 'queue' | 'play_now' | 'load_paused';
+  /** Task 10: windowed video cap in px height; null = no cap. Default 720. */
+  windowed_quality_cap?: number | null;
+  /** Task 10: fullscreen video cap in px height; null = no cap. Default 2160. */
+  fullscreen_quality_cap?: number | null;
+  /** Task 10: HLS start rung. Default 'lowest'. */
+  start_quality?: 'lowest' | 'cap';
+  /** Task 10: data saver forces 480p everywhere. Default false. */
+  data_saver?: boolean;
+  /** Task 11: opt-in audio-only on metered (expensive/constrained) networks. */
+  audio_only_on_metered?: boolean;
+  /** Task 11: restore behaviour back on a normal network. Default 'restore'. */
+  metered_restore?: 'restore' | 'ask';
+  /** Task 7/10: skip podcast tracker redirects. Default true. */
+  skip_podcast_trackers?: boolean;
   updated_at: string;
 }
 

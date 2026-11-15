@@ -279,6 +279,103 @@ function PreferencesTab() {
       </div>
 
       <div>
+        <h3 className="font-semibold mb-4">Playback quality</h3>
+        <div className="space-y-3">
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm">Windowed video quality cap</span>
+            <select
+              aria-label="Windowed video quality cap"
+              value={preferences?.windowed_quality_cap == null ? 'none' : String(preferences.windowed_quality_cap)}
+              onChange={(e) =>
+                updateMutation.mutate({
+                  windowed_quality_cap: e.target.value === 'none' ? null : Number(e.target.value),
+                })
+              }
+              className="px-3 py-2 bg-surface border border-border rounded-md text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+            >
+              {[480, 720, 1080, 1440, 2160].map((v) => (
+                <option key={v} value={v}>{v}p</option>
+              ))}
+              <option value="none">No cap</option>
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm">Fullscreen video quality cap</span>
+            <select
+              aria-label="Fullscreen video quality cap"
+              value={preferences?.fullscreen_quality_cap == null ? 'none' : String(preferences.fullscreen_quality_cap)}
+              onChange={(e) =>
+                updateMutation.mutate({
+                  fullscreen_quality_cap: e.target.value === 'none' ? null : Number(e.target.value),
+                })
+              }
+              className="px-3 py-2 bg-surface border border-border rounded-md text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+            >
+              {[480, 720, 1080, 1440, 2160].map((v) => (
+                <option key={v} value={v}>{v}p</option>
+              ))}
+              <option value="none">No cap</option>
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm">Start quality (first HLS rung)</span>
+            <select
+              aria-label="Start quality"
+              value={preferences?.start_quality ?? 'lowest'}
+              onChange={(e) =>
+                updateMutation.mutate({ start_quality: e.target.value as 'lowest' | 'cap' })
+              }
+              className="px-3 py-2 bg-surface border border-border rounded-md text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+            >
+              <option value="lowest">Lowest (fastest start)</option>
+              <option value="cap">Cap</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={preferences?.data_saver ?? false}
+              onChange={(e) => updateMutation.mutate({ data_saver: e.target.checked })}
+              className="w-4 h-4 accent-accent rounded border-border"
+            />
+            <span className="text-sm">Data saver (forces 480p everywhere)</span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={preferences?.audio_only_on_metered ?? false}
+              onChange={(e) => updateMutation.mutate({ audio_only_on_metered: e.target.checked })}
+              className="w-4 h-4 accent-accent rounded border-border"
+            />
+            <span className="text-sm">Audio only on metered networks (expensive / Low Data Mode)</span>
+          </label>
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm">Back on normal network</span>
+            <select
+              aria-label="Back on normal network"
+              value={preferences?.metered_restore ?? 'restore'}
+              onChange={(e) =>
+                updateMutation.mutate({ metered_restore: e.target.value as 'restore' | 'ask' })
+              }
+              className="px-3 py-2 bg-surface border border-border rounded-md text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+            >
+              <option value="restore">Restore my choice</option>
+              <option value="ask">Ask me</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={preferences?.skip_podcast_trackers ?? true}
+              onChange={(e) => updateMutation.mutate({ skip_podcast_trackers: e.target.checked })}
+              className="w-4 h-4 accent-accent rounded border-border"
+            />
+            <span className="text-sm">Skip podcast tracking redirects</span>
+          </label>
+        </div>
+      </div>
+
+      <div>
         <h3 className="font-semibold mb-4">Theme</h3>
         {/* 2a audit: this control was decoration — every radio rendered
             checked with an empty onChange. It drives the live theme
