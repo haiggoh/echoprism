@@ -329,9 +329,19 @@ impl Extractor {
                     .as_deref()
                     .and_then(|id| ranked.iter().find(|f| f.format_id.as_deref() == Some(id)).cloned())
                     .or_else(|| ranked.into_iter().next())?;
-                wait_until_available(&cand).await;
+                // Task 3: gate the FRESH url directly (never via the proxy)
+                // before handing it back — the lock opens ~2 s before
+                // available_at, so polling beats sleeping.
                 let url = cand.url.clone().filter(|u| !u.is_empty()).or(cand.manifest_url.clone())?;
-                Some((url, cand.http_headers.clone().unwrap_or_default()))
+                let headers = cand.http_headers.clone().unwrap_or_default();
+                let gate_client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .ok()?;
+                poll_until_playable(&gate_client, &url, &headers, MAX_AVAILABLE_AT_WAIT, GATE_POLL_INTERVAL)
+                    .await
+                    .ok()?;
+                Some((url, headers))
             })
         }))
     }
@@ -378,13 +388,26 @@ impl Extractor {
                 .or_else(|| cand.manifest_url.clone());
             let Some(url) = url else { continue };
             let headers = cand.http_headers.clone().unwrap_or_default();
-            // Round 6 root cause: googlevideo 403s a URL until its
-            // `available_at` (~4 s after extraction). Probing at once 403'd
-            // every real format (the earlier 'URLs expire within seconds'
-            // reading was this, inverted).
+            // Task 3: gate DIRECTLY on the candidate URL with its headers —
+            // never through the proxy, whose 403 handler re-runs yt-dlp. The
+            // lock opens ~2 s before `available_at`, so polling (300 ms) beats
+            // the old sleep-until-available_at by ~2 s on every cold resolve.
+            // The proxy token is registered only AFTER a 200/206.
             let t_gate = std::time::Instant::now();
-            wait_until_available(cand).await;
+            let gate = poll_until_playable(&probe, &url, &headers, MAX_AVAILABLE_AT_WAIT, GATE_POLL_INTERVAL).await;
             gate_ms += t_gate.elapsed().as_millis() as u64;
+            let poll = match gate {
+                Ok(p) => p,
+                Err(e) => {
+                    last_err = format!("{} -> gate: {e}", url_host(&url));
+                    continue;
+                }
+            };
+            // Keep the not-media content-type rejection on the gate's 200/206.
+            if !is_media_content_type(poll.content_type.as_deref()) {
+                last_err = format!("{} -> not media ({:?})", url_host(&url), poll.content_type);
+                continue;
+            }
             let serve_url = if headers.is_empty() {
                 url.clone()
             } else {
@@ -934,6 +957,10 @@ struct YtDlpFormat {
     /// site"). Measured live 2026-11-05: ~4 s after extraction; t+0 403,
     /// t+2..8 206 on the same URL.
     #[serde(default)]
+    /// Parsed from the yt-dlp -J dump (wire schema) but NOT read by the
+    /// resolver anymore: the gate polls the URL directly (Task 3) because the
+    /// lock opens ~2 s before this timestamp.
+    #[allow(dead_code)]
     available_at: Option<f64>,
     url: Option<String>,
     manifest_url: Option<String>,
@@ -950,23 +977,65 @@ fn is_none_codec(c: &Option<String>) -> bool {
     c.as_deref().is_none_or(|c| c == "none")
 }
 
-/// Longest we wait for a format's `available_at`: a bogus far-future value
-/// must not hang playback (the probe then 403s and the honest error shows).
+/// Longest we wait for a format's `available_at` gate: a bogus far-future
+/// value must not hang playback.
 const MAX_AVAILABLE_AT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// Sleep until `available_at` has passed (plus a small clock-skew margin),
-/// capped at MAX_AVAILABLE_AT_WAIT. No-op when the field is absent or past.
-async fn wait_until_available(f: &YtDlpFormat) {
-    let Some(at) = f.available_at else { return };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-    let delay = at - now + 0.3;
-    if delay > 0.0 {
-        let d = std::time::Duration::from_secs_f64(delay).min(MAX_AVAILABLE_AT_WAIT);
-        tracing::info!("yt-dlp format not available yet; waiting {:.1}s (available_at)", d.as_secs_f64());
-        tokio::time::sleep(d).await;
+/// Task 3: the gate poll interval — a 1-byte Range GET every 300 ms.
+pub(crate) const GATE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// What the gate saw when the lock opened.
+pub struct PollOutcome {
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub waited: std::time::Duration,
+}
+
+/// Task 3: poll the candidate URL DIRECTLY — never through the stream proxy,
+/// whose 403 handler would run a full yt-dlp re-extraction per poll. Measured
+/// live 2026-11-15: the googlevideo lock opens ~2 s BEFORE `available_at`, so
+/// polling returns earlier than any sleep-until-available_at. 403 → wait
+/// `interval` and retry until `ceiling`; 200/206 → Ok; any other status or a
+/// request error → Err immediately.
+pub(crate) async fn poll_until_playable(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &std::collections::HashMap<String, String>,
+    ceiling: std::time::Duration,
+    interval: std::time::Duration,
+) -> Result<PollOutcome, String> {
+    let start = std::time::Instant::now();
+    loop {
+        let mut req = client.get(url).header(reqwest::header::RANGE, "bytes=0-0");
+        for (k, v) in headers {
+            req = req.header(k, v);
+        }
+        match req.send().await {
+            Ok(r) => {
+                let status = r.status().as_u16();
+                if status == 200 || status == 206 {
+                    let content_type = r
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string());
+                    return Ok(PollOutcome {
+                        status,
+                        content_type,
+                        waited: start.elapsed(),
+                    });
+                }
+                if status != 403 {
+                    return Err(format!("gate poll got HTTP {status}"));
+                }
+                // 403: still locked — wait and retry below.
+            }
+            Err(e) => return Err(format!("gate poll request failed: {e}")),
+        }
+        if start.elapsed() >= ceiling {
+            return Err(format!("gate still locked after {ceiling:?}"));
+        }
+        tokio::time::sleep(interval).await;
     }
 }
 
@@ -1275,7 +1344,7 @@ mod tests {
             .get_stream_with_yt_dlp("dQw4w9WgXcQ", Some("audio"), None)
             .await
             .expect("resolve via real yt-dlp");
-        println!("resolved url={} format={}", s.url, s.format);
+        println!("resolved url={} format={} timings={:?}", s.url, s.format, s.timings);
         assert!(s.url.starts_with("http://127.0.0.1:"), "headered URL must go through the proxy: {}", s.url);
         let client = reqwest::Client::new();
         let resp = client
@@ -1450,18 +1519,24 @@ mod tests {
     /// and fall through. Upstream 403s until avail_at; the ONLY real format
     /// is that one, so success proves the wait happened.
     #[tokio::test]
-    async fn resolver_waits_for_available_at_before_probing() {
+    async fn resolver_polls_gate_until_lock_opens() {
+        // Task 3 update (was resolver_waits_for_available_at_before_probing):
+        // the gate now POLLS the upstream directly, so requests while locked
+        // are expected (early > 0) — what must NOT happen is a proxy refresh
+        // per 403, which gate_never_triggers_proxy_refresh proves via the
+        // yt-dlp invocation counter.
         let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 2;
         let (port, early) = spawn_round6_upstream(avail).await;
         let (ex, _d) = extractor_with_stub_formats(&format!(
             "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/late.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail},\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
         ));
-        let s = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await.expect("must wait for available_at, then succeed");
+        let s = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await.expect("gate poll must open the lock, then succeed");
         let body = reqwest::Client::new().get(&s.url).header("Range", "bytes=0-3").send().await.unwrap().bytes().await.unwrap();
         assert_eq!(&body[..], b"GOOD", "{}", s.url);
-        // The PROBE itself must wait: a premature request costs a 403 plus a
-        // full yt-dlp re-extraction in the proxy's refresh path.
-        assert_eq!(early.load(std::sync::atomic::Ordering::SeqCst), 0, "no request may reach upstream before available_at");
+        assert!(
+            early.load(std::sync::atomic::Ordering::SeqCst) > 0,
+            "the gate polls the upstream directly while locked — that is the mechanism now"
+        );
     }
 
     /// Round 6 masking bug (measured live): with every real format 403ing, the
@@ -1481,21 +1556,26 @@ mod tests {
         assert!(r.is_err(), "an image must never be served as a stream: {:?}", r.map(|s| s.url));
     }
 
-    /// Round 6: the proxy refresh must keep the format the stream started on
-    /// (top-ranked 'a' differs from the playing 'b' here) and must hand back
-    /// the fresh URL only once its available_at has passed.
+    /// Task 3 update (was refresh_keeps_the_playing_format_and_waits_for_available_at,
+    /// which pointed at an unreachable host and relied on the sleep): the
+    /// proxy refresh must keep the playing format AND gate the fresh URL by
+    /// polling — the lock opens at +2 s while available_at says +5 s, so the
+    /// refresh must return at the lock, not at available_at.
     #[tokio::test]
-    async fn refresh_keeps_the_playing_format_and_waits_for_available_at() {
-        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() + 2.0;
+    async fn refresh_keeps_playing_format_and_gates_on_the_lock() {
+        let (port, _early) = spawn_gate_upstream(2.0).await;
+        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() + 5.0;
         let (ex, _d) = extractor_with_stub_formats(&format!(
-            "[{{\"format_id\":\"a\",\"url\":\"http://x/a-144\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":144,\"protocol\":\"https\"}},\
-             {{\"format_id\":\"b\",\"url\":\"http://x/b-360\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail}}}]"
+            "[{{\"format_id\":\"a\",\"url\":\"http://127.0.0.1:{port}/a-144\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":144,\"protocol\":\"https\"}},\
+             {{\"format_id\":\"b\",\"url\":\"http://127.0.0.1:{port}/b-360\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail}}}]"
         ));
         let refresh = ex.refresh_ytdlp_url("vid", false, Some("b".into())).unwrap();
+        let t0 = std::time::Instant::now();
         let (url, _h) = refresh().await.expect("refresh result");
-        let returned_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
-        assert_eq!(url, "http://x/b-360", "refresh must keep the playing format");
-        assert!(returned_at >= avail, "must not return before available_at (returned {:.2}s early)", avail - returned_at);
+        let waited = t0.elapsed();
+        assert_eq!(url, format!("http://127.0.0.1:{port}/b-360"), "refresh must keep the playing format");
+        assert!(waited >= std::time::Duration::from_secs_f64(2.0), "must not return before the lock opens ({waited:?})");
+        assert!(waited < std::time::Duration::from_secs_f64(4.0), "must not sleep until the fake available_at (+5 s): {waited:?}");
     }
 
     /// LIVE (network + real yt-dlp; run with --ignored): the video that
@@ -2295,5 +2375,132 @@ mod tests {
             "linked guids must be excluded from the next matcher run"
         );
         pool.close().await;
+    }
+
+    // ---- Task 3: polled available_at gate (never through the proxy) ----
+
+    /// Fake upstream that 403s for `open_after` seconds from start, then
+    /// answers 206 video/mp4. Returns (port, early-request counter).
+    async fn spawn_gate_upstream(open_after: f64) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let early = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let early_srv = early.clone();
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = upstream.local_addr().unwrap().port();
+        let t0 = std::time::Instant::now();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            loop {
+                let Ok((mut sock, _)) = upstream.accept().await else { break };
+                let early = early_srv.clone();
+                let t0 = t0;
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        let mut buf = vec![0u8; 4096];
+                        let n = match sock.read(&mut buf).await { Ok(0) | Err(_) => break, Ok(n) => n };
+                        let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let path = req.lines().next().unwrap_or("").split_whitespace().nth(1).unwrap_or("").to_string();
+                        let locked = t0.elapsed().as_secs_f64() < open_after;
+                        let (status, ct, body) = if path.contains("sb") {
+                            ("206 Partial Content", "image/webp", "IMG!")
+                        } else if locked {
+                            early.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            ("403 Forbidden", "text/plain", "")
+                        } else {
+                            ("206 Partial Content", "video/mp4", "GOOD")
+                        };
+                        let resp = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: {ct}\r\nContent-Length: {}\r\nContent-Range: bytes 0-3/100\r\nConnection: keep-alive\r\n\r\n{body}",
+                            body.len()
+                        );
+                        if sock.write_all(resp.as_bytes()).await.is_err() { break; }
+                    }
+                });
+            }
+        });
+        (port, early)
+    }
+
+    /// Stub yt-dlp that also appends one line per invocation to `counter` —
+    /// the proxy's refresh path re-runs yt-dlp, so the line count IS the
+    /// refresh count.
+    fn extractor_with_counting_stub(formats_json: &str, counter: &std::path::Path) -> (Extractor, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("yt-dlp");
+        let c = counter.display().to_string();
+        std::fs::write(&bin, format!(
+            "#!/bin/sh\necho x >> '{c}'\nprintf '%s\\n' '{{\"formats\":{formats_json}}}'\n"
+        )).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Works);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set(bin.display().to_string()).unwrap();
+        (ex, dir)
+    }
+
+    #[tokio::test]
+    async fn gate_poll_returns_soon_after_lock_opens() {
+        // The lock opens 1.0 s after start; the format's available_at is
+        // irrelevant to the poll (it says nothing here) — the poll must
+        // return within 1.0–1.5 s, NOT after any far-future available_at.
+        let (port, _early) = spawn_gate_upstream(1.0).await;
+        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap();
+        let url = format!("http://127.0.0.1:{port}/media.mp4");
+        let headers = std::collections::HashMap::new();
+        let t0 = std::time::Instant::now();
+        let outcome = poll_until_playable(&client, &url, &headers, std::time::Duration::from_secs(10), GATE_POLL_INTERVAL)
+            .await
+            .expect("gate must open at ~1 s");
+        let waited = t0.elapsed();
+        assert_eq!(outcome.status, 206);
+        assert!(
+            waited >= std::time::Duration::from_secs_f64(1.0) && waited < std::time::Duration::from_secs_f64(1.5),
+            "must return soon after the lock opens, waited {waited:?}"
+        );
+        assert!(
+            (outcome.waited.as_secs_f64() - waited.as_secs_f64()).abs() < 0.05,
+            "PollOutcome.waited reports the gate wait: {:?} vs {waited:?}",
+            outcome.waited
+        );
+    }
+
+    #[tokio::test]
+    async fn gate_poll_gives_up_at_ceiling() {
+        let (port, _early) = spawn_gate_upstream(3600.0).await; // never opens
+        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap();
+        let url = format!("http://127.0.0.1:{port}/media.mp4");
+        let t0 = std::time::Instant::now();
+        let r = poll_until_playable(&client, &url, &std::collections::HashMap::new(), std::time::Duration::from_secs(1), GATE_POLL_INTERVAL).await;
+        let waited = t0.elapsed();
+        assert!(r.is_err(), "a locked URL must Err at the ceiling");
+        assert!(
+            waited >= std::time::Duration::from_secs(1) && waited < std::time::Duration::from_secs_f64(1.6),
+            "ceiling 1 s → Err at ~1 s, waited {waited:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn gate_never_triggers_proxy_refresh() {
+        // available_at says now+5 (far future) but the lock opens at now+1.
+        // The gate must poll DIRECTLY (never through the proxy, whose 403
+        // handler re-runs yt-dlp): the counting stub must stay at exactly 1
+        // invocation, and the resolve must succeed at ~1 s, not 5 s.
+        let (port, early) = spawn_gate_upstream(1.0).await;
+        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 5;
+        let counter = std::env::temp_dir().join(format!("ep-gate-counter-{}", std::process::id()));
+        let _ = std::fs::remove_file(&counter);
+        let (ex, _d) = extractor_with_counting_stub(&format!(
+            "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/late.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail},\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
+        ), &counter);
+        let t0 = std::time::Instant::now();
+        let s = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await.expect("resolve must succeed once the lock opens (~1 s)");
+        let waited = t0.elapsed();
+        assert!(waited < std::time::Duration::from_secs(3), "must not sleep until the fake available_at (+5 s): {waited:?}");
+        assert!(early.load(std::sync::atomic::Ordering::SeqCst) > 0, "the gate polled the upstream directly while locked");
+        let runs = std::fs::read_to_string(&counter).unwrap_or_default().lines().count();
+        assert_eq!(runs, 1, "polling must never trigger the proxy refresh (yt-dlp re-extraction); runs={runs}");
+        assert!(s.url.starts_with("http://127.0.0.1:"), "headered URL is registered as a proxy token AFTER the gate: {}", s.url);
+        let _ = std::fs::remove_file(&counter);
     }
 }

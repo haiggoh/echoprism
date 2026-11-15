@@ -261,20 +261,20 @@ String>, ceiling: Duration, interval: Duration) -> Result<PollOutcome, String>` 
 `interval`, retry until `ceiling`; 200/206 → Ok; other status / error → Err immediately.
 `wait_until_available` is removed (or reduced to a no-op shim with no callers — delete it).
 
-- [ ] **Step 1: failing tests.** `gate_poll_returns_soon_after_lock_opens` (fake upstream 403s
+- [x] **Step 1: failing tests.** `gate_poll_returns_soon_after_lock_opens` (fake upstream 403s
       for 1.0 s then 206; returns Ok within 1.0–1.5 s, NOT after a fake `available_at` of
       now+5 s); `gate_poll_gives_up_at_ceiling` (always 403, ceiling 1 s → Err after ~1 s);
       `gate_never_triggers_proxy_refresh` (refresh closure counter stays 0 while the upstream
       is locked; token is registered only after the 206).
-- [ ] **Step 2:** FAIL. **Step 3:** implement in both the resolve path and `refresh_ytdlp_url`.
+- [x] **Step 2:** FAIL. **Step 3:** implement in both the resolve path and `refresh_ytdlp_url`.
       Keep the existing not-media content-type rejection on the final 200/206.
-- [ ] **Step 4:** GREEN; existing tests around `available_at` (:1355-1440) updated only where
+- [x] **Step 4:** GREEN; existing tests around `available_at` (:1355-1440) updated only where
       they asserted the old sleep — say which in the receipt.
-- [ ] **Live check:** `RUST_LOG=info cargo test --manifest-path src-tauri/Cargo.toml
+- [x] **Live check:** `RUST_LOG=info cargo test --manifest-path src-tauri/Cargo.toml
       live_ytdlp_audio_resolves_to_loadable_proxy_url -- --ignored --nocapture` (or the existing
       live test's real name) — record gate time; expect ≈ 2.5–3.5 s after extraction.
-- [ ] **Discriminant:** set `interval` to 5 s → first test RED; revert.
-- [ ] **Step 5:** commit `perf(extractor): poll the available_at gate directly instead of sleeping`.
+- [x] **Discriminant:** set `interval` to 5 s → first test RED; revert.
+- [x] **Step 5:** commit `perf(extractor): poll the available_at gate directly instead of sleeping`.
 
 **🧪 Receipt 3** + offload cross-check.
 
