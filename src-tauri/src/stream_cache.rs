@@ -104,6 +104,16 @@ impl StreamCache {
         self.cells.lock().unwrap().len()
     }
 
+    #[cfg(test)]
+    pub(crate) fn is_settled(&self, key: &CacheKey) -> bool {
+        self.cells
+            .lock()
+            .unwrap()
+            .get(key)
+            .and_then(|c| c.get())
+            .is_some()
+    }
+
     /// Resolve through the cache: return a live entry, join the in-flight
     /// one, or run `resolve` once (shared by all concurrent callers).
     /// Errors are removed, never cached. The returned clone's

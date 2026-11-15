@@ -444,12 +444,13 @@ impl Extractor {
                         };
                         let fb_url = fb.url.clone().unwrap_or_default();
                         let fb_headers = fb.http_headers.clone().unwrap_or_default();
-                        let t_gate = std::time::Instant::now();
-                        let gate = poll_until_playable(&probe, &fb_url, &fb_headers, MAX_AVAILABLE_AT_WAIT, GATE_POLL_INTERVAL).await;
-                        gate_ms += t_gate.elapsed().as_millis() as u64;
-                        if gate.is_err() {
-                            break 'fallback None;
-                        }
+                        // Ruling (Task 12 acceptance): the fallback is
+                        // best-effort — the proxy's refresh-on-403 covers a
+                        // locked/dead URL at play time, and the media-error
+                        // path invalidates + re-resolves. Gating it eagerly
+                        // cost ~2.6 s on EVERY cold video while HLS (the
+                        // primary, ungated) already plays. So: register
+                        // without the gate poll.
                         Some(if fb_headers.is_empty() {
                             fb_url
                         } else {
@@ -1700,9 +1701,19 @@ mod tests {
         ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
         for fmt_kind in ["video", "audio"] {
             let s = ex.get_stream_with_yt_dlp("tuN5h65fhBk", Some(fmt_kind), None).await.expect("resolve");
-            println!("live {fmt_kind}: timings={:?}", s.timings);
+            println!("live {fmt_kind}: format={} timings={:?}", s.format, s.timings);
             let r = reqwest::Client::new().get(&s.url).header("Range", "bytes=0-").send().await.unwrap();
             let ct = r.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            if s.format == "hls" {
+                // Task 9: video resolves to the filtered HLS master via the
+                // proxy — a playlist, not media bytes.
+                assert_eq!(r.status(), 200, "{fmt_kind}: {}", s.url);
+                assert!(ct.contains("mpegurl"), "{fmt_kind}: content-type {ct}");
+                let body = r.text().await.unwrap();
+                assert!(body.contains("#EXT-X-STREAM-INF"), "master must list variants");
+                println!("live video: HLS master OK ({} bytes playlist)", body.len());
+                continue;
+            }
             assert_eq!(r.status(), 206, "{fmt_kind}: {}", s.url);
             assert!(ct.starts_with("video/") || ct.starts_with("audio/"), "{fmt_kind}: content-type {ct}");
             // googlevideo throttles audio-only to ~2x playback rate (measured:
@@ -2662,6 +2673,69 @@ mod tests {
         let body = reqwest::Client::new().get(&s.url).send().await.unwrap().text().await.unwrap();
         assert!(body.contains("#EXT-X-STREAM-INF"), "master served through the route: {body}");
         assert!(body.contains("360.m3u8"), "cap 2160 keeps 360p: {body}");
+    }
+
+    /// LIVE acceptance (Task 12): prefetch a real video through the real
+    /// yt-dlp resolve path into the stream cache, then a click must hit the
+    /// cache instantly (cache_hit=true, ~0 ms) — never a second yt-dlp run.
+    #[tokio::test]
+    #[ignore = "live network: real yt-dlp warm-cache acceptance"]
+    async fn live_warm_prefetch_is_instant() {
+        use crate::stream_cache::{CacheKey, CachedStream, StreamMode, StreamCache, expiry_from_url};
+        let cache = std::sync::Arc::new(StreamCache::new(2));
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Broken); // this network's IPv6 is broken
+        let ex = std::sync::Arc::new(Extractor::from_parts(np));
+        ex.yt_dlp_path.set("yt-dlp".into()).unwrap();
+        let key = CacheKey {
+            episode_id: "tuN5h65fhBk".to_string(),
+            mode: StreamMode::Video,
+        };
+        let ex2 = ex.clone();
+        cache
+            .prefetch(key.clone(), move || {
+                let ex = ex2.clone();
+                Box::pin(async move {
+                    let s = ex.get_stream_with_yt_dlp("tuN5h65fhBk", Some("video"), None).await?;
+                    let expires_at = expiry_from_url(&s.url, std::time::Instant::now());
+                    Ok(CachedStream {
+                        primary: crate::commands::episodes::StreamInfo {
+                            url: s.url,
+                            headers: None,
+                            format: s.format,
+                            timings: s.timings,
+                            fallback_url: s.fallback_url,
+                        },
+                        fallback: None,
+                        expires_at,
+                    })
+                }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<CachedStream, String>> + Send>>
+            })
+            .await;
+        // wait for the background prefetch to COMPLETE (cell inserted ≠ settled —
+        // a click during a pending prefetch correctly awaits it, which is what
+        // we are NOT measuring here)
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while !cache.is_settled(&key) {
+            assert!(std::time::Instant::now() < deadline, "prefetch did not settle in 60 s");
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        let t0 = std::time::Instant::now();
+        let got = cache
+            .get_or_resolve(key, || {
+                Box::pin(async { Err("must not re-resolve on a hit".to_string()) })
+                    as std::pin::Pin<Box<dyn std::future::Future<Output = Result<CachedStream, String>> + Send>>
+            })
+            .await
+            .expect("cache hit");
+        let elapsed = t0.elapsed();
+        let cache_hit = got.primary.timings.as_ref().map(|t| t.cache_hit).unwrap_or(false);
+        println!("WARM cache_hit={cache_hit} click_elapsed={elapsed:?}");
+        assert!(cache_hit, "a play after prefetch is marked pre-resolved");
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "warm click must be ~instant (target ≤ 1.5 s incl. first frame): {elapsed:?}"
+        );
     }
 
     // ---- Task 8: one extractor-args constant on every -J invocation ----

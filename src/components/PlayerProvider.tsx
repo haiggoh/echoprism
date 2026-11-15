@@ -282,6 +282,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           audio_only_auto: res.state.origin === 'auto',
         });
         applyPlaybackFormatRef.current(res.state.on ? 'audio' : 'video');
+        // Re-resolve the current stream in the new format, exactly like the
+        // manual toggle (validator-confirmed gap): drop the src so the resolve
+        // effect runs for the new format; position restores on the new src.
+        setStreamUrl(null);
+        setResolveTick((t) => t + 1);
       } else {
         usePlayerStore.setState({ audio_only_auto: res.state.origin === 'auto' });
       }
@@ -322,6 +327,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (mode: boolean) => {
       audioModeTouched.current = true;
       audioOriginRef.current = 'user'; // Task 11: a user toggle overrides the auto rule
+      usePlayerStore.setState({ audio_only_auto: false }); // user choice → badge off
       setStoreAudioMode(mode);
       // Remember it (best-effort: a failed write must not block the switch).
       settingsCommands
