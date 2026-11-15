@@ -76,12 +76,12 @@ impl StartupLog {
 fn log_startup_line(r: &StartupRecord) {
     tracing::info!(
         "startup total_ms={} episode_id={} source={} path={} click_to_url_ms={} url_to_first_frame_ms={} timings={:?}",
+        r.total_ms,
         r.episode_id,
         r.source,
         r.path,
         r.click_to_url_ms,
         r.url_to_first_frame_ms,
-        r.total_ms,
         r.timings
     );
 }
@@ -152,10 +152,16 @@ mod tests {
         let rec = record("ep-1");
         tracing::subscriber::with_default(subscriber, || log_startup_line(&rec));
         let captured = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        // Value-bound assertions, not just the pattern: a positional arg
+        // shift still contains "startup total_ms=" and would pass a
+        // substring check (caught by the milestone validator 2026-11-15).
         assert!(
-            captured.contains("startup total_ms="),
-            "the log line must carry the total: {captured}"
+            captured.contains("startup total_ms=2 "),
+            "total_ms must carry the record's total (2): {captured}"
         );
-        assert!(captured.contains("ep-1"), "the log line must name the episode: {captured}");
+        assert!(
+            captured.contains("episode_id=ep-1"),
+            "episode_id must carry the id: {captured}"
+        );
     }
 }
