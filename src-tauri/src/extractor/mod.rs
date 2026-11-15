@@ -121,6 +121,9 @@ impl Extractor {
     /// so the caller can feed the pool's health + failure-streak bookkeeping
     /// (rounds 9/13, echoprism-initial-playback).
     pub async fn resolve_stream(&self, video_id: &str, format: Option<&str>, quality: Option<&str>, candidates: &[Instance]) -> Result<(StreamUrl, Vec<String>, Option<String>), String> {
+        // Task 1 stamps: instances_ms covers the wall time of ALL instance
+        // attempts — including the failed ones before a yt-dlp fallback.
+        let t0 = std::time::Instant::now();
         // Handover 2026-10-22 item 3: the silent fallbacks logged nothing. An
         // empty candidate list means every instance is Failed (skipped by
         // order_for_search); reaching yt-dlp after attempts means all of them
@@ -135,7 +138,13 @@ impl Extractor {
         for instance in candidates {
             attempted += 1;
             match self.get_stream_from_instance(video_id, instance, format, quality).await {
-                Ok(stream) => return Ok((stream, failed_ids, Some(instance.id.clone()))),
+                Ok(mut stream) => {
+                    stream.timings = Some(crate::startup_timer::ResolveTimings {
+                        instances_ms: t0.elapsed().as_millis() as u64,
+                        ..Default::default()
+                    });
+                    return Ok((stream, failed_ids, Some(instance.id.clone())));
+                }
                 Err(e) => {
                     tracing::debug!("instance {} failed for {video_id}: {e}", instance.url);
                     failed_ids.push(instance.id.clone());
@@ -147,7 +156,13 @@ impl Extractor {
                 "resolve_stream({video_id}, format={format:?}): all {attempted} instance(s) failed — falling back to yt-dlp"
             );
         }
-        let stream = self.get_stream_with_yt_dlp(video_id, format, quality).await?;
+        let mut stream = self.get_stream_with_yt_dlp(video_id, format, quality).await?;
+        // The yt-dlp path stamped its own stages; fold the instance attempt
+        // time in front of them (single writer keeps the 13 test call sites
+        // signature-stable).
+        if let Some(t) = stream.timings.as_mut() {
+            t.instances_ms = t0.elapsed().as_millis() as u64;
+        }
         Ok((stream, failed_ids, None))
     }
 
@@ -266,6 +281,7 @@ impl Extractor {
             format: stream.format,
             quality: stream.quality,
             headers: None,
+            timings: None,
         })
     }
     
@@ -326,6 +342,7 @@ impl Extractor {
         // those headers (live 2026-11-04: Piped /streams is 500-gated, so
         // yt-dlp is the only source and its raw URL failed to load —
         // "Stream error"). Headered URLs go through the local stream proxy.
+        let t_extract = std::time::Instant::now();
         let args = vec![
             "--no-playlist".into(),
             "--no-warnings".into(),
@@ -335,6 +352,7 @@ impl Extractor {
         let output = self.yt_dlp_output(&args).await?;
         let dump: YtDlpDump = serde_json::from_slice(&output.stdout)
             .map_err(|e| format!("yt-dlp -J parse failed: {e}"))?;
+        let ytdlp_ms = t_extract.elapsed().as_millis() as u64;
         let want_audio = format.is_some_and(|f| f.eq_ignore_ascii_case("audio"));
         // Round 5 (owner 2026-11-05: audio-only of YouTube still failed): a
         // googlevideo edge can 403 a URL that another edge served fine a
@@ -351,6 +369,10 @@ impl Extractor {
             .build()
             .expect("probe client");
         let mut last_err = String::new();
+        // Task 1 stamps: gate_ms = all `available_at` waits, probe_ms = all
+        // 1-byte Range probes, accumulated across candidates.
+        let mut gate_ms: u64 = 0;
+        let mut probe_ms: u64 = 0;
         for cand in &candidates {
             let url = cand.url.clone().filter(|u| !u.is_empty())
                 .or_else(|| cand.manifest_url.clone());
@@ -360,7 +382,9 @@ impl Extractor {
             // `available_at` (~4 s after extraction). Probing at once 403'd
             // every real format (the earlier 'URLs expire within seconds'
             // reading was this, inverted).
+            let t_gate = std::time::Instant::now();
             wait_until_available(cand).await;
+            gate_ms += t_gate.elapsed().as_millis() as u64;
             let serve_url = if headers.is_empty() {
                 url.clone()
             } else {
@@ -372,7 +396,10 @@ impl Extractor {
                     self.refresh_ytdlp_url(video_id, want_audio, cand.format_id.clone()),
                 )
             };
-            match probe.get(&serve_url).header("Range", "bytes=0-0").send().await {
+            let t_probe = std::time::Instant::now();
+            let probe_result = probe.get(&serve_url).header("Range", "bytes=0-0").send().await;
+            probe_ms += t_probe.elapsed().as_millis() as u64;
+            match probe_result {
                 Ok(r) if (r.status().is_success() || r.status() == 206)
                     && !is_media_content_type(r.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())) =>
                 {
@@ -382,7 +409,19 @@ impl Extractor {
                     let host = r.url().host_str().unwrap_or("?").to_string();
                     tracing::info!("yt-dlp stream candidate OK: host={host} status={} -> {serve_url}", r.status());
                     let kind = if want_audio { "m4a".to_string() } else { cand.ext.clone().unwrap_or_else(|| "mp4".into()) };
-                    return Ok(StreamUrl { url: serve_url, format: kind, quality: quality.unwrap_or("auto").to_string(), headers: None });
+                    return Ok(StreamUrl {
+                        url: serve_url,
+                        format: kind,
+                        quality: quality.unwrap_or("auto").to_string(),
+                        headers: None,
+                        timings: Some(crate::startup_timer::ResolveTimings {
+                            instances_ms: 0, // stamped by resolve_stream (single writer)
+                            ytdlp_ms,
+                            gate_ms,
+                            probe_ms,
+                            cache_hit: false,
+                        }),
+                    });
                 }
                 Ok(r) => { last_err = format!("{} -> HTTP {}", url_host(&url), r.status()); }
                 Err(e) => { last_err = format!("{} -> {e}", url_host(&url)); }
@@ -635,6 +674,7 @@ fn select_piped_stream(
         format: best.format.unwrap_or_else(|| "mp4".to_string()),
         quality: best.quality.unwrap_or_else(|| "720p".to_string()),
         headers: None,
+        timings: None,
     };
 
     if want_audio {
@@ -723,6 +763,11 @@ pub struct StreamUrl {
     pub format: String,
     pub quality: String,
     pub headers: Option<std::collections::HashMap<String, String>>,
+    /// Task 1 stage wall-times when this came from the yt-dlp resolve path;
+    /// None on the instance paths (their cost is stamped by resolve_stream
+    /// as `instances_ms` when they win).
+    #[serde(default)]
+    pub timings: Option<crate::startup_timer::ResolveTimings>,
 }
 
 // ---- Search ----------------------------------------------------------------

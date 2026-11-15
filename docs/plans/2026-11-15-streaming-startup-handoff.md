@@ -60,3 +60,5 @@ read-only preflight and Receipt 0. Proceed through Tasks 1–12 without stopping
 
 ## 6. Progress log (append one line per receipt: date · task · commit · result)
 - 2026-11-15 · handoff written · planning session · execution not started
+- 2026-11-15 · Phase 0 preflight · (no commit) · canonical clean at 8fb8bfc6; worktree ~/.wt/ep-startup created; tag v0.1.19 latest; baselines green (cargo 194/0/12, vitest 372/372); migration = src-tauri/src/db/migrations.rs migrate_data ALTER list; ship script ~/.local/bin/rtc-ship.sh
+- 2026-11-15 · Task 1 start-up timer · (committing) · RED→GREEN: cargo startup_timer 2/2, vitest startup-timer 3/3; full suites green (rust 196/0/12, vitest 375/375, tsc clean); discriminant: eviction removed → startup_log_keeps_last_50 RED (60≠50), reverted → 2/2

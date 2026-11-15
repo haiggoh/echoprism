@@ -156,23 +156,23 @@ Highest granted boundary: **SHIP THROUGH RELEASE** (owner, 2026-11-15, this sess
 
 ## 🛑 Phase 0 — forced preflight (read-only)
 
-- [ ] Write the three strategy sentences.
-- [ ] `cd ~/ClaudeWorkspace/echoprism && git status --porcelain && git log --oneline -3` —
+- [x] Write the three strategy sentences.
+- [x] `cd ~/ClaudeWorkspace/echoprism && git status --porcelain && git log --oneline -3` —
       expect clean `master` at or after `691d926f`. Dirty paths are NOT yours: do not touch them.
-- [ ] `git fetch --tags origin && git tag --sort=-v:refname | head -3 && git ls-remote --tags
+- [x] `git fetch --tags origin && git tag --sort=-v:refname | head -3 && git ls-remote --tags
       origin | tail -3` — record the latest version (expected `v0.1.19`; another session may have
       shipped since — tags are a shared namespace).
-- [ ] `git worktree add -b feat/startup-speed ~/.wt/ep-startup master`; `cd ~/.wt/ep-startup`;
+- [x] `git worktree add -b feat/startup-speed ~/.wt/ep-startup master`; `cd ~/.wt/ep-startup`;
       `npm ci` (worktrees do not share `node_modules`).
-- [ ] Baseline: `cargo test --workspace --manifest-path src-tauri/Cargo.toml > /tmp/ep-base-rust.txt
+- [x] Baseline: `cargo test --workspace --manifest-path src-tauri/Cargo.toml > /tmp/ep-base-rust.txt
       2>&1; echo EXIT:$?` and `npm run test:run > /tmp/ep-base-ts.txt 2>&1; echo EXIT:$?` — record
       pass/fail/ignored counts. A pre-existing red test is reported and fixed or the release is
       held (no release ships around a known error).
-- [ ] Tool check: `yt-dlp --version`, `command -v free-agent-tool.py remote-session.sh
+- [x] Tool check: `yt-dlp --version`, `command -v free-agent-tool.py remote-session.sh
       waypoints.py`, and find the ship script: `ls bin/rtc-ship.sh rtc-ship.json 2>&1` in the repo
       (memory `plain-repo-rtc-ship-wiring` / `rtc-ship-worktree-not-canonical-checkout` describe
       how echoprism shipped v0.1.19: `rtc-ship.sh` run against the WORKTREE).
-- [ ] Locate the DB migration mechanism for new preference columns (grep `migrations` /
+- [x] Locate the DB migration mechanism for new preference columns (grep `migrations` /
       `CREATE TABLE user_preferences` under `src-tauri/`) and record it — Task 10 needs it.
 
 **🧪 Receipt 0:** the outputs above, baseline counts, latest tag, migration mechanism path.
@@ -201,20 +201,20 @@ Highest granted boundary: **SHIP THROUGH RELEASE** (owner, 2026-11-15, this sess
   `startupTimer.urlReady(episodeId: string, timings?: ResolveTimings, cacheHit?: boolean)`,
   `startupTimer.firstFrame(episodeId: string): StartupRecord | null` (calls `report_startup`).
 
-- [ ] **Step 1: failing tests.** Rust `startup_log_keeps_last_50` (push 60 → `recent().len()==50`,
+- [x] **Step 1: failing tests.** Rust `startup_log_keeps_last_50` (push 60 → `recent().len()==50`,
       first is #11) and `report_startup_logs_one_info_line` (capture via `tracing_test` or a
       custom layer; assert the line contains `startup total_ms=`). TS: `firstFrame` after
       `click` at t=0, `urlReady` at t=800, first frame at t=1200 (fake timers) → `{click_to_url_ms:
       800, url_to_first_frame_ms: 400, total_ms: 1200}`; `firstFrame` without `click` → `null`;
       a second `click` for another episode resets (only the latest play is measured).
-- [ ] **Step 2:** run both → FAIL (missing module).
-- [ ] **Step 3:** implement. Stamp stages inside `resolve_stream` / `get_stream_with_yt_dlp`
+- [x] **Step 2:** run both → FAIL (missing module).
+- [x] **Step 3:** implement. Stamp stages inside `resolve_stream` / `get_stream_with_yt_dlp`
       with `std::time::Instant`. Frontend: `click` at the top of play/load, `urlReady` when
       `setStreamUrl(info.url)` runs (:327), `firstFrame` on the active element's first `playing`
       event for that src. `path = timings.cache_hit ? "pre-resolved" : "cold"`.
-- [ ] **Step 4:** tests GREEN; full suites still green.
-- [ ] **Discriminant:** temporarily make `push` not evict → `startup_log_keeps_last_50` RED; revert.
-- [ ] **Step 5:** commit `feat(timer): log click→URL→first-frame for every play`.
+- [x] **Step 4:** tests GREEN; full suites still green.
+- [x] **Discriminant:** temporarily make `push` not evict → `startup_log_keeps_last_50` RED; revert.
+- [x] **Step 5:** commit `feat(timer): log click→URL→first-frame for every play`.
 
 **🧪 Receipt 1** + offload cross-check (rule 8).
 

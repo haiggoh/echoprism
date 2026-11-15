@@ -12,6 +12,7 @@ mod db;
 mod instance_pool;
 mod extractor;
 mod netpath;
+mod startup_timer;
 mod stream_proxy;
 mod matcher;
 mod channel_art;
@@ -110,6 +111,9 @@ pub fn run() {
             let extractor = extractor::Extractor::new(app.handle().clone(), netpath);
             app.manage(Arc::new(extractor));
 
+            // Start-up timing (Task 1): the last 50 measured plays.
+            app.manage(startup_timer::StartupLog::default());
+
             // Initialize matcher
             let matcher = matcher::EpisodeMatcher::new(app.handle().clone(), None);
             app.manage(Arc::new(matcher));
@@ -182,6 +186,10 @@ pub fn run() {
             commands::episodes::get_episode,
             commands::episodes::search_episodes,
             commands::episodes::stream_episode,
+
+            // Start-up timing (Task 1)
+            startup_timer::report_startup,
+            startup_timer::recent_startups,
 
             // Queue commands
             commands::queue::get_queue,

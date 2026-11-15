@@ -186,6 +186,7 @@ fn stream_info_from(stream: crate::extractor::StreamUrl) -> StreamInfo {
         url: stream.url,
         headers: stream.headers,
         format: stream.format,
+        timings: stream.timings,
     }
 }
 
@@ -212,6 +213,7 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
             url,
             headers: None,
             format: "audio".into(),
+            timings: None,
         });
     }
     // Video-only podcast episode (e.g. "Was jetzt? – Die Woche" publishes a
@@ -222,6 +224,7 @@ fn enclosure_stream_for(episode: &Episode, _requested: Option<&str>) -> Option<S
             url,
             headers: None,
             format: "video".into(),
+            timings: None,
         });
     }
     None
@@ -270,6 +273,10 @@ pub struct StreamInfo {
     pub url: String,
     pub headers: Option<std::collections::HashMap<String, String>>,
     pub format: String,
+    /// Task 1: stage wall-times from the resolve path; None on the podcast
+    /// enclosure path (until Task 7 stamps it) and when unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timings: Option<crate::startup_timer::ResolveTimings>,
 }
 
 #[cfg(test)]
@@ -401,6 +408,7 @@ mod stream_tests {
             format: "hls".into(),
             quality: "720p".into(),
             headers: None,
+            timings: None,
         };
         let info = stream_info_from(resolved);
         assert_eq!(info.url, "https://media.example/video.m3u8");

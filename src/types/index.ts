@@ -424,6 +424,33 @@ export interface StreamInfo {
   url: string;
   headers?: Record<string, string>;
   format: string;
+  /** Task 1: stage wall-times from the backend resolve path; absent on the
+   *  podcast enclosure path (until it stamps one) and when unavailable. */
+  timings?: ResolveTimings | null;
+}
+
+/** Stage wall-times of one resolve, stamped inside the backend extractor.
+ *  Mirrors src-tauri/src/startup_timer.rs. */
+export interface ResolveTimings {
+  instances_ms: number;
+  ytdlp_ms: number;
+  gate_ms: number;
+  probe_ms: number;
+  cache_hit: boolean;
+}
+
+/** What a measured play resolved through. */
+export type StartupSource = 'youtube-video' | 'youtube-audio' | 'podcast';
+
+/** One measured play (mirrors the backend StartupRecord). */
+export interface StartupRecord {
+  episode_id: string;
+  source: StartupSource;
+  path: 'pre-resolved' | 'cold';
+  click_to_url_ms: number;
+  url_to_first_frame_ms: number;
+  total_ms: number;
+  timings?: ResolveTimings | null;
 }
 
 /** Live-test feature: the bell's payload — new episodes across subscribed

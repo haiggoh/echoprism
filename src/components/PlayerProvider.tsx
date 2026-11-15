@@ -11,6 +11,7 @@ import { resolveDefaultPlayMode } from '../lib/playModeChain';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useMenuPlayback } from '../hooks/useMenuPlayback';
 import { readStoredPlaybackRate, writeStoredPlaybackRate } from './player/SpeedControl';
+import { startupTimer } from '../lib/startupTimer';
 import { useToasts } from './ui/Toaster';
 import { Channel, Episode, PlayMode, PlayModeRule } from '../types';
 
@@ -173,6 +174,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const play = useCallback(
     (ep: Episode, mode?: PlayMode) => {
+      // Task 1: measure this play from the click onward (only the latest
+      // play is measured; a later click replaces the pending record).
+      startupTimer.click(ep.id, ep.video_id ? `youtube-${formatFor(mode)}` : 'podcast');
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
       // Live-test Task 8: playing an episode that is ALREADY a queue item must
@@ -204,6 +208,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(
     (ep: Episode, opts?: { paused?: boolean; mode?: PlayMode }) => {
+      // Task 1: load() always parks the episode paused (below); the toggle
+      // that actually starts playback re-clicks and overwrites this.
+      startupTimer.click(ep.id, ep.video_id ? `youtube-${formatFor(opts?.mode)}` : 'podcast');
       currentEpisodeRef.current = ep;
       setCurrentEpisode(ep);
       // The D7 chain mode travels with a load_paused click, so the later
@@ -324,6 +331,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         // Only commit if this episode is still the one the engine is playing.
         if (currentEpisodeRef.current?.id === ep.id) {
+          // Task 1: the URL is committed — stop the click→URL leg.
+          startupTimer.urlReady(ep.id, info.timings);
           setStreamUrl(info.url);
           // Live-test finding: history had no writer. One row per actual
           // playback start — here, where the resolve SUCCEEDED (media that
@@ -356,7 +365,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const pause = useCallback(() => setPlaying(false), [setPlaying]);
 
-  const togglePlay = useCallback(() => setPlaying(!isPlaying), [isPlaying, setPlaying]);
+  const togglePlay = useCallback(() => {
+    // Task 1: a load(paused) episode starts HERE — this toggle is the honest
+    // click for the timer, so it replaces the load's earlier one.
+    if (!isPlaying && currentEpisodeRef.current) {
+      const ep = currentEpisodeRef.current;
+      startupTimer.click(ep.id, ep.video_id ? `youtube-${formatFor()}` : 'podcast');
+    }
+    setPlaying(!isPlaying);
+  }, [isPlaying, setPlaying]);
 
   // Batch 4 item 6: a seek can make a media element fire `error` while the
   // server catches up to the requested position (seen on long podcasts whose
@@ -555,17 +572,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seekingRef.current = false;
       pendingRestoreRef.current = null;
     };
+    // Task 1: the first frame of THIS src. The timer consumes its pending
+    // play on the first `playing` event, so later events (seeks) are no-ops.
+    const onPlaying = () => {
+      const ep = currentEpisodeRef.current;
+      if (ep) startupTimer.firstFrame(ep.id);
+    };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);
     el.addEventListener('seeked', onSeeked);
     el.addEventListener('ended', onEnded);
     el.addEventListener('error', onError);
+    el.addEventListener('playing', onPlaying);
     return () => {
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
       el.removeEventListener('seeked', onSeeked);
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
+      el.removeEventListener('playing', onPlaying);
     };
   }, [activeEl, streamUrl, setPlaybackState, queueNext, addToast, setPlaying]);
 
