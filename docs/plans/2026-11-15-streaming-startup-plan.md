@@ -348,10 +348,10 @@ returns `[]` when `shuffle` is on — the next item is unpredictable).
 - [x] **Step 1: failing tests.** `piped_audio_request_with_no_audio_streams_errs` (fixture with
       empty `audioStreams` + muxed video → `Err`, so resolution falls to yt-dlp);
       `ytdlp_audio_rank_contains_no_video_codec` (every candidate has `vcodec` none).
-- [ ] **Step 2:** FAIL. **Step 3:** drop the muxed-video and manifest fallbacks from the audio
+- [x] **Step 2:** FAIL. **Step 3:** drop the muxed-video and manifest fallbacks from the audio
       branches. **Step 4:** GREEN; update tests that pinned the old fallback and name them.
-- [ ] **Discriminant:** re-add the muxed fallback → second test RED; revert.
-- [ ] **Step 5:** commit `fix(extractor): audio-only never falls back to a video format`.
+- [x] **Discriminant:** re-add the muxed fallback → second test RED; revert.
+- [x] **Step 5:** commit `fix(extractor): audio-only never falls back to a video format`.
 
 **🧪 Receipt 6** + offload cross-check.
 

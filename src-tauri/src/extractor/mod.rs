@@ -701,30 +701,19 @@ fn select_piped_stream(
     };
 
     if want_audio {
+        // Task 6: audio-only NEVER falls back to a muxed video stream — an
+        // audio-only play must not fetch video bytes (owner anti-goal). No
+        // audio streams → Err, and the resolver falls through to yt-dlp.
         let best = streams
             .audio_streams
             .into_iter()
             .filter(|s| !s.url.is_empty())
             .filter(quality_ok)
             .max_by_key(|s| piped_quality_rank(&s.quality));
-        if let Some(best) = best {
-            return Ok(into_url(best));
-        }
-        let best = streams
-            .video_streams
-            .into_iter()
-            .filter(|s| !s.url.is_empty())
-            .filter(|s| !s.video_only.unwrap_or(false))
-            .filter(|s| {
-                s.format
-                    .as_deref()
-                    .is_none_or(|f| !matches!(f.to_ascii_uppercase().as_str(), "HLS" | "DASH"))
-            })
-            .max_by_key(|s| piped_quality_rank(&s.quality));
-        if let Some(best) = best {
-            return Ok(into_url(best));
-        }
-        return Err("No suitable stream found".to_string());
+        return match best {
+            Some(best) => Ok(into_url(best)),
+            None => Err("No audio-only stream found".to_string()),
+        };
     }
 
     let best = streams
@@ -1054,9 +1043,9 @@ fn url_host(url: &str) -> &str {
 }
 
 /// All usable formats as an ordered candidate list: audio → progressive
-/// audio-only by abr desc, then progressive muxed, then manifests; video →
-/// progressive muxed by height desc, then manifests. The resolver probes each
-/// in order (see get_stream_with_yt_dlp).
+/// audio-only by abr desc ONLY (Task 6: never a video codec in an audio
+/// rank); video → progressive muxed by height desc, then manifests. The
+/// resolver probes each in order (see get_stream_with_yt_dlp).
 fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFormat> {
     // Storyboards (sb*, protocol mhtml) are scrubber-preview IMAGES, never a
     // stream (round 6: one was served to <video> -> MediaError 4).
@@ -1070,13 +1059,14 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
     };
     let cands: Vec<YtDlpFormat> = formats.iter().filter(|f| usable(f)).cloned().collect();
     if want_audio {
-        let (audio_only, rest): (Vec<_>, Vec<_>) = cands.into_iter().partition(|f| progressive(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec));
-        let mut audio_only = audio_only;
+        // Task 6: audio-only rank = progressive audio-only formats ONLY — no
+        // muxed-video fallback, no manifest fallback (an audio-only play must
+        // never fetch video bytes). Empty → the resolver's honest Err.
+        let mut audio_only: Vec<_> = cands
+            .into_iter()
+            .filter(|f| progressive(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec))
+            .collect();
         audio_only.sort_by(|a, b| b.abr.unwrap_or(0.0).partial_cmp(&a.abr.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
-        let mut rest: Vec<_> = rest.into_iter().filter(|f| progressive(f)).collect();
-        rest.sort_by_key(|f| f.height.unwrap_or(0));
-        audio_only.extend(rest);
-        audio_only.extend(formats.iter().filter(|f| usable(f) && !progressive(f)).cloned());
         audio_only
     } else {
         let (muxed, rest): (Vec<_>, Vec<_>) = cands.into_iter().partition(|f| progressive(f) && !is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec));
@@ -1233,7 +1223,7 @@ mod tests {
         std::fs::write(
             &bin,
             format!(
-                "#!/bin/sh\nprintf '%s' \"$*\" > '{}'\nprintf '{{\"formats\":[{{\"url\":\"http://127.0.0.1:{rport}/v.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\"{headers}}}]}}\\n'\n",
+                "#!/bin/sh\nprintf '%s' \"$*\" > '{}'\nprintf '{{\"formats\":[{{\"url\":\"http://127.0.0.1:{rport}/a.m4a\",\"ext\":\"m4a\",\"vcodec\":\"none\",\"acodec\":\"mp4a\"{headers}}},{{\"url\":\"http://127.0.0.1:{rport}/v.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\"{headers}}}]}}\\n'\n",
                 args_file.display()
             ),
         )
@@ -1394,10 +1384,11 @@ mod tests {
         ];
         let picked = pick_yt_dlp_format(&formats, true, None).expect("audio");
         assert_eq!(picked.url.as_deref(), Some("https://a/128.m4a"), "manifest skipped for progressive");
-        // Manifest only → fall back to it (better than erroring).
+        // Task 6 update (this half pinned the old manifest fallback): a
+        // manifest-only audio request now gets NOTHING from the audio rank —
+        // no fallback, the resolver's honest Err stands.
         let only_hls = vec![formats[0].clone()];
-        let picked = pick_yt_dlp_format(&only_hls, true, None).expect("fallback");
-        assert_eq!(picked.manifest_url.as_deref(), Some("https://a/master.m3u8"));
+        assert!(pick_yt_dlp_format(&only_hls, true, None).is_none(), "no manifest fallback in the audio rank");
     }
 
     /// Round 5 delivery test: the resolver must PROBE candidates through the
@@ -2091,13 +2082,17 @@ mod tests {
     /// audio track and play in an <audio> element, so audio now falls back to
     /// the best non-video-only mp4 video stream.
     #[test]
-    fn piped_streams_audio_falls_back_to_best_combined_mp4() {
+    fn piped_streams_audio_with_only_muxed_video_errs() {
+        // Task 6 update (was piped_streams_audio_falls_back_to_best_combined_mp4,
+        // which pinned the muxed fallback): the real capture is audio-gated,
+        // and with only muxed video available an audio request must Err so
+        // the resolver falls through to yt-dlp — never video bytes for audio.
         let streams = parse_piped_streams(PIPED_STREAMS_FIXTURE).expect("parse");
         assert_eq!(streams.audio_streams.len(), 0, "premise: real capture is audio-gated");
-        let picked = select_piped_stream(streams, Some("audio"), None).expect("combined fallback");
-        assert_eq!(picked.quality, "360p", "highest-ranked combined stream wins");
-        assert_eq!(picked.format, "MPEG_4", "an mp4, not an HLS manifest");
-        assert!(picked.url.contains("piped-proxy"), "a proxy URL the media element can load: {}", picked.url);
+        assert!(
+            select_piped_stream(streams, Some("audio"), None).is_err(),
+            "no audio-only stream → Err, no muxed fallback"
+        );
     }
 
     #[test]
@@ -2502,5 +2497,62 @@ mod tests {
         assert_eq!(runs, 1, "polling must never trigger the proxy refresh (yt-dlp re-extraction); runs={runs}");
         assert!(s.url.starts_with("http://127.0.0.1:"), "headered URL is registered as a proxy token AFTER the gate: {}", s.url);
         let _ = std::fs::remove_file(&counter);
+    }
+
+    // ---- Task 6: audio-only never selects a video format ----
+
+    fn yt_format(id: &str, url: &str, ext: &str, vcodec: Option<&str>, acodec: Option<&str>, protocol: Option<&str>) -> YtDlpFormat {
+        serde_json::from_value(serde_json::json!({
+            "format_id": id, "url": url, "ext": ext,
+            "vcodec": vcodec, "acodec": acodec, "protocol": protocol,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn piped_audio_request_with_no_audio_streams_errs() {
+        // Only a MUXED video stream exists: an audio request must Err so the
+        // resolver falls through to yt-dlp — never serve video bytes to an
+        // audio-only play (owner anti-goal).
+        let streams = parse_piped_streams(
+            r#"{"audioStreams":[],
+                "videoStreams":[{"url":"https://x/combined-360.mp4","format":"MPEG_4","quality":"360p"}]}"#,
+        )
+        .expect("parse");
+        let r = select_piped_stream(streams, Some("audio"), None);
+        assert!(
+            r.is_err(),
+            "audio request with only a muxed video stream must Err, got {:?}",
+            r.map(|s| s.url)
+        );
+    }
+
+    #[test]
+    fn ytdlp_audio_rank_contains_no_video_codec() {
+        let formats = vec![
+            yt_format("140", "https://gv.example/a140.m4a", "m4a", Some("none"), Some("mp4a.40.2"), Some("https")),
+            yt_format("251", "https://gv.example/a251.webm", "webm", Some("none"), Some("opus"), Some("https")),
+            // muxed progressive video — must NOT appear in an audio rank:
+            yt_format("18", "https://gv.example/v18.mp4", "mp4", Some("avc1.42E01E"), Some("mp4a.40.2"), Some("https")),
+            // HLS manifest — must NOT appear either:
+            yt_format("hls", "", "mp4", Some("none"), Some("mp4a.40.2"), Some("m3u8_native")),
+        ];
+        let mut formats = formats;
+        formats[3].manifest_url = Some("https://gv.example/master.m3u8".to_string());
+        formats[3].url = None;
+        let ranked = rank_yt_dlp_formats(&formats, true);
+        assert!(!ranked.is_empty(), "the audio-only formats must remain ranked");
+        for f in &ranked {
+            assert!(
+                is_none_codec(&f.vcodec),
+                "audio rank must never contain a video codec: format_id={:?}",
+                f.format_id
+            );
+            assert!(
+                f.url.as_ref().is_some_and(|u| !u.is_empty()),
+                "audio rank must contain only direct (non-manifest) URLs: format_id={:?}",
+                f.format_id
+            );
+        }
     }
 }
