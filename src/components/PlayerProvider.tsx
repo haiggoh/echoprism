@@ -13,6 +13,9 @@ import { useMenuPlayback } from '../hooks/useMenuPlayback';
 import { readStoredPlaybackRate, writeStoredPlaybackRate } from './player/SpeedControl';
 import { startupTimer } from '../lib/startupTimer';
 import { upcomingQueueEpisodes, QUEUE_LOOKAHEAD } from '../hooks/usePrefetchStream';
+import { nextAudioOnly, type AudioOnlyOrigin } from '../lib/audioOnlyAuto';
+import { listen } from '@tauri-apps/api/event';
+import type { UserPreferences } from '../types';
 import { useToasts } from './ui/Toaster';
 import { Channel, Episode, PlayMode, PlayModeRule } from '../types';
 
@@ -124,6 +127,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playbackFormatRef.current = format;
     setPlaybackFormat(format);
   };
+  // Task 11: the network-cost listener (below) calls this from an event
+  // callback, so it reads through a ref.
+  const applyPlaybackFormatRef = useRef(applyPlaybackFormat);
+  applyPlaybackFormatRef.current = applyPlaybackFormat;
 
   // Playback speed is a STANDING preference, not per-playback state: the owner
   // picks 1.5x once and expects it to hold, which means it must outlive the
@@ -241,6 +248,59 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // REMEMBERED. The stored value is read once at mount; a toggle the user makes
   // before that read lands wins (the late read must not overwrite it).
   const audioModeTouched = useRef(false);
+  // Task 11: origin tracking for the metered audio-only rule — the auto rule
+  // drives the SAME isAudioMode state but never writes the stored preference.
+  const audioOriginRef = useRef<AudioOnlyOrigin>('user');
+  const userChoiceRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    // Mock/e2e world has no Tauri event bus — same world check as tauri-bridge.
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<{ expensive: boolean; constrained: boolean }>('network-cost-changed', (e) => {
+      if (cancelled) return;
+      const metered = e.payload.expensive || e.payload.constrained;
+      const prefs = queryClient.getQueryData<UserPreferences>(['preferences']);
+      const res = nextAudioOnly(
+        {
+          on: isAudioModeRef.current,
+          origin: audioOriginRef.current,
+          userChoiceBeforeAuto: userChoiceRef.current,
+        },
+        { kind: metered ? 'metered' : 'unmetered' },
+        {
+          audio_only_on_metered: prefs?.audio_only_on_metered ?? false,
+          metered_restore: prefs?.metered_restore ?? 'restore',
+        },
+      );
+      audioOriginRef.current = res.state.origin;
+      userChoiceRef.current = res.state.userChoiceBeforeAuto;
+      if (res.state.on !== isAudioModeRef.current) {
+        // Auto-switch drives the engine state WITHOUT persisting the pref.
+        usePlayerStore.setState({
+          isAudioMode: res.state.on,
+          audio_only_auto: res.state.origin === 'auto',
+        });
+        applyPlaybackFormatRef.current(res.state.on ? 'audio' : 'video');
+      } else {
+        usePlayerStore.setState({ audio_only_auto: res.state.origin === 'auto' });
+      }
+      if (res.prompt) {
+        addToast({
+          title: 'Back on a normal network',
+          description: 'Audio-only was switched on automatically for the metered network. Switch back to video?',
+          variant: 'default',
+        });
+      }
+    }).then((u) => {
+      if (!cancelled) unlisten = u;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs and the query cache are read inside the listener
+  }, [queryClient, addToast]);
   useEffect(() => {
     let cancelled = false;
     settingsCommands
@@ -261,6 +321,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const setAudioMode = useCallback(
     (mode: boolean) => {
       audioModeTouched.current = true;
+      audioOriginRef.current = 'user'; // Task 11: a user toggle overrides the auto rule
       setStoreAudioMode(mode);
       // Remember it (best-effort: a failed write must not block the switch).
       settingsCommands

@@ -481,28 +481,28 @@ expensive: bool, constrained: bool }`); Create `src/lib/audioOnlyAuto.ts`; Modif
 null }, event: { kind: 'metered' | 'unmetered' | 'user-toggle'; on?: boolean }, prefs: {
 audio_only_on_metered: boolean; metered_restore: 'restore' | 'ask' }): { state; prompt: boolean }`.
 
-- [ ] **Step 0:** choose the binding (crate such as `objc2-network`, or a tiny Swift helper via
+- [x] **Step 0:** choose the binding (crate such as `objc2-network`, or a tiny Swift helper via
       the build script) — record the choice and pinned version; if neither builds within ~1 h,
       add an owner waypoint and skip Task 11 (keep the setting hidden). The iOS half is deferred
       to the iOS port plan (`docs/plans/2026-11-14-ios-personal-port.md`) — add one line there.
-- [ ] **Step 1: failing tests** for the reducer: metered → on, origin auto, remembers prior;
+- [x] **Step 1: failing tests** for the reducer: metered → on, origin auto, remembers prior;
       unmetered + restore → back to prior; user toggles while auto → origin user, unmetered
       leaves it; `ask` → `prompt: true`, no change; setting off → metered ignored.
-- [ ] **Steps 2–4:** FAIL → implement → GREEN.
-- [ ] **Discriminant:** make `unmetered` always turn audio-only off → "user had it on" row RED; revert.
-- [ ] **Step 5:** commit `feat(player): opt-in audio only on metered networks with restore`.
+- [x] **Steps 2–4:** FAIL → implement → GREEN.
+- [x] **Discriminant:** make `unmetered` always turn audio-only off → "user had it on" row RED; revert.
+- [x] **Step 5:** commit `feat(player): opt-in audio only on metered networks with restore`.
 
 **🧪 Receipt 11** + offload cross-check.
 
 ### Task 12: Acceptance measurement, final review, ship through release
 
-- [ ] Full gates: `cargo test --workspace --manifest-path src-tauri/Cargo.toml`, `npm run
+- [x] Full gates: `cargo test --workspace --manifest-path src-tauri/Cargo.toml`, `npm run
       test:run`, `npm run test:e2e`, `npm run build` (tsc) — all green, counts vs Receipt 0.
-- [ ] Live acceptance (resolve path, ignored live tests, IPv4 as the app does): cold video, cold
+- [x] Live acceptance (resolve path, ignored live tests, IPv4 as the app does): cold video, cold
       audio, warm (prefetched) video, warm audio, one podcast — record ms per stage. Click →
       first-frame in the GUI cannot be measured unattended: state "not tested — owner dogfood
       reads `recent_startups`" in the delivery.
-- [ ] Final whole-branch review (superpowers:requesting-code-review), plus an offloaded
+- [x] Final whole-branch review (superpowers:requesting-code-review), plus an offloaded
       independent review of `git diff master...feat/startup-speed` (stateless dispatch, role
       validator, cross-family vs the model you run as). Fix confirmed findings.
 - [ ] Version: next free patch after the latest tag from Phase 0 (expected `0.1.20`), bumped in

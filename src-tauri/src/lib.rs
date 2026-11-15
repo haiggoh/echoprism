@@ -14,6 +14,8 @@ mod extractor;
 mod netpath;
 mod startup_timer;
 mod stream_cache;
+#[cfg(target_os = "macos")]
+mod network_cost;
 mod hls_master;
 mod stream_proxy;
 mod matcher;
@@ -166,6 +168,29 @@ pub fn run() {
 
             // Start background tasks
             background_tasks::start_all(app.handle().clone());
+
+            // Task 11 (macOS): network-cost monitor → `network-cost-changed`
+            // events { expensive, constrained } for the metered audio-only rule.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Emitter;
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(bool, bool)>();
+                network_cost::start_monitor(tx);
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut last: Option<(bool, bool)> = None;
+                    while let Some(flags) = rx.recv().await {
+                        if last == Some(flags) {
+                            continue; // emit only on change
+                        }
+                        last = Some(flags);
+                        let _ = handle.emit(
+                            "network-cost-changed",
+                            serde_json::json!({ "expensive": flags.0, "constrained": flags.1 }),
+                        );
+                    }
+                });
+            }
 
             Ok(())
         });

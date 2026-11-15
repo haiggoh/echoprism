@@ -1,4 +1,5 @@
 import { usePlayer } from '../PlayerProvider';
+import { usePlayerStore } from '../../store/slices/playerSlice';
 
 /**
  * THE audio-only control (parity audit batch 3, owner decision 2026-11-02:
@@ -9,6 +10,8 @@ import { usePlayer } from '../PlayerProvider';
  */
 export function AudioOnlyToggle({ label = 'Audio only', hideLabelBelow }: { label?: string; hideLabelBelow?: 'sm' | 'md' }) {
   const { isAudioMode, setAudioMode } = usePlayer();
+  // Task 11: badge when audio-only is on because of the metered-network rule.
+  const auto = usePlayerStore((s) => s.audio_only_auto);
   const labelClass =
     hideLabelBelow === 'md' ? 'hidden md:inline' : hideLabelBelow === 'sm' ? 'hidden sm:inline' : '';
   return (
@@ -21,6 +24,14 @@ export function AudioOnlyToggle({ label = 'Audio only', hideLabelBelow }: { labe
         aria-label="Audio only mode"
       />
       <span className={`text-sm text-text-muted ${labelClass}`}>{label}</span>
+      {auto && isAudioMode && (
+        <span
+          className="px-1.5 py-0.5 text-[10px] font-medium bg-accent-soft text-accent rounded-full"
+          title="On automatically because the network is metered"
+        >
+          auto
+        </span>
+      )}
     </label>
   );
 }

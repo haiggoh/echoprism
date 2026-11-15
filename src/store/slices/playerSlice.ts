@@ -5,6 +5,9 @@ interface PlayerState {
   playbackState: PlaybackState | null;
   isPlaying: boolean;
   isAudioMode: boolean;
+  /** Task 11: true while audio-only is on because of the metered-network
+   *  rule (origin 'auto') — drives the "auto" badge on the toggle. */
+  audio_only_auto: boolean;
   isPip: boolean;
   volume: number;
   playbackRate: number;
@@ -31,6 +34,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   playbackState: null,
   isPlaying: false,
   isAudioMode: false,
+  audio_only_auto: false,
   isPip: false,
   volume: 1.0,
   playbackRate: 1.0,
@@ -69,11 +73,12 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   setAudioMode: (mode) => set({ isAudioMode: mode }),
   setPip: (pip) => set({ isPip: pip }),
   setInstance: (instanceId) => set({ currentInstanceId: instanceId }),
-  reset: () => set({ 
-    playbackState: null, 
-    isPlaying: false, 
-    isAudioMode: false, 
-    isPip: false 
+  reset: () => set({
+    playbackState: null,
+    isPlaying: false,
+    isAudioMode: false,
+    audio_only_auto: false,
+    isPip: false
   }),
 }));
 

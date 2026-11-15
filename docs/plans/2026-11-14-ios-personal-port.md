@@ -40,3 +40,8 @@
   so no notarization concerns on-device.
 - YouTube bot-checks can hit sideloaded apps harder than the macOS client — the yt-dlp fallback
   path is shared, so worst case degrades the same way as desktop.
+
+- Task 11 (metered audio-only, macOS side shipped 2026-11-16): on iOS use NWPathMonitor natively
+  in Swift (no helper dylib needed — the macOS build needed swift/netmonitor.swift because the
+  hand-rolled block ABI segfaulted; iOS is Swift-native). `path.isExpensive` covers hotspot;
+  cellular detection is `NWPathMonitor` + `NWInterfaceType.cellular` if a cellular-only rule is wanted.
