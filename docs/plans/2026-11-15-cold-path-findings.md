@@ -43,6 +43,21 @@ Consequence: a cold VIDEO click that resolves to the HLS master skips the
 - audio (progressive, gated): ≈ 5.1–6.9 s — borderline over; see Task 9
   (audio-only HLS rung would skip the gate too)
 
+## Task 9 Step 0 prototype (REPORT BACK rule, resolved 2026-11-15): WebKit HLS variant choice vs element size
+
+Real WKWebView probe (system Swift 6.4 + WKWebView, offscreen window; variant
+URLs of a live master rewritten through a logging local server so the chosen
+itag is observable; masters served with variants up to 1080p):
+
+- video element 640×360, master up to 1080p → requested variants 144p, 240p,
+  360p, 480p ONLY (no 720p/1080p fetch)
+- video element 1920×1080, master up to 240p → 240p (nothing higher existed)
+
+**Result: the hypothesis HOLDS — WebKit's HLS player limits variants to
+roughly the element's pixel size.** Per the plan: serve ONE master filtered
+to the FULLSCREEN cap; windowed limiting is natural and leaving fullscreen
+steps down gradually on its own. No fullscreen swap, no hls.js.
+
 ## Live cold measurement through the real resolve path (Task 8 step 4, IPv4)
 
 `live_round6_youtube_resolves_to_streamable_media` (tuN5h65fhBk), mediaconnect:

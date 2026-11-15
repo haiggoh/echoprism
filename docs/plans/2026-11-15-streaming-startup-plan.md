@@ -427,7 +427,7 @@ variant FIRST when `start == StartQuality::Lowest` (Apple's player starts on the
 variant); never returns a playlist with zero variants (if the cap removes all, keep the lowest).
 `pub enum StartQuality { Lowest, Cap }`.
 
-- [ ] **Step 0 (prototype, REPORT BACK rule from spec §2.5):** in a dev run, play one HLS master
+- [x] **Step 0 (prototype, REPORT BACK rule from spec §2.5):** in a dev run, play one HLS master
       that lists variants up to 2160p in the normal window and in fullscreen; record which
       variant WebKit picks (proxy request log shows variant fetches). Hypothesis: WebKit already
       limits to the element's pixel size. Record the result in the findings doc.
@@ -437,12 +437,12 @@ variant); never returns a playlist with zero variants (if the cap removes all, k
         ONLY if it does not reload/stutter; otherwise ship the windowed cap, leave fullscreen at
         the windowed cap, and add an owner waypoint ("fullscreen UHD needs hls.js/MSE or a
         reload — owner trade-off"). Do not adopt hls.js unasked.
-- [ ] **Step 1: failing tests** for `filter_master_playlist`: cap 720 drops 1080/2160; no cap
+- [x] **Step 1: failing tests** for `filter_master_playlist`: cap 720 drops 1080/2160; no cap
       keeps all; `Lowest` puts the 144p/240p variant first; cap below every variant keeps the
       lowest one; audio-only `#EXT-X-MEDIA` groups preserved. Frontend: `hls_error_uses_fallback_url`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** GREEN + e2e smoke.
-- [ ] **Discriminant:** off-by-one (`<` instead of `≤`) → a 720p-cap row RED; revert.
-- [ ] **Step 5:** commit `feat(video): capped adaptive HLS with progressive fallback`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** GREEN + e2e smoke.
+- [x] **Discriminant:** off-by-one (`<` instead of `≤`) → a 720p-cap row RED; revert.
+- [x] **Step 5:** commit `feat(video): capped adaptive HLS with progressive fallback`.
 
 **🧪 Receipt 9** + offload cross-check.
 

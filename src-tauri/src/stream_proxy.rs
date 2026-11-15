@@ -106,11 +106,117 @@ pub fn register_with_refresh(url: &str, headers: HashMap<String, String>, refres
     format!("http://127.0.0.1:{}/stream/{}", st.port, token)
 }
 
+/// Task 9: register an HLS MASTER playlist. The media element loads
+/// `/hls/<token>/master.m3u8?cap=<h>&start=<lowest|cap>`; the proxy fetches
+/// the upstream master and serves it FILTERED (cap/start from the query).
+/// Variant/segment URLs in the master are absolute googlevideo URLs and need
+/// no headers (measured 2026-11-15), so they go DIRECT — no rewrite needed.
+pub fn register_hls_master(
+    url: &str,
+    headers: HashMap<String, String>,
+    refresh: Option<RefreshFn>,
+    cap: Option<u32>,
+    start: crate::hls_master::StartQuality,
+) -> String {
+    let st = state();
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    st.entries.insert(
+        token.clone(),
+        Entry { url: url.to_string(), headers, refresh },
+    );
+    let cap_q = match cap {
+        Some(c) => c.to_string(),
+        None => String::new(),
+    };
+    let start_q = match start {
+        crate::hls_master::StartQuality::Lowest => "lowest",
+        crate::hls_master::StartQuality::Cap => "cap",
+    };
+    format!(
+        "http://127.0.0.1:{}/hls/{}/master.m3u8?cap={}&start={}",
+        st.port, token, cap_q, start_q
+    )
+}
+
+/// Serve a filtered HLS master for `/hls/<token>/master.m3u8`.
+async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<Response<ProxyBody>, std::convert::Infallible> {
+    let Some(entry) = st.entries.get(&token) else {
+        return Ok(Response::builder().status(StatusCode::NOT_FOUND).body(empty_body()).unwrap());
+    };
+    let mut url = entry.url.clone();
+    let mut headers = entry.headers.clone();
+    let refresh = entry.refresh.clone();
+    drop(entry);
+
+    // same 403/410 refresh-retry as the stream route
+    let mut resp = send_upstream(&st, &url, &headers, None).await;
+    if matches!(resp.as_ref(), Ok(r) if r.status() == 403 || r.status() == 410) {
+        if let Some(refresh) = refresh {
+            if let Some((fresh_url, fresh_headers)) = refresh().await {
+                if let Some(mut e) = st.entries.get_mut(&token) {
+                    e.url = fresh_url.clone();
+                    e.headers = fresh_headers.clone();
+                }
+                url = fresh_url;
+                headers = fresh_headers;
+                resp = send_upstream(&st, &url, &headers, None).await;
+            }
+        }
+    }
+    let resp = match resp {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            return Ok(Response::builder()
+                .status(r.status())
+                .body(empty_body())
+                .unwrap());
+        }
+        Err(e) => {
+            let note: ProxyError = Box::new(e);
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_GATEWAY)
+                .body(BodyExt::boxed(StreamBody::new(stream::iter(std::iter::once(Ok(
+                    Frame::data(Bytes::from(note.to_string())),
+                ))))))
+                .unwrap());
+        }
+    };
+    let body = resp.text().await.unwrap_or_default();
+
+    // parse cap/start from the query string
+    let mut cap: Option<u32> = None;
+    let mut start = crate::hls_master::StartQuality::Lowest;
+    for pair in query.split('&') {
+        if let Some(v) = pair.strip_prefix("cap=") {
+            cap = if v.is_empty() { None } else { v.parse::<u32>().ok() };
+        } else if let Some(v) = pair.strip_prefix("start=") {
+            start = match v {
+                "cap" => crate::hls_master::StartQuality::Cap,
+                _ => crate::hls_master::StartQuality::Lowest,
+            };
+        }
+    }
+    let filtered = crate::hls_master::filter_master_playlist(&body, cap, start);
+    let bytes = Bytes::from(filtered);
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(hyper::header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
+        .header(hyper::header::CONTENT_LENGTH, bytes.len())
+        .header(hyper::header::CACHE_CONTROL, "no-store")
+        .body(BodyExt::boxed(http_body_util::Full::new(bytes).map_err(|e| match e {}).boxed()))
+        .unwrap())
+}
+
 async fn handle(
     st: Arc<ProxyState>,
     req: Request<Incoming>,
 ) -> Result<Response<ProxyBody>, std::convert::Infallible> {
-    let token = req.uri().path().rsplit('/').next().unwrap_or("").to_string();
+    let path = req.uri().path().to_string();
+    if let Some(rest) = path.strip_prefix("/hls/") {
+        let token = rest.split('/').next().unwrap_or("").to_string();
+        return handle_hls(st, token, req.uri().query().unwrap_or("")).await;
+    }
+    let token = path.rsplit('/').next().unwrap_or("").to_string();
     let Some(entry) = st.entries.get(&token) else {
         return Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)

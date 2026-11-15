@@ -14,6 +14,7 @@ mod extractor;
 mod netpath;
 mod startup_timer;
 mod stream_cache;
+mod hls_master;
 mod stream_proxy;
 mod matcher;
 mod channel_art;

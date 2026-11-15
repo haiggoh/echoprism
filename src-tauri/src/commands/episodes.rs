@@ -187,7 +187,7 @@ fn stream_info_from(stream: crate::extractor::StreamUrl) -> StreamInfo {
         headers: stream.headers,
         format: stream.format,
         timings: stream.timings,
-        fallback_url: None,
+        fallback_url: stream.fallback_url,
     }
 }
 
@@ -548,6 +548,7 @@ mod stream_tests {
             quality: "720p".into(),
             headers: None,
             timings: None,
+            fallback_url: None,
         };
         let info = stream_info_from(resolved);
         assert_eq!(info.url, "https://media.example/video.m3u8");

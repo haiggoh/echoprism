@@ -279,4 +279,25 @@ describe('PlayerProvider queue look-ahead and media error', () => {
     // second error → normal error path, no re-resolve loop
     expect(streamMock).toHaveBeenCalledTimes(1);
   });
+
+  it('hls_error_uses_fallback_url', async () => {
+    // Task 9: a video resolve returns the HLS master with the progressive
+    // URL as fallback_url; an HLS load error plays the fallback once.
+    const ep = makeEpisode();
+    streamMock.mockResolvedValue({
+      url: 'http://127.0.0.1:9/hls/tok/master.m3u8?cap=2160&start=lowest',
+      format: 'hls',
+      fallback_url: 'http://127.0.0.1:9/stream/tok2',
+    });
+    renderEngine();
+    await act(async () => {
+      api.play(ep);
+    });
+    await waitFor(() => expect(probeVideo.src).toContain('/hls/'));
+    await act(async () => {
+      fireEvent(probeVideo, new Event('error'));
+    });
+    await waitFor(() => expect(probeVideo.src).toContain('/stream/'));
+    expect(streamMock).toHaveBeenCalledTimes(1);
+  });
 });

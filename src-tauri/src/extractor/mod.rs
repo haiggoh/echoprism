@@ -284,6 +284,7 @@ impl Extractor {
             quality: stream.quality,
             headers: None,
             timings: None,
+            fallback_url: None,
         })
     }
     
@@ -292,7 +293,7 @@ impl Extractor {
     /// format mid-stream would splice another container's bytes), falling
     /// back to the top-ranked one. Waits for the fresh URL's `available_at`
     /// before handing it over — a brand-new URL 403s until then.
-    fn refresh_ytdlp_url(&self, video_id: &str, want_audio: bool, format_id: Option<String>) -> Option<crate::stream_proxy::RefreshFn> {
+    fn refresh_ytdlp_url(&self, video_id: &str, want_audio: bool, format_id: Option<String>, prefer_hls: bool) -> Option<crate::stream_proxy::RefreshFn> {
         let netpath = self.netpath.clone();
         let bin = self.yt_dlp_path.get().cloned().unwrap_or_else(|| "yt-dlp".to_string());
         let vid = video_id.to_string();
@@ -301,6 +302,7 @@ impl Extractor {
             let bin = bin.clone();
             let vid = vid.clone();
             let format_id = format_id.clone();
+            let prefer_hls = prefer_hls;
             Box::pin(async move {
                 let mut args = vec!["--no-playlist".to_string(),
                     "--no-warnings".to_string(),
@@ -328,10 +330,21 @@ impl Extractor {
                 .ok()?;
                 let dump: YtDlpDump = serde_json::from_slice(&out.stdout).ok()?;
                 let ranked = rank_yt_dlp_formats(&dump.formats, want_audio);
-                let cand = format_id
-                    .as_deref()
-                    .and_then(|id| ranked.iter().find(|f| f.format_id.as_deref() == Some(id)).cloned())
-                    .or_else(|| ranked.into_iter().next())?;
+                let cand = if prefer_hls {
+                    // Task 9: a refreshed HLS entry wants the new MASTER url.
+                    dump.formats
+                        .iter()
+                        .find(|f| {
+                            f.protocol.as_deref() == Some("m3u8_native")
+                                && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
+                        })
+                        .cloned()
+                } else {
+                    format_id
+                        .as_deref()
+                        .and_then(|id| ranked.iter().find(|f| f.format_id.as_deref() == Some(id)).cloned())
+                        .or_else(|| ranked.into_iter().next())
+                }?;
                 // Task 3: gate the FRESH url directly (never via the proxy)
                 // before handing it back — the lock opens ~2 s before
                 // available_at, so polling beats sleeping.
@@ -386,6 +399,80 @@ impl Extractor {
         // 1-byte Range probes, accumulated across candidates.
         let mut gate_ms: u64 = 0;
         let mut probe_ms: u64 = 0;
+        // Task 9: video prefers the HLS master — measured ungated (master,
+        // variants, segments all 200 immediately, no headers needed), so a
+        // cold video click skips the available_at gate entirely. The
+        // progressive muxed format rides along as fallback_url (gated,
+        // proxy token) — the frontend plays it once if HLS fails to load.
+        if !want_audio {
+            if let Some(hls) = dump
+                .formats
+                .iter()
+                .find(|f| {
+                    f.protocol.as_deref() == Some("m3u8_native")
+                        && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
+                })
+                .cloned()
+            {
+                let manifest = hls.manifest_url.clone().unwrap_or_default();
+                let hls_headers = hls.http_headers.clone().unwrap_or_default();
+                let hls_url = crate::stream_proxy::register_hls_master(
+                    &manifest,
+                    hls_headers,
+                    self.refresh_ytdlp_url(video_id, want_audio, None, true),
+                    crate::hls_master::DEFAULT_FULLSCREEN_CAP,
+                    crate::hls_master::DEFAULT_START_QUALITY,
+                );
+                let t_probe = std::time::Instant::now();
+                let check = probe.get(&hls_url).send().await;
+                probe_ms += t_probe.elapsed().as_millis() as u64;
+                if matches!(&check, Ok(r) if r.status().is_success()) {
+                    // progressive fallback: first muxed candidate, gated + proxied
+                    let fallback_url = 'fallback: {
+                        let Some(fb) = candidates.iter().find(|f| {
+                            f.url.as_ref().is_some_and(|u| !u.is_empty())
+                                && !is_none_codec(&f.vcodec)
+                                && !is_none_codec(&f.acodec)
+                        }) else {
+                            break 'fallback None;
+                        };
+                        let fb_url = fb.url.clone().unwrap_or_default();
+                        let fb_headers = fb.http_headers.clone().unwrap_or_default();
+                        let t_gate = std::time::Instant::now();
+                        let gate = poll_until_playable(&probe, &fb_url, &fb_headers, MAX_AVAILABLE_AT_WAIT, GATE_POLL_INTERVAL).await;
+                        gate_ms += t_gate.elapsed().as_millis() as u64;
+                        if gate.is_err() {
+                            break 'fallback None;
+                        }
+                        Some(if fb_headers.is_empty() {
+                            fb_url
+                        } else {
+                            crate::stream_proxy::register_with_refresh(
+                                &fb_url,
+                                fb_headers,
+                                self.refresh_ytdlp_url(video_id, want_audio, fb.format_id.clone(), false),
+                            )
+                        })
+                    };
+                    tracing::info!("yt-dlp video -> HLS master via proxy (fallback: {:?})", fallback_url);
+                    return Ok(StreamUrl {
+                        url: hls_url,
+                        format: "hls".to_string(),
+                        quality: quality.unwrap_or("auto").to_string(),
+                        headers: None,
+                        timings: Some(crate::startup_timer::ResolveTimings {
+                            instances_ms: 0, // stamped by resolve_stream
+                            ytdlp_ms,
+                            gate_ms,
+                            probe_ms,
+                            cache_hit: false,
+                        }),
+                        fallback_url,
+                    });
+                }
+                tracing::warn!("HLS master check failed ({:?}), falling back to progressive", check.map(|r| r.status()));
+            }
+        }
         for cand in &candidates {
             let url = cand.url.clone().filter(|u| !u.is_empty())
                 .or_else(|| cand.manifest_url.clone());
@@ -419,7 +506,7 @@ impl Extractor {
                 crate::stream_proxy::register_with_refresh(
                     &url,
                     headers,
-                    self.refresh_ytdlp_url(video_id, want_audio, cand.format_id.clone()),
+                    self.refresh_ytdlp_url(video_id, want_audio, cand.format_id.clone(), false),
                 )
             };
             let t_probe = std::time::Instant::now();
@@ -447,6 +534,7 @@ impl Extractor {
                             probe_ms,
                             cache_hit: false,
                         }),
+                        fallback_url: None, // progressive path has no HLS fallback
                     });
                 }
                 Ok(r) => { last_err = format!("{} -> HTTP {}", url_host(&url), r.status()); }
@@ -701,6 +789,7 @@ fn select_piped_stream(
         quality: best.quality.unwrap_or_else(|| "720p".to_string()),
         headers: None,
         timings: None,
+        fallback_url: None,
     };
 
     if want_audio {
@@ -783,6 +872,10 @@ pub struct StreamUrl {
     /// as `instances_ms` when they win).
     #[serde(default)]
     pub timings: Option<crate::startup_timer::ResolveTimings>,
+    /// Task 9: progressive fallback URL when this is the HLS master (the
+    /// frontend plays it once if HLS fails to load).
+    #[serde(default)]
+    pub fallback_url: Option<String>,
 }
 
 // ---- Search ----------------------------------------------------------------
@@ -1580,7 +1673,7 @@ mod tests {
             "[{{\"format_id\":\"a\",\"url\":\"http://127.0.0.1:{port}/a-144\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":144,\"protocol\":\"https\"}},\
              {{\"format_id\":\"b\",\"url\":\"http://127.0.0.1:{port}/b-360\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail}}}]"
         ));
-        let refresh = ex.refresh_ytdlp_url("vid", false, Some("b".into())).unwrap();
+        let refresh = ex.refresh_ytdlp_url("vid", false, Some("b".into()), false).unwrap();
         let t0 = std::time::Instant::now();
         let (url, _h) = refresh().await.expect("refresh result");
         let waited = t0.elapsed();
@@ -2520,6 +2613,49 @@ mod tests {
         let _ = std::fs::remove_file(&counter);
     }
 
+    // ---- Task 9: video resolves to the HLS master with a progressive fallback ----
+
+    #[tokio::test]
+    async fn video_resolve_prefers_hls_master_with_progressive_fallback() {
+        // fake upstream: /master.m3u8 → 200 playlist; /v.mp4 → 206
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = upstream.local_addr().unwrap().port();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            loop {
+                let Ok((mut sock, _)) = upstream.accept().await else { break };
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        let mut buf = vec![0u8; 4096];
+                        let n = match sock.read(&mut buf).await { Ok(0) | Err(_) => break, Ok(n) => n };
+                        let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let path = req.lines().next().unwrap_or("").split_whitespace().nth(1).unwrap_or("").to_string();
+                        let (status, ct, body) = if path.contains("master.m3u8") {
+                            ("200 OK", "application/vnd.apple.mpegurl", "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=640x360\nhttps://x/360.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2,RESOLUTION=1280x720\nhttps://x/720.m3u8\n")
+                        } else {
+                            ("206 Partial Content", "video/mp4", "GOOD")
+                        };
+                        let resp = format!("HTTP/1.1 {status}\r\nContent-Type: {ct}\r\nContent-Length: {}\r\nContent-Range: bytes 0-3/100\r\nConnection: keep-alive\r\n\r\n{body}", body.len());
+                        if sock.write_all(resp.as_bytes()).await.is_err() { break; }
+                    }
+                });
+            }
+        });
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/v.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"http_headers\":{{\"User-Agent\":\"t\"}}}},\
+             {{\"format_id\":\"hls\",\"manifest_url\":\"http://127.0.0.1:{port}/master.m3u8\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"protocol\":\"m3u8_native\",\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
+        ));
+        let s = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await.expect("resolve");
+        assert!(s.url.contains("/hls/") && s.url.contains("master.m3u8"), "video → HLS master via the proxy route: {}", s.url);
+        assert_eq!(s.format, "hls");
+        let fb = s.fallback_url.expect("progressive fallback must be present");
+        assert!(fb.contains("/stream/"), "fallback is a proxied progressive URL: {fb}");
+        // the proxy route must actually serve a FILTERED master
+        let body = reqwest::Client::new().get(&s.url).send().await.unwrap().text().await.unwrap();
+        assert!(body.contains("#EXT-X-STREAM-INF"), "master served through the route: {body}");
+        assert!(body.contains("360.m3u8"), "cap 2160 keeps 360p: {body}");
+    }
+
     // ---- Task 8: one extractor-args constant on every -J invocation ----
 
     /// Fake yt-dlp that APPENDS its argv (one line per invocation) to
@@ -2547,7 +2683,7 @@ mod tests {
         let (ex, _d) = extractor_with_argv_log(&log);
         // resolve path (-J), refresh path (-J), storyboard path (-J):
         let _ = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await;
-        if let Some(refresh) = ex.refresh_ytdlp_url("vid", false, None) {
+        if let Some(refresh) = ex.refresh_ytdlp_url("vid", false, None, false) {
             let _ = refresh().await;
         }
         let _ = ex.storyboard_with_yt_dlp("vid").await;
