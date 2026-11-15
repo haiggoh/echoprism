@@ -250,20 +250,24 @@ pub async fn stream_episode(
         return Ok(info);
     }
     let video_id = video_id_for(&episode);
-    let candidates = crate::instance_pool::order_for_search(&pool.get_all().await);
+    // Task 2: stream candidates are ordered like search candidates but exclude
+    // instances whose STREAM probe failed (/streams 500 = bot-blocked even
+    // when /search is 200) — the ~0.8 s per click on dead instances and the
+    // 5-min re-admission loop both came from judging streams by /search.
+    let all = pool.get_all().await;
+    let stream_health = pool.stream_health.read().await.clone();
+    let candidates = crate::instance_pool::order_for_stream(&all, &stream_health);
     let (stream, failed_instances, serving_instance) = extractor
         .resolve_stream(&video_id, format.as_deref(), quality.as_deref(), &candidates)
         .await?;
-    // Rounds 9/13: resolve-attempt failures feed the pool — Degraded reorders
-    // last, and a failure streak flips to Failed at the limit (excluded from
-    // candidates; the 5-min probe is the only way back). The instance that
-    // served clears its streak.
+    // Resolve-attempt failures feed the STREAM health/streak maps only (round
+    // 13 machinery, moved to the stream side by Task 2); the search health of
+    // the instance is untouched. The instance that served clears its streak.
     for id in &failed_instances {
-        pool.mark_degraded(id).await;
-        pool.note_resolve_outcome(id, true).await;
+        pool.note_stream_resolve_outcome(id, true).await;
     }
     if let Some(winner) = serving_instance {
-        pool.note_resolve_outcome(&winner, false).await;
+        pool.note_stream_resolve_outcome(&winner, false).await;
     }
     Ok(stream_info_from(stream))
 }

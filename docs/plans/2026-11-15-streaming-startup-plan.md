@@ -232,15 +232,15 @@ Highest granted boundary: **SHIP THROUGH RELEASE** (owner, 2026-11-15, this sess
 - Resolve failures (`note_resolve_outcome`) update STREAM health/streaks, not search health.
   The background probe (existing 5-min loop) probes both capabilities independently.
 
-- [ ] **Step 1: failing tests.** `search_ok_streams_500_is_excluded_from_stream_candidates`
+- [x] **Step 1: failing tests.** `search_ok_streams_500_is_excluded_from_stream_candidates`
       (fake upstream: `/search` 200 with a valid body, `/streams/jNQXAC9IVRw` 500 → instance
       present in `order_for_search`, ABSENT from `order_for_stream` after one probe);
       `stream_probe_success_readmits` (500 then 200 → re-admitted);
       `resolve_streak_flips_stream_health_not_search_health`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement; `stream_episode` calls `order_for_stream`.
-- [ ] **Step 4:** GREEN. **Discriminant:** point the stream probe at `/search` temporarily →
+- [x] **Step 2:** FAIL. **Step 3:** implement; `stream_episode` calls `order_for_stream`.
+- [x] **Step 4:** GREEN. **Discriminant:** point the stream probe at `/search` temporarily →
       the first test RED; revert.
-- [ ] **Step 5:** commit `fix(pool): judge stream eligibility by /streams, not /search`.
+- [x] **Step 5:** commit `fix(pool): judge stream eligibility by /streams, not /search`.
 
 **🧪 Receipt 2** + offload cross-check.
 
