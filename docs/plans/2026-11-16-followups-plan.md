@@ -96,7 +96,8 @@ gets no part of this work); **ship through RELEASE**; the
    never move/delete a published tag, never rewrite master.
 5. TDD; each important behaviour gets a discriminant (known-bad turns the test RED first); never
    weaken a test.
-6. Verify each milestone with an independent offload (stateless `free-agent-tool.py`, role
+6. Milestone QC follows §6b and its playbook (it governs where it differs from this rule).
+   Verify each milestone with an independent offload (stateless `free-agent-tool.py`, role
    validator, cross-family from your own model; or a headless free session
    `remote-session.sh <alias> --prompt-file <brief> -p` when it must run commands — NOT
    `-p "<text>"`, the launch guard blocks that form). Confirm findings in source. Record
@@ -212,6 +213,35 @@ master and whose `fallback_url` points at a progressive mp4 fixture — create a
   file:line; the rebase base SHA; `git ls-remote --tags origin | grep v<ver>`; `gh release view
   v<ver> --json tagName,isDraft,url`; canonical checkout `git status -sb` after the ff-pull;
   dogfood numbers or "not tested".
+
+## 6b. Quality-control milestones (owner, 2026-11-16: use the milestone-QC playbook)
+
+Playbook: `~/.claude/plans/_PLAYBOOKS/Playbook-milestone-qc-offload-test-proof.md` — READ IT IN
+FULL before Task 1. Its six hard rules (declaration is never a proof; selectors/routes must hit a
+live target; reachability from the shipped entry point; the executor's explanation is a claim;
+look at it; free-lane executor ⇒ independent effect check) apply to every milestone below, and a
+milestone cannot close while any is violated. It supersedes the lighter "offload cross-check"
+wording of standing rule 6 wherever they differ.
+
+**Standing rule (verbatim from the playbook):** *"At each milestone, run /offload
+(free-agents:offload) — a stateless dispatch to an out-of-family reviewer — with the brief below.
+Treat its findings as hypotheses: run every proposed mutation; fix or rebut each finding with
+evidence. Do not start the next task with an open finding."* The brief is the playbook's
+"dispatch brief" section, copied as-is, with the files attached via `"files"`.
+
+| Milestone | Requirements under review (spec/plan wording) | Delivery-shaped proof required |
+|---|---|---|
+| **M1 after Task 1** | WebKit plays the HLS master; broken HLS falls back to the progressive file; the master served lists no variant above the cap | e2e asserts `videoWidth > 0` AND `currentTime > 0` in the webkit project through the app's real player path (not a bare `<video>` page); fixture absent from `dist` |
+| **M2 after Task 2** | cold audio ≤ 5 s; audio-only never fetches video bytes | live timing numbers in the receipt; a test whose fixture contains a VIDEO-bearing rendition that must be rejected; the CODECS of the rendition actually played |
+| **M3 after Task 3** | a missing net-monitor helper never blocks launch; removed symbols were truly unused | the app binary launched from a temp dir with no helper shows the app alive (not just a unit test); grep proof per symbol |
+| **M4 before ship** | everything above, on the rebased branch | re-run M1–M3 delivery probes on the final commit |
+
+Per playbook hard rule 6: at each milestone, at least one delivery-shaped probe must be run by a
+DIFFERENT model than the one that wrote the code (a headless free session on another family via
+`remote-session.sh <alias> --prompt-file <brief> -p`), and its output quoted in the receipt.
+Every mutation a reviewer proposes is applied in isolation and must go RED (verify it was applied:
+`git diff` shows it), then restored (`git diff` empty). Record per milestone: model + route,
+verdict table, each mutation's RED line, final green line, rebuttals citing file:line.
 
 ## 7. Adversarial review
 Format: tempting shortcut → plausible false success → harm → rule → detecting test/receipt.
