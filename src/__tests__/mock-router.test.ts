@@ -23,8 +23,9 @@ describe('mock IPC router', () => {
   it('get_feed returns the fixture episodes', async () => {
     const episodes = await mockInvoke<Episode[]>('get_feed');
     // 4 original fixtures + the D6/D7 two-stream show (4 episodes) + the
-    // round 6 long-title transport fixture (ep-video-long)
-    expect(episodes).toHaveLength(9);
+    // round 6 long-title transport fixture (ep-video-long) + the Task 1
+    // (2026-11-16-followups-plan) HLS e2e pair (ep-hls-demo, ep-hls-broken)
+    expect(episodes).toHaveLength(11);
     const titles = episodes.map((e) => e.title).join('|');
     expect(titles).toContain('video');
     expect(titles).toContain('podcast');

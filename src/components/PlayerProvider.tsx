@@ -101,6 +101,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Task 7: the ORIGINAL URL when the resolved one was tracker-stripped —
   // on a media error the engine plays this ONCE before invalidating.
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
+  // Task 1 fix (e2e/hls.spec.ts, webkit): set when WebKit rejects play() with
+  // NotSupportedError while the element is still in a failed src's error state
+  // (the onError fallback swap is in flight) — the media-element effect retries
+  // play() on the next canplay, gated on the store's isPlaying.
+  const playRetryRef = useRef(false);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   // What the CURRENT playback resolves through — per-play (D7 chain mode or
   // the toggle at play time). Kept separate from isAudioMode, the user's
@@ -537,6 +542,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // jsdom reflects the raw attribute, which is why unit tests missed it).
     if (activeEl.getAttribute('src') !== streamUrl) {
       activeEl.src = streamUrl;
+      // WebKit (the shipped engine) rejects play() with NotSupportedError when
+      // the element is still in the error state of a FAILED previous src (e.g.
+      // the HLS master 404'd and onError swapped us to fallback_url): setting
+      // src only QUEUES the load, so a play() in the same tick still sees the
+      // old error. load() runs the reset synchronously and clears it. Found by
+      // e2e/hls.spec.ts broken_hls_falls_back_to_progressive in webkit.
+      activeEl.load();
+      playRetryRef.current = false; // new src: any armed retry belongs to the old one
       const restore = playbackState?.position_seconds ?? 0;
       // Held for loadedmetadata: the eager write below only survives where the
       // browser honours a pre-metadata currentTime.
@@ -559,7 +572,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // stop the engine. Observed in e2e: the audio->video element switch
         // rejected the audio's play(), this catch killed global playback,
         // and the video then stayed paused with a valid src.
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // AbortError: our own pause() racing the promise (element switch / user
+        // pause) OR our own load() interrupting a pending play() after a src
+        // swap. NotSupportedError: WebKit (the shipped engine) rejects play()
+        // while the element is still in the error state of a FAILED src — the
+        // onError fallback swap (setStreamUrl(fallbackUrl)) is in flight and
+        // the new resource's canplay has not fired yet. Both arm a one-shot
+        // canplay retry (see the media-element effect); that retry is gated on
+        // the store's isPlaying, so a user pause never re-plays. A genuinely
+        // dead fallback is owned by onError's invalidate+re-resolve path, not
+        // by this catch.
+        if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'NotSupportedError')) {
+          playRetryRef.current = true;
+          return;
+        }
         setPlaying(false);
       });
     } else if (!activeEl.paused) {
@@ -688,12 +714,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const ep = currentEpisodeRef.current;
       if (ep) startupTimer.firstFrame(ep.id);
     };
+    const onCanPlay = () => {
+      // Armed by the play effect when WebKit rejected play() in a failed src's
+      // error state; the new src's canplay is the moment play() is accepted.
+      if (playRetryRef.current && usePlayerStore.getState().isPlaying) {
+        playRetryRef.current = false;
+        void el.play().catch(() => setPlaying(false));
+      }
+    };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);
     el.addEventListener('seeked', onSeeked);
     el.addEventListener('ended', onEnded);
     el.addEventListener('error', onError);
     el.addEventListener('playing', onPlaying);
+    el.addEventListener('canplay', onCanPlay);
     return () => {
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
@@ -701,6 +736,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
       el.removeEventListener('playing', onPlaying);
+      el.removeEventListener('canplay', onCanPlay);
     };
   }, [activeEl, streamUrl, fallbackUrl, setPlaybackState, queueNext, addToast, setPlaying]);
 

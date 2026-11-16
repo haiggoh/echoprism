@@ -51,6 +51,11 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
 
   return (
     <article
+      // NOT focusable: the card's actions are the two real buttons below
+      // (Play now / Play next). A tabIndex=0 article here made every Tab walk
+      // land on a roleless container in WebKit (keyboard-nav spec) and forced
+      // an axe-illegal role="button" (nested-interactive with the inner
+      // buttons). Mouse click still queues via onClick.
       className="group bg-surface border border-border rounded-xl overflow-hidden transition-all duration-200 hover:border-border-strong hover:shadow-md"
       draggable
       onDragStart={(e) => {
@@ -60,8 +65,6 @@ export function EpisodeCard({ episode, onClick, onQueue, onPlayNow, queueBehavio
       }}
       onDragEnd={() => setDraggedEpisode(null)}
       onClick={onClick}
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); }}}
     >
       {/* Thumbnail */}
       <div

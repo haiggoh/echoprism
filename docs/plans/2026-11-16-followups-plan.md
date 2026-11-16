@@ -561,3 +561,20 @@ new task will be added to this plan on master; until then video stays on the war
   §8 receipts committable per task, refinements allowed on new verified info (never overriding
   owner decisions), doc-only `docs/plans` commits allowed, completion marker at the end only ·
   this commit · supersedes the earlier blanket "executor never commits the plan file" wording
+- 2026-11-16 · Phase 0 (executor ac3848bc) · pinned plan SHA f3abcf36 · worktree ~/.wt/ep-startup-fixes
+  (feat/startup-fixes) rebased onto origin/master f3abcf36, clean before first edit · cargo test
+  EXIT:0 233/233 · cargo build EXIT:0, 20 warning lines (3 lib + 15 manifest unused-deps) · vitest
+  EXIT:0 399/399 · e2e chromium EXIT:0 35 pass / 8 skip · npm ci EXIT:0 · latest tag v0.1.20 ·
+  receipts in /tmp/ep-fix-receipts
+- 2026-11-16 · Task 1 + M1 (executor ac3848bc) · this commit · webkit hls 2/2 EXIT:0 (strengthened per
+  offload: final-src re-assert, variant-playlist request proof, history-row resolve-path proof,
+  observed-404) · discriminants RED: absent-master-no-fallback EXIT:1 both specs; validator mutation
+  a1 (broken master + fallback present) EXIT:1 spec 1, restored EXIT:0 · gates: e2e EXIT:0 71 pass /
+  19 skip both projects (chromium ≥ Receipt 0, webkit present) · vitest EXIT:0 402/402 (incl.
+  hls-fixtures 3/3) · cargo EXIT:0 235/235 solo (sweep flake: 2 gate tests → waypoint
+  pre-existing-flaky-rust-tests) · tsc/lint/build EXIT:0 · dist .m3u8 count 0 · fixtures 220K · M1
+  offload: validator dispatch model=StepFun Step 5 Preview (family stepfun, avoided zhipu) —
+  WEAK(a fallback-masking) / PROVEN(b) / WEAK(c serving path) / receipt-only(dist) → fixed or quoted;
+  headless delivery probe nvidia-mistral-large4 (Mistral): all 4 M1 reqs MET (webkit 2/2, fallback
+  both runs, cap test ok, BUILD_EXIT:0 M3U8_COUNT:0) · keyboard-nav tab-walk webkit skip rebutted:
+  post-region-fix probes still wrap to <body> (t1-kbnav3/4)

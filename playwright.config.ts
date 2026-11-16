@@ -19,10 +19,6 @@ export default defineConfig({
     // scheme to dark for determinism; theme-light.spec.ts covers the light
     // palette explicitly (axe + class assertions).
     colorScheme: 'dark',
-    // The engine's play() is called from effect/promise context detached from
-    // the click gesture, so headless chromium's autoplay policy would reject
-    // it and the stream resolve effect (gated on isPlaying) would never fire.
-    launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
   },
   webServer: {
     command: 'npm run dev',
@@ -30,5 +26,21 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        browserName: 'chromium',
+        // The engine's play() is called from effect/promise context detached
+        // from the click gesture, so headless chromium's autoplay policy
+        // would reject it and the stream resolve effect (gated on isPlaying)
+        // would never fire. Chromium-only flag — WebKit does not read it.
+        launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
+      },
+    },
+    // Task 1 (docs/plans/2026-11-16-followups-plan.md): WebKit is the engine
+    // the shipped app actually runs on (Tauri WKWebView) and the only bundled
+    // browser that plays HLS natively — the HLS specs are webkit-only.
+    { name: 'webkit', use: { browserName: 'webkit' } },
+  ],
 });

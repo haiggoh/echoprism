@@ -78,8 +78,10 @@ export function FeedScreen() {
         onFilterChange={handleFilterChange} 
       />
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-4">
+      {/* Content — scroll region deliberately focusable, same as every other
+          screen (ChannelsScreen etc.): without it WebKit's tab walk on /feed
+          never descends past the header (keyboard-nav spec, webkit project). */}
+      <div className="flex-1 overflow-auto p-4" role="region" aria-label="Feed list" tabIndex={0}>
         {episodes && episodes.length === 0 && (
           <EmptyState
             variant="feed"

@@ -152,6 +152,39 @@ export const mockDb: MockDb = {
       updated_at: now,
     },
     {
+      // Task 1 (docs/plans/2026-11-16-followups-plan.md): the WebKit HLS e2e
+      // episodes. The stream_episode mock special-cases these ids — `url` is
+      // a real HLS master served by the dev-only /test-media middleware,
+      // `fallback_url` the progressive mp4, the same shape the Rust backend
+      // returns for an HLS-capable resolve. ep-hls-broken's master path does
+      // not exist, so the media element errors and the player must land on
+      // fallback_url (PlayerProvider onError swap).
+      id: 'ep-hls-demo',
+      channel_id: 'ch-1',
+      external_id: 'hls-fixture-001',
+      title: 'video: HLS master fixture plays in WebKit',
+      video_id: 'hls-fixture-001',
+      duration_seconds: 4,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-16T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'ep-hls-broken',
+      channel_id: 'ch-1',
+      external_id: 'hls-fixture-002',
+      title: 'video: HLS broken master falls back to progressive',
+      video_id: 'hls-fixture-002',
+      duration_seconds: 4,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-16T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
       id: 'ep-pod-1',
       channel_id: 'ch-2',
       external_id: 'deep-dive-042',

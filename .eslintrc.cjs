@@ -22,7 +22,9 @@ module.exports = {
   },
   plugins: ['@typescript-eslint', 'react-hooks', 'react-refresh'],
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
-  ignorePatterns: ['node_modules/', 'dist/', 'src-tauri/', 'coverage/'],
+  // e2e/fixtures/ holds binary media (mpegts .ts segments are parsed as TS
+  // otherwise — the lint gate went red on them).
+  ignorePatterns: ['node_modules/', 'dist/', 'src-tauri/', 'coverage/', 'e2e/fixtures/'],
   rules: {
     // tsc already enforces these (tsconfig noUnusedLocals/noUnusedParameters);
     // keep the eslint copy aligned, with the same _-prefix escape hatch.

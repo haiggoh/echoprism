@@ -224,4 +224,28 @@ https://gv.example/v-nores.m3u8
             .unwrap();
         assert_eq!(first_variant_url, "https://gv.example/v720.m3u8");
     }
+
+    // Task 1 (2026-11-16-followups-plan.md): the committed e2e fixture master
+    // — the exact bytes the WebKit specs stream — through the real filter.
+    // (The e2e mock world has no Rust proxy, so the cap is asserted here, on
+    // the fixture itself, not duplicated in a second hand-written master.)
+    #[test]
+    fn e2e_fixture_master_is_filtered_by_cap() {
+        let master = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../e2e/fixtures/hls/master.m3u8"
+        ));
+        let capped = filter_master_playlist(master, Some(180), StartQuality::Lowest);
+        assert_eq!(
+            variant_heights(&capped),
+            vec![180],
+            "cap 180 keeps only the 180p rung of the e2e fixture: {capped}"
+        );
+        let uncapped = filter_master_playlist(master, Some(720), StartQuality::Lowest);
+        assert_eq!(
+            variant_heights(&uncapped),
+            vec![180, 360],
+            "cap 720 keeps both rungs (no over-filtering): {uncapped}"
+        );
+    }
 }

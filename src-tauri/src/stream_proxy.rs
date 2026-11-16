@@ -466,4 +466,58 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.starts_with("http://127.0.0.1:"));
     }
+
+    /// Task 1 (2026-11-16-followups-plan M1): the SERVED master is filtered —
+    /// end-to-end through the real /hls/ route, not just the pure function:
+    /// a stub upstream answers with the committed e2e fixture master, and the
+    /// proxy response under cap=180 must list only the 180p variant.
+    /// (hls_master.rs::e2e_fixture_master_is_filtered_by_cap tests the pure
+    /// function on the same fixture; this pins the route wiring at line 199.)
+    #[tokio::test]
+    async fn hls_route_serves_fixture_master_filtered_by_cap() {
+        let master = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../e2e/fixtures/hls/master.m3u8"
+        ));
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up_port = upstream.local_addr().unwrap().port();
+        let body = master.to_string();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut sock, _)) = upstream.accept().await {
+                let body = body.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let _ = sock.read(&mut buf).await;
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let local = register_hls_master(
+            &format!("http://127.0.0.1:{up_port}/master.m3u8"),
+            HashMap::new(),
+            None,
+            Some(180),
+            crate::hls_master::StartQuality::Lowest,
+        );
+        let client = reqwest::Client::new();
+        let resp = client.get(&local).send().await.expect("proxy hls response");
+        assert_eq!(resp.status(), 200);
+        assert_eq!(
+            resp.headers().get("content-type").unwrap(),
+            "application/vnd.apple.mpegurl"
+        );
+        let text = resp.text().await.unwrap();
+        assert!(text.contains("v180/playlist.m3u8"), "cap 180 keeps the 180p rung: {text}");
+        assert!(
+            !text.contains("v360/playlist.m3u8"),
+            "cap 180 drops the 360p rung: {text}"
+        );
+    }
 }
