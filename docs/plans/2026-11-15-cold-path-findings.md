@@ -45,7 +45,9 @@ Consequence: a cold VIDEO click that resolves to the HLS master skips the
 
 ## Task 9 Step 0 prototype (REPORT BACK rule, resolved 2026-11-15): WebKit HLS variant choice vs element size
 
-Real WKWebView probe (system Swift 6.4 + WKWebView, offscreen window; variant
+Real WKWebView probe (system Swift 6.4 + WKWebView, real windowed NSWindow — an
+offscreen webview silently never fetched the media; lesson: probe WKWebView inside a
+window; variant
 URLs of a live master rewritten through a logging local server so the chosen
 itag is observable; masters served with variants up to 1080p):
 
