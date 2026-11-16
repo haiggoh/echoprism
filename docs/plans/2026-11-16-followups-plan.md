@@ -79,6 +79,9 @@ gets no part of this work); **ship through RELEASE**; the
   `2f931976`, `a7bcdef3`, `05f5cd94`, `32167417`, `e4799ea8`, `bc100a2a`, `5258c37d`, `d1b82056`
   (all `docs(plans)`, this plan's own history). The ship pushes them; do not drop them.
   Expected next version: `0.1.21` (fresh `fetch --tags` + `ls-remote` before bumping — Task 4).
+  *confirmed live ~18:20 UTC:* the plan-airtight commit `8c05e73a` was PUSHED to origin and
+  verified via `git ls-remote origin refs/heads/master` → `8c05e73a…`; plan-hardening commits land
+  on canonical master by path and are pushed the same way (docs-only).
 - *dated ~10:40 UTC, no longer live:* pid 59875 (v0.1.20 executor) was in the session registry
   then; *confirmed live ~18:05 UTC:* it is NOT in `~/.claude/sessions/*.json` anymore. The
   **active successor is `ac3848bc` (pid 29663, cwd `~/ClaudeWorkspace/echoprism`, started
@@ -130,6 +133,9 @@ gets no part of this work); **ship through RELEASE**; the
 9. Never write `~/Library/Application Support/app.echoprism/*` (read with `sqlite3 -readonly`).
    No argv, keys or tokens in receipts.
 10. Append one line per receipt to §8 below, committed with that task.
+11. If your worktree shows `docs/plans/*` dirty (not yours): never commit it — copy it to a
+    `mktemp -d` path first, then `git checkout <pinned-master-sha> -- docs/plans/`; record both in
+    the receipt. The plan file changes only in owner/planning sessions (matrix above).
 
 ## 5. Phase 0 — preflight (read-only first)
 - [ ] Three strategy sentences. Then: `git -C ~/ClaudeWorkspace/echoprism log --oneline -3`,
@@ -291,6 +297,29 @@ look at it; free-lane executor ⇒ independent effect check) apply to every mile
 milestone cannot close while any is violated. It supersedes the lighter "offload cross-check"
 wording of standing rule 6 wherever they differ.
 
+Operative additions for this repo (plan-airtight pass 2026-11-16, from the playbook text):
+- **Declared ≠ delivered:** every user-visible requirement needs ≥ 1 DELIVERY-shaped assertion
+  (computed style / on-screen region / pixels in a screenshot / bytes on disk / argv actually run
+  / output the user sees). Existence-only, source-contains-string, mock-called and exit-0
+  assertions never close a milestone.
+- **Selectors/routes hit a live target:** a CSS selector, hook matcher, route or filter is proven
+  only by asserting it matches ≥ 1 live target AND that the effect changes when it is removed.
+- **Default entry path:** ≥ 1 test per user-visible feature goes through the path the user actually
+  runs (the app's real player path / the shipped launcher, no injected wiring) — or the plan names
+  why that is impossible.
+- **Root-cause claims flip:** a stated cause counts only with a probe whose result FLIPS with the
+  cause (revert fix → symptom back; apply only the claimed cause → symptom gone). "Fixed, verified"
+  without the quoted probe output = unverified.
+- **Look at it:** UI-visible changes get a Playwright screenshot inside the e2e spec, asserted on
+  pixels/region (e.g. `expect(locator).toBeVisible()` + bounding box, or a screenshot diff), and the
+  executor inspects the image. If only human eyes can check, the receipt names the exact manual
+  step and never claims it.
+- **Skip accounting:** every milestone receipt lists skips/ignores
+  (`grep -rnE '\.skip\(|it\.skip|test\.skip|#\[ignore\]' <dirs>` plus the vitest verbose reporter)
+  and states "0 unexpected" or names each one.
+- **Reviewer findings:** reported as "N of M sampled", never extrapolated; each claimed finding is
+  verified against the actual file (diff it) before it is fixed or rebutted.
+
 **Standing rule (verbatim from the playbook):** *"At each milestone, run /offload
 (free-agents:offload) — a stateless dispatch to an out-of-family reviewer — with the brief below.
 Treat its findings as hypotheses: run every proposed mutation; fix or rebut each finding with
@@ -310,6 +339,39 @@ DIFFERENT model than the one that wrote the code (a headless free session on ano
 Every mutation a reviewer proposes is applied in isolation and must go RED (verify it was applied:
 `git diff` shows it), then restored (`git diff` empty). Record per milestone: model + route,
 verdict table, each mutation's RED line, final green line, rebuttals citing file:line.
+
+## 6c. Suite parallelism, per-file timing and splitting (Playbook-split-monolithic-test-suites + standing rule "full-suite runs go parallel first")
+
+- **Gates run parallel, always:** vitest (file-parallel by default), Playwright (per-file workers;
+  `npx playwright test --shard=i/n` only if CI needs it), `cargo test` (tests within a binary run
+  on threads; separate `tests/*.rs` binaries run ONE AFTER ANOTHER — only `cargo nextest`
+  parallelizes binaries, and only adopt it if a single Rust binary is the measured floor). Never
+  run a full gate serially "to be safe"; targeted single-file reruns during a red-green cycle stay
+  serial.
+- **Phase 0 / Receipt 0 must record PER-FILE timings, not just totals:** loop over the e2e specs
+  and vitest files (`for f in e2e/*.spec.ts src/**/*.test.ts(x); do /usr/bin/time -l npx playwright
+  test "$f" …; done`, `npx vitest run "$f"` per file; `for b in tests/*.rs`-derived binaries,
+  `cargo test --test <name>`), each redirected to a file with `EXIT:$?`, and record wall time per
+  file. The slowest file is the candidate floor.
+- **Split only when ALL THREE hold** (playbook): (1) one file is the floor — slowest, ≥ ~25 % of
+  the parallel wall time, next-slowest much faster; (2) its cases are independent (each builds its
+  own fixture/scratch state — temp dir, stub server on a FREE port); (3) shared setup is cheap
+  (splitting multiplies rig start-up per file). Not a fit: order-dependent cases or a shared fixed
+  global resource (hard-coded port, file in `$HOME`) — fix that first.
+- **Procedure when triggered:** (1) baseline the monolith: exit code, assertion count, sorted
+  assertion lines; (2) extract the rig (helpers/setup/stubs/asserts/summary) into a module the test
+  glob does NOT match (`e2e/lib/…`, `tests/helpers/…`, `conftest.py`), deriving paths from the
+  module's own location; (3) group cases by theme into N files, each landing ≤ the next-slowest
+  file; (4) move cases by LINE RANGE programmatically with a per-slice anchor assert
+  (`assert src[n].startswith(...)`) — never retype a case; keep the original filename for the
+  first piece; (5) verify EQUIVALENCE, not just green: sorted assertion lines before == union
+  after (diff identical), counts match, plant a failure through the shared summary → RED, then run
+  the REAL gate (`rtc-ship.sh` test phase), not only a harness; (6) re-time per file and iterate on
+  the new floor; (7) if someone else edits the monolith mid-split, let theirs land and redo the
+  slicing from the new file.
+- **Rust note:** within one test binary, tests already run on parallel threads — splitting a
+  binary only pays under nextest. Vitest/Playwright are file-parallel, so split the FILE and put
+  shared setup in a helper module.
 
 ### Task 5 (after Task 4 has shipped): optional "YouTube player" video mode (owner, 2026-11-16)
 Ships as its OWN next patch release through the same Task 4 gates (authority unchanged:
@@ -391,6 +453,13 @@ Format: tempting shortcut → plausible false success → harm → rule → dete
   per-project pass counts, chromium ≥ Receipt 0 AND webkit project present → Receipt 1.
 - Resuming from a stale transcript instead of this file → re-investigating proven §10 root causes
   or using dead pids → §10 is authoritative; §3 labels every fact live/dated; Phase 0 re-verifies.
+- One e2e/vitest file becomes the gate floor → ship gate stalls at that file's wall time →
+  per-file timings recorded in Receipt 0; split per §6c ONLY when all three conditions hold →
+  Receipt 4 gate wall time vs Receipt 0.
+- Executor's worktree shows `docs/plans/*` dirty → moving target / plan edited mid-run → do NOT
+  commit it: copy it to a `mktemp -d` path, restore the pinned SHA's version
+  (`git checkout <pinned-sha> -- docs/plans/`), note the copy path in the receipt → matrix row
+  "Edit THIS plan file".
 
 ## 🏁 Final delivery (answer each in the last report)
 Implemented vs only planned (e.g. helper not needed / not built)? Which receipts ran, which
@@ -476,8 +545,11 @@ new task will be added to this plan on master; until then video stays on the war
 
 ## 8. Progress log (one line per receipt: date · task · commit · result)
 - 2026-11-16 · plan written · planning session (Opus 5.5) · execution not started
-- 2026-11-16 · plan-airtight pass (max effort, free-lane resume session) · this commit · Status
-  line + Lasting-Plans completion signal added; §3 state re-verified live ~18:05 UTC (master
-  `d1b82056`, origin `4128c27b`/v0.1.20, successor `ac3848bc`/pid 29663 live, worktree
-  `ep-startup-fixes` @ `5258c37d`); authority matrix + Phase 0 + adversarial review + end-of-life
-  extended for the two-session reality
+- 2026-11-16 · plan-airtight pass (max effort, free-lane resume session) · `8c05e73a` (pushed,
+  ls-remote-verified) · Status line + Lasting-Plans completion signal added; §3 state re-verified
+  live ~18:05 UTC (successor `ac3848bc`/pid 29663 live, worktree `ep-startup-fixes` @ `5258c37d`);
+  authority matrix + Phase 0 + adversarial review + end-of-life extended for the two-session reality
+- 2026-11-16 · playbook integration pass (milestone-QC operative rules inlined into §6b; new §6c
+  suite parallelism/per-file timing/splitting from the split-monolithic playbook; standing rule 11
+  for dirty plan files; adversarial rows for gate floor and plan-file drift) · this commit ·
+  plan-airtight re-check: all 8 layers + completion signal present (see header Status line)
