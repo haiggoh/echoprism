@@ -189,7 +189,13 @@ master and whose `fallback_url` points at a progressive mp4 fixture — create a
       one warning, report `audio_only_on_metered` as unavailable (setting disabled in Settings
       with a short reason), and NEVER block launch. Tests: `missing_helper_does_not_panic_and_reports_unavailable`
       (point the loader at a nonexistent path); discriminant: make the loader `unwrap()` → RED.
-      Live: copy the debug binary to a temp dir and launch it → app starts (no dyld error).
+      **CORRECTION (live test 2026-11-16, see §9): the RELEASED v0.1.20 .app does NOT work** —
+      its binary links the helper by an ABSOLUTE CI path
+      (`/Users/runner/work/echoprism/…/out/libepnetmonitor.dylib`), dyld aborts (exit 134) on
+      every Mac. A local build only "works" because its own OUT_DIR path exists. The fix must
+      remove the link-time dependency entirely (runtime `dlopen`, no `-l` link of the helper), so
+      `otool -L <binary> | grep -c netmon` == 0. Live: run `npm run tauri build`, copy the
+      PRODUCED .app to a `mktemp -d` dir, and launch THAT (not the debug binary) → app alive.
 - [ ] Close `echoprism-v0-1-20-follow-ups` with evidence.
 - Commit `chore: remove v0.1.20 dead code; load net-monitor helper at runtime`.
 - **🧪 Receipt 3:** grep proof for each removed symbol (0 non-test call sites); `cargo build`
@@ -206,6 +212,15 @@ master and whose `fallback_url` points at a progressive mp4 fixture — create a
 - [ ] Ship with `rtc-ship.sh` against the WORKTREE; verify `git ls-remote --tags origin`,
       `gh release view v<ver>`; fast-forward the canonical checkout ONLY if it is clean and on
       master (`git -C ~/ClaudeWorkspace/echoprism pull --ff-only`), never otherwise.
+- [ ] **Release-artifact launch gate (added after the v0.1.20 dyld incident):** once CI attaches
+      the dmg, `gh release download v<ver> --pattern '*.dmg'` into `mktemp -d`, `hdiutil attach
+      -nobrowse -readonly`, `otool -L` the binary (no `/Users/runner` path), and launch the
+      binary from the mount for ≥ 10 s → alive. If it crashes: delete the dmg asset
+      (`gh release delete-asset`), fix forward, and report — never leave a non-launching asset up.
+- [ ] **Homebrew tap (owner, 2026-11-16):** bump `haiggoh/homebrew-tap` `Casks/echoprism.rb`
+      `version` + `sha256` (of the verified dmg) via a branch + PR or a direct commit per that
+      repo's convention; verify `brew update && brew info --cask echoprism` shows `<ver>`. Only
+      after the launch gate above passed.
 - [ ] Dogfood: launch the released/canonical build; play one HLS video, one audio-only item;
       record `recent_startups` or stdout `startup` lines, or state "not tested".
 
@@ -277,6 +292,34 @@ owner's work preserved (canonical checkout untouched except ff-pull; pid 59875 u
 app data untouched)? Any secrets in receipts? Released version, tag and URL as verified by
 `ls-remote` / `gh`? Waypoints closed (with evidence) or updated? Did the run stop at release +
 refresh + dogfood and nothing beyond? Was this file reread before reporting?
+
+## 9. Live test of the v0.1.20 release (planning session, 2026-11-16 10:55–11:00 UTC)
+*confirmed live* — released dmg crashed (dyld, exit 134); the run used a copy with the helper
+link repointed (`install_name_tool` + ad-hoc sign). Owner deleted the broken dmg asset from the
+v0.1.20 release (tag + notes kept). Debug log `RUST_LOG=info,echoprism=debug`:
+
+| Play | click→URL | URL→first frame | Timings |
+|---|---|---|---|
+| YouTube **audio**, labelled `pre-resolved` | 112.7 s | 25.7 s | ytdlp 32.5 s, **gate 80.6 s**, `cache_hit: true`, `instances_ms` 113.0 s |
+| YouTube **video → HLS**, labelled `youtube-audio`/`cold` | 26.7 s | 2.8 s | ytdlp 13.7 s, gate 0 (HLS ungated ✓), `instances_ms` 13.8 s |
+| Podcast (enclosure) | 0.04 s | 5.2 s | — |
+
+Findings for this round (each must be resolved or explained with evidence):
+- **Gate 80.6 s** ≫ the 10 s ceiling. *Rejected hypothesis:* "some candidates never unlock" —
+  polling every progressive audio candidate of a fresh dump, all opened within 0.8–8.3 s
+  (format `139` was open immediately). *Unknown:* whether gate_ms includes semaphore queueing
+  behind hover prefetches, or the ceiling is per-candidate and re-armed. Instrument and fix.
+- **yt-dlp 13.7–32.5 s in-app vs 2.4–6.8 s standalone** (same args, IPv4, measured 11:0x UTC).
+  *Hypothesis:* concurrent yt-dlp runs — hover triggers BOTH the storyboard `preview_frames`
+  yt-dlp AND the stream prefetch, plus up to 2 prefetches. Measure concurrency; consider sharing
+  ONE `-J` dump between storyboard and stream for the same id.
+- **Audio first frame 25.7 s** (progressive m4a via proxy) vs **2.8 s for HLS video** — strong
+  support for Task 2's audio-only HLS: formats `233`/`234` (`m3u8_native`, audio-only) ARE
+  present with `player_client=mediaconnect` for `hRpi46C3dQ4`.
+- **Timer mislabels:** a click that awaited a 112 s in-flight prefetch is labelled
+  `pre-resolved`; `instances_ms` equals the whole resolve, not the instance step; a video-mode
+  play was labelled `source=youtube-audio`. Fix the labels (tests pin each).
+- Podcast first frame 5.2 s: check whether the played URL was tracker-stripped (log it).
 
 ## 8. Progress log (one line per receipt: date · task · commit · result)
 - 2026-11-16 · plan written · planning session (Opus 5.5) · execution not started
