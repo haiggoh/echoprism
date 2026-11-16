@@ -311,7 +311,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unlisten?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs and the query cache are read inside the listener
   }, [queryClient, addToast]);
   useEffect(() => {
     let cancelled = false;
@@ -739,7 +738,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           /* best-effort */
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- playbackFormatRef is a ref; the store slices are the real deps
   }, [items, currentIndex, repeatMode, shuffle]);
 
   const lastItemIdRef = useRef<string | undefined>(items[currentIndex]?.id);
