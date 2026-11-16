@@ -291,6 +291,45 @@ Every mutation a reviewer proposes is applied in isolation and must go RED (veri
 `git diff` shows it), then restored (`git diff` empty). Record per milestone: model + route,
 verdict table, each mutation's RED line, final green line, rebuttals citing file:line.
 
+### Task 5 (after Task 4 has shipped): optional "YouTube player" video mode (owner, 2026-11-16)
+Ships as its OWN next patch release through the same Task 4 gates (authority unchanged:
+through release). Off by default; a Settings toggle "Use YouTube's player for video (faster
+start, may show ads it fails to block)".
+- **Spike facts (§11, confirmed live in Playwright WebKit):** warm player loads the next video
+  in **0.46 s**; cached cold 1.3–1.9 s; truly cold 5.4 s; a page WITHOUT a referrer gets
+  `error 153`; embed-disabled videos give `error 150`.
+- **Mechanism (decision):** the stream proxy serves `/embed/player.html` (IFrame Player API,
+  host `https://www.youtube-nocookie.com`, `origin` = the proxy origin) and the app shows it in
+  an `<iframe>` — YouTube sees a valid `http://127.0.0.1:<port>` referrer, the app's own
+  `tauri://` origin is untouched. Control via `postMessage` (play/pause/seek/load, state +
+  time events) — the existing queue, SponsorBlock skips (`seekTo`) and start-up timer must work
+  through it. ONE warm player instance is kept alive and reused (`loadVideoById`).
+- **Fallback (decision):** player `onError` 150/101/153/5/100 → play the same item through the
+  extractor pipeline without user action; log one line. Audio-only mode NEVER uses the embed.
+- **Brave-level ad blocking (owner):** (1) a WKWebView content rule list (Safari content-blocker
+  JSON) for ad/tracking hosts and YouTube ad endpoints (e.g. `/pagead/`, `/api/stats/ads`,
+  `doubleclick.net`, `googlesyndication.com`, `/ptracking`), attached to the webview via the
+  platform hook (Tauri `with_webview` → `WKUserContentController addContentRuleList`); (2) a
+  `WKUserScript` injected into ALL frames (`forMainFrameOnly: false`) that prunes `adPlacements`,
+  `playerAds`, `adSlots` from `ytInitialPlayerResponse` and fetch/XHR JSON responses of
+  `/youtubei/v1/player` (uBlock Origin's json-prune pattern). Keep both lists in versioned files
+  with a README and a date, since YouTube changes them.
+- **Tests:** unit: the prune function on fixture player responses (with and without ad keys;
+  non-ad data untouched); WebKit e2e on the proxy-served embed page against a LOCAL stub of the
+  IFrame API (no network): play, pause, seek, `onError 150 → fallback` path. Live (ignored) test:
+  real video reaches PLAYING ≤ 2 s warm. Discriminant: remove the prune keys → the fixture test
+  RED; make `onError` not fall back → e2e RED.
+- **Delivery proof (playbook):** a dogfood run with the toggle on: 3 videos, `recent_startups`
+  shows warm starts; one embed-disabled video falls back and plays; an ad-carrying video (find
+  one; record its id) plays with no ad segment — or record honestly that one slipped through.
+- **Receipt 5:** all of the above with numbers; offload milestone M5 (requirements = this task).
+
+## 11. Embed spike (planning session, 2026-11-16 ~12:05 UTC, Playwright WebKit 2370)
+Script `/tmp/ep-live.L7Oo/embed*.cjs`. `g5gptFkgBlI`: cold PLAYING 5,415 ms (player ready 3,727 ms)
+with referrer; `error 153` at 355 ms with `Referrer-Policy: no-referrer`; cached run 1,332–
+1,949 ms; warm `loadVideoById('jNQXAC9IVRw')` → PLAYING in **460 ms**; `9bZkp7q19f0` →
+`error 150` (embedding disabled). Ads: none observed on these ids — blocking UNTESTED.
+
 ## 7. Adversarial review
 Format: tempting shortcut → plausible false success → harm → rule → detecting test/receipt.
 - Edit or switch the canonical checkout → works locally → the owner's live session and dev
