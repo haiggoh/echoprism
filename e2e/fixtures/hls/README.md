@@ -37,6 +37,14 @@ into the production bundle verbatim.
   -f lavfi -i anullsrc=r=22050:cl=mono -shortest \
   -c:v libx264 -profile:v main -pix_fmt yuv420p -b:v 200k -movflags +faststart \
   -c:a aac -b:a 16k -ac 1 fallback.mp4
+
+# Task 2a audio-only rendition (§10 A): aac-only media playlist + m4a fallback
+/opt/homebrew/bin/ffmpeg -y -loglevel error -f lavfi -i anullsrc=r=22050:cl=mono -t 4 \
+  -c:a aac -b:a 16k -ac 1 -f hls -hls_time 2 -hls_playlist_type vod -hls_segment_type mpegts \
+  -hls_segment_filename 'audio/seg%d.ts' audio/media.m3u8
+
+/opt/homebrew/bin/ffmpeg -y -loglevel error -f lavfi -i anullsrc=r=22050:cl=mono -t 1 \
+  -c:a aac -b:a 16k -ac 1 -movflags +faststart audio-fallback.m4a
 ```
 
 `master.m3u8` is hand-written (two `#EXT-X-STREAM-INF` rungs) so the variant

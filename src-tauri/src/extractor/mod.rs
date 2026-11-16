@@ -480,6 +480,71 @@ impl Extractor {
                 tracing::warn!("HLS master check failed ({:?}), falling back to progressive", check.map(|r| r.status()));
             }
         }
+        // Task 2a: audio mode prefers the audio-only HLS rendition (§10 A):
+        // m3u8_native + vcodec none + acodec real, served by its url (a media
+        // playlist) — ungated, and direct unless it carries http_headers (then
+        // proxied). The progressive audio-only format rides along as
+        // fallback_url (ungated, best-effort — same policy as the video
+        // fallback, Task 12 acceptance).
+        if want_audio {
+            // Ranked order, not declaration order: the highest-abr audio-only
+            // HLS rendition (233 over 234) wins.
+            if let Some(hls) = candidates.iter().find(|f| is_audio_hls_format(f)).cloned() {
+                let raw = hls
+                    .url.clone().filter(|u| !u.is_empty())
+                    .or_else(|| hls.manifest_url.clone())
+                    .unwrap_or_default();
+                let hls_headers = hls.http_headers.clone().unwrap_or_default();
+                let serve_url = if hls_headers.is_empty() {
+                    raw.clone()
+                } else {
+                    crate::stream_proxy::register_with_refresh(
+                        &raw,
+                        hls_headers,
+                        self.refresh_ytdlp_url(video_id, true, hls.format_id.clone(), true),
+                    )
+                };
+                let t_probe = std::time::Instant::now();
+                let check = probe.get(&serve_url).header("Range", "bytes=0-0").send().await;
+                probe_ms += t_probe.elapsed().as_millis() as u64;
+                if matches!(&check, Ok(r) if r.status().is_success() || r.status() == 206) {
+                    let fallback_url = 'fallback: {
+                        let Some(fb) = candidates.iter().find(|f| {
+                            is_progressive_format(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec)
+                        }) else {
+                            break 'fallback None;
+                        };
+                        let fb_url = fb.url.clone().unwrap_or_default();
+                        let fb_headers = fb.http_headers.clone().unwrap_or_default();
+                        Some(if fb_headers.is_empty() {
+                            fb_url
+                        } else {
+                            crate::stream_proxy::register_with_refresh(
+                                &fb_url,
+                                fb_headers,
+                                self.refresh_ytdlp_url(video_id, true, fb.format_id.clone(), false),
+                            )
+                        })
+                    };
+                    tracing::info!("yt-dlp audio -> audio-only HLS (fallback: {:?})", fallback_url);
+                    return Ok(StreamUrl {
+                        url: serve_url,
+                        format: "hls".to_string(),
+                        quality: quality.unwrap_or("auto").to_string(),
+                        headers: None,
+                        timings: Some(crate::startup_timer::ResolveTimings {
+                            instances_ms: 0, // stamped by resolve_stream
+                            ytdlp_ms,
+                            gate_ms,
+                            probe_ms,
+                            cache_hit: false,
+                        }),
+                        fallback_url,
+                    });
+                }
+                tracing::warn!("audio HLS check failed ({:?}), falling back to progressive", check.map(|r| r.status()));
+            }
+        }
         for cand in &candidates {
             let url = cand.url.clone().filter(|u| !u.is_empty())
                 .or_else(|| cand.manifest_url.clone());
@@ -1162,10 +1227,33 @@ fn url_host(url: &str) -> &str {
     url.split('/').nth(2).unwrap_or("?")
 }
 
-/// All usable formats as an ordered candidate list: audio → progressive
-/// audio-only by abr desc ONLY (Task 6: never a video codec in an audio
-/// rank); video → progressive muxed by height desc, then manifests. The
-/// resolver probes each in order (see get_stream_with_yt_dlp).
+/// A direct progressive URL (http/https, not a manifest) a media element can
+/// load without the proxy (when it carries no headers).
+fn is_progressive_format(f: &YtDlpFormat) -> bool {
+    f.url.as_ref().is_some_and(|u| !u.is_empty())
+        && f.protocol.as_deref().is_none_or(|p| p.starts_with("http"))
+}
+
+/// Task 2a (2026-11-16-followups-plan §10 A): the audio-only HLS rendition —
+/// an m3u8_native format with NO video codec and a real audio codec. Its url
+/// (a media playlist) plays in WebKit with no headers and no gate (measured:
+/// `playing` after 1.13 s vs 105 s for the fragmented progressive m4a, which
+/// walks ~158 moof/mdat fragments one HTTP hop each). Observed ids 233/234.
+/// A video-bearing m3u8 entry (vcodec avc1) must NEVER match: audio mode must
+/// not fetch video bytes.
+fn is_audio_hls_format(f: &YtDlpFormat) -> bool {
+    f.protocol.as_deref() == Some("m3u8_native")
+        && is_none_codec(&f.vcodec)
+        && !is_none_codec(&f.acodec)
+        && (f.url.as_ref().is_some_and(|u| !u.is_empty())
+            || f.manifest_url.as_ref().is_some_and(|u| !u.is_empty()))
+}
+
+/// All usable formats as an ordered candidate list: audio → audio-only HLS by
+/// abr desc first (Task 2a), then progressive audio-only ONLY (Task 6: never
+/// a video codec in an audio rank); video → progressive muxed by height desc,
+/// then manifests. The resolver probes each in order (see
+/// get_stream_with_yt_dlp).
 fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFormat> {
     // Storyboards (sb*, protocol mhtml) are scrubber-preview IMAGES, never a
     // stream (round 6: one was served to <video> -> MediaError 4).
@@ -1173,27 +1261,26 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
         f.protocol.as_deref() != Some("mhtml")
             && (f.url.as_ref().is_some_and(|u| !u.is_empty()) || f.manifest_url.is_some())
     };
-    let progressive = |f: &YtDlpFormat| {
-        f.url.as_ref().is_some_and(|u| !u.is_empty())
-            && f.protocol.as_deref().is_none_or(|p| p.starts_with("http"))
-    };
     let cands: Vec<YtDlpFormat> = formats.iter().filter(|f| usable(f)).cloned().collect();
     if want_audio {
-        // Task 6: audio-only rank = progressive audio-only formats ONLY — no
-        // muxed-video fallback, no manifest fallback (an audio-only play must
-        // never fetch video bytes). Empty → the resolver's honest Err.
+        // Task 2a: audio-only HLS renditions rank FIRST (§10 A: 1.13 s vs
+        // 105 s); progressive audio-only follows as the fallback_url source.
+        // Task 6: still never a video codec in an audio rank.
+        let mut hls: Vec<_> = formats.iter().filter(|f| is_audio_hls_format(f)).cloned().collect();
+        hls.sort_by(|a, b| b.abr.unwrap_or(0.0).partial_cmp(&a.abr.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
         let mut audio_only: Vec<_> = cands
             .into_iter()
-            .filter(|f| progressive(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec))
+            .filter(|f| is_progressive_format(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec))
             .collect();
         audio_only.sort_by(|a, b| b.abr.unwrap_or(0.0).partial_cmp(&a.abr.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
-        audio_only
+        hls.extend(audio_only);
+        hls
     } else {
-        let (muxed, rest): (Vec<_>, Vec<_>) = cands.into_iter().partition(|f| progressive(f) && !is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec));
+        let (muxed, rest): (Vec<_>, Vec<_>) = cands.into_iter().partition(|f| is_progressive_format(f) && !is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec));
         let mut muxed = muxed;
         muxed.sort_by_key(|f| f.height.unwrap_or(0));
         muxed.extend(rest);
-        muxed.extend(formats.iter().filter(|f| usable(f) && !progressive(f)).cloned());
+        muxed.extend(formats.iter().filter(|f| usable(f) && !is_progressive_format(f)).cloned());
         muxed
     }
 }
@@ -1493,22 +1580,25 @@ mod tests {
     }
 
     #[test]
-    fn pick_audio_skips_manifests_when_progressive_exists() {
+    fn pick_audio_prefers_audio_only_hls_then_progressive() {
+        // Task 2a (2026-11-16-followups-plan §10 A) reverses the Round-4
+        // premise ("<audio> cannot play a manifest"): in WebKit the audio-only
+        // HLS rendition reached `playing` in 1.13 s where the fragmented
+        // progressive m4a took 105 s. So the audio-only HLS manifest ranks
+        // FIRST; progressive audio-only follows.
         let mut hls_audio = fmt("https://a/master.m3u8", Some("none"), Some("mp4a"), Some(160.0), None);
         hls_audio.url = None;
         hls_audio.manifest_url = Some("https://a/master.m3u8".into());
         hls_audio.protocol = Some("m3u8_native".into());
         let formats = vec![
-            hls_audio,
             fmt("https://a/128.m4a", Some("none"), Some("mp4a"), Some(128.0), None),
+            hls_audio,
         ];
         let picked = pick_yt_dlp_format(&formats, true, None).expect("audio");
-        assert_eq!(picked.url.as_deref(), Some("https://a/128.m4a"), "manifest skipped for progressive");
-        // Task 6 update (this half pinned the old manifest fallback): a
-        // manifest-only audio request now gets NOTHING from the audio rank —
-        // no fallback, the resolver's honest Err stands.
-        let only_hls = vec![formats[0].clone()];
-        assert!(pick_yt_dlp_format(&only_hls, true, None).is_none(), "no manifest fallback in the audio rank");
+        assert_eq!(picked.manifest_url.as_deref(), Some("https://a/master.m3u8"), "audio-only HLS manifest picked first");
+        // manifest-only audio request DOES get the manifest now (Task 2a):
+        let only_hls = vec![formats[1].clone()];
+        assert!(pick_yt_dlp_format(&only_hls, true, None).is_some(), "audio-only HLS manifest is a valid audio pick");
     }
 
     /// Round 5 delivery test: the resolver must PROBE candidates through the
@@ -1687,6 +1777,57 @@ mod tests {
         assert_eq!(url, format!("http://127.0.0.1:{port}/b-360"), "refresh must keep the playing format");
         assert!(waited >= std::time::Duration::from_secs_f64(2.0), "must not return before the lock opens ({waited:?})");
         assert!(waited < std::time::Duration::from_secs_f64(4.0), "must not sleep until the fake available_at (+5 s): {waited:?}");
+    }
+
+    /// Task 2a (2026-11-16-followups-plan §10 A): audio mode prefers the
+    /// audio-only HLS rendition — fixture shape 233 (mp4a, 128k) / 234 (opus,
+    /// 64k) + progressive 140 (mp4a 130k). The higher-abr HLS wins over 140
+    /// even though HLS abr ordering would normally lose: 233 played in 1.13 s
+    /// in WebKit where the fragmented progressive m4a took 105 s (§10 A). The
+    /// progressive audio-only format rides as fallback_url.
+    #[tokio::test]
+    async fn audio_mode_prefers_audio_only_hls() {
+        let (port, _early) = spawn_gate_upstream(0.0).await;
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"234\",\"url\":\"http://127.0.0.1:{port}/a234.m3u8\",\"ext\":\"mp4\",\"vcodec\":\"none\",\"acodec\":\"opus\",\"abr\":64.0,\"protocol\":\"m3u8_native\"}},\
+             {{\"format_id\":\"233\",\"url\":\"http://127.0.0.1:{port}/a233.m3u8\",\"ext\":\"mp4\",\"vcodec\":\"none\",\"acodec\":\"mp4a.40.2\",\"abr\":128.0,\"protocol\":\"m3u8_native\"}},\
+             {{\"format_id\":\"140\",\"url\":\"http://127.0.0.1:{port}/a140.m4a\",\"ext\":\"m4a\",\"vcodec\":\"none\",\"acodec\":\"mp4a.40.2\",\"abr\":130.0,\"protocol\":\"https\"}}]"
+        ));
+        let s = ex.get_stream_with_yt_dlp("vid", Some("audio"), None).await.expect("audio HLS resolve");
+        assert!(s.url.contains("a233.m3u8"), "the higher-abr audio-only HLS (233) must win over 234: {}", s.url);
+        assert_eq!(s.format, "hls");
+        assert!(
+            s.fallback_url.as_deref().is_some_and(|u| u.contains("a140.m4a")),
+            "progressive audio-only rides as fallback_url: {:?}",
+            s.fallback_url
+        );
+    }
+
+    /// Task 2a: an m3u8 entry that carries VIDEO (vcodec avc1) must never be
+    /// chosen in audio mode — audio must not fetch video bytes (anti-goal).
+    #[tokio::test]
+    async fn audio_hls_with_video_codec_rejected() {
+        let (port, _early) = spawn_gate_upstream(0.0).await;
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"9999\",\"url\":\"http://127.0.0.1:{port}/video.m3u8\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a.40.2\",\"abr\":999.0,\"protocol\":\"m3u8_native\"}},\
+             {{\"format_id\":\"140\",\"url\":\"http://127.0.0.1:{port}/a140.m4a\",\"ext\":\"m4a\",\"vcodec\":\"none\",\"acodec\":\"mp4a.40.2\",\"abr\":130.0,\"protocol\":\"https\"}}]"
+        ));
+        let s = ex.get_stream_with_yt_dlp("vid", Some("audio"), None).await.expect("audio resolve");
+        assert!(!s.url.contains(".m3u8"), "a video-bearing m3u8 must never be picked in audio mode: {}", s.url);
+        assert!(s.url.contains("a140.m4a"), "progressive audio-only instead: {}", s.url);
+    }
+
+    /// Task 2a: no audio-only HLS in the dump → progressive audio-only, and no
+    /// HLS fallback invented.
+    #[tokio::test]
+    async fn audio_falls_back_to_progressive_without_hls() {
+        let (port, _early) = spawn_gate_upstream(0.0).await;
+        let (ex, _d) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"140\",\"url\":\"http://127.0.0.1:{port}/a140.m4a\",\"ext\":\"m4a\",\"vcodec\":\"none\",\"acodec\":\"mp4a.40.2\",\"abr\":130.0,\"protocol\":\"https\"}}]"
+        ));
+        let s = ex.get_stream_with_yt_dlp("vid", Some("audio"), None).await.expect("progressive audio resolve");
+        assert!(s.url.contains("a140.m4a"), "{}", s.url);
+        assert!(s.fallback_url.is_none(), "no HLS → no fallback_url: {:?}", s.fallback_url);
     }
 
     /// LIVE (network + real yt-dlp; run with --ignored): the video that
@@ -2824,6 +2965,9 @@ mod tests {
         formats[3].url = None;
         let ranked = rank_yt_dlp_formats(&formats, true);
         assert!(!ranked.is_empty(), "the audio-only formats must remain ranked");
+        // Task 2a: the audio-only HLS manifest ranks FIRST now (§10 A measured
+        // it playing in 1.13 s in WebKit vs 105 s fragmented progressive m4a).
+        assert_eq!(ranked[0].format_id.as_deref(), Some("hls"), "audio-only HLS manifest ranks first: {:?}", ranked.iter().map(|f| &f.format_id).collect::<Vec<_>>());
         for f in &ranked {
             assert!(
                 is_none_codec(&f.vcodec),
@@ -2831,8 +2975,8 @@ mod tests {
                 f.format_id
             );
             assert!(
-                f.url.as_ref().is_some_and(|u| !u.is_empty()),
-                "audio rank must contain only direct (non-manifest) URLs: format_id={:?}",
+                f.url.as_ref().is_some_and(|u| !u.is_empty()) || f.protocol.as_deref() == Some("m3u8_native"),
+                "audio rank entries are direct URLs or audio-only manifests (never a video manifest): format_id={:?}",
                 f.format_id
             );
         }

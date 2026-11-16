@@ -172,6 +172,22 @@ export const mockDb: MockDb = {
       updated_at: now,
     },
     {
+      // Task 2a (2026-11-16-followups-plan §10 A): the audio-only HLS e2e
+      // episode. Video resolves the fixture master; audio resolves the
+      // audio-only media playlist (audio/media.m3u8) with the m4a fallback.
+      id: 'ep-hls-audio',
+      channel_id: 'ch-1',
+      external_id: 'hls-fixture-003',
+      title: 'video: HLS audio-only rendition',
+      video_id: 'hls-fixture-003',
+      duration_seconds: 4,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-16T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
       id: 'ep-hls-broken',
       channel_id: 'ch-1',
       external_id: 'hls-fixture-002',

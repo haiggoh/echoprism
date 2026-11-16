@@ -578,3 +578,12 @@ new task will be added to this plan on master; until then video stays on the war
   headless delivery probe nvidia-mistral-large4 (Mistral): all 4 M1 reqs MET (webkit 2/2, fallback
   both runs, cap test ok, BUILD_EXIT:0 M3U8_COUNT:0) · keyboard-nav tab-walk webkit skip rebutted:
   post-region-fix probes still wrap to <body> (t1-kbnav3/4)
+- 2026-11-17 · Task 2a (executor ac3848bc) · this commit · audio mode prefers the audio-only HLS
+  rendition (m3u8_native + vcodec none + acodec real, abr-desc; §10 A) with progressive audio-only as
+  fallback_url · Rust tests audio_mode_prefers_audio_only_hls / audio_hls_with_video_codec_rejected /
+  audio_falls_back_to_progressive_without_hls green; discriminant (drop the vcodec-none guard) RED
+  EXIT:101 → restored EXIT:0 · webkit e2e delivery proof: audio reaches playing + currentTime>0 with
+  4 media requests (playlist + 3 segments) in 2.9 s — §10 A measured 101 requests / 105 s for the
+  fragmented m4a · gates: e2e EXIT:0 72 pass/20 skip · vitest 403/403 · cargo 238/238 solo (sweep
+  flake = waypoint pre-existing-flaky-rust-tests) · tsc/lint/build EXIT:0 · dist .m3u8 count 0 ·
+  fixtures 240K

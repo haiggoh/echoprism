@@ -104,19 +104,24 @@ const handlers: Record<string, Handler> = {
   stream_episode: (args): StreamInfo => {
     const ep = requireEpisode(args?.episodeId as string);
     const format = (args?.format as string) ?? 'video';
+    // Task 1/2a (docs/plans/2026-11-16-followups-plan.md): the HLS e2e episodes
+    // return the shape the Rust backend produces for an HLS-capable resolve —
+    // video: a master-playlist url plus a progressive fallback_url;
+    // audio: the audio-only HLS media playlist (§10 A) plus an m4a fallback.
+    // ep-hls-broken's master path is deliberately absent (the /test-media
+    // middleware 404s it), so the player's media-error path must swap to
+    // fallback_url.
+    if (ep.id === 'ep-hls-demo' || ep.id === 'ep-hls-broken' || ep.id === 'ep-hls-audio') {
+      if (format === 'audio') {
+        return { url: '/test-media/hls/audio/media.m3u8', fallback_url: '/test-media/hls/audio-fallback.m4a', format: 'audio' };
+      }
+      const master =
+        ep.id === 'ep-hls-broken' ? '/test-media/hls/absent/master.m3u8' : '/test-media/hls/master.m3u8';
+      return { url: master, fallback_url: '/test-media/hls/fallback.mp4', format: 'video' };
+    }
     if (format === 'audio') {
       const url = ep.audio_url ?? '/mock-media/generic-audio.wav';
       return { url, format };
-    }
-    // Task 1 (docs/plans/2026-11-16-followups-plan.md): the HLS e2e episodes
-    // return the shape the Rust backend produces for an HLS-capable resolve —
-    // a master-playlist url plus a progressive fallback_url. ep-hls-broken's
-    // master path is deliberately absent (the /test-media middleware 404s
-    // it), so the player's media-error path must swap to fallback_url.
-    if (ep.id === 'ep-hls-demo' || ep.id === 'ep-hls-broken') {
-      const master =
-        ep.id === 'ep-hls-demo' ? '/test-media/hls/master.m3u8' : '/test-media/hls/absent/master.m3u8';
-      return { url: master, fallback_url: '/test-media/hls/fallback.mp4', format: 'video' };
     }
     if (!ep.video_id) {
       // Phase A mirrors the Rust enclosure path: a podcast-shaped episode

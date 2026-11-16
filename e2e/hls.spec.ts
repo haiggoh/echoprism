@@ -65,6 +65,36 @@ test('hls_video_plays_in_webkit: the HLS master reaches playing through the real
   ).toBeVisible({ timeout: 10_000 });
 });
 
+test('audio_mode_plays_audio_only_hls_without_fragment_walk: the audio-only rendition reaches playing with a handful of media requests', async ({ page }) => {
+  // Task 2a delivery proof (§10 A) in the shipped engine: audio-only HLS
+  // reaches `playing` with a few media requests — NOT the ~158 fragment-hop
+  // walk a fragmented progressive m4a forces (measured 105 s / 101 requests).
+  const mediaReqs: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/test-media/hls/audio/')) mediaReqs.push(r.url());
+  });
+
+  await page.goto('/feed');
+  await page.getByRole('checkbox', { name: 'Audio only mode' }).check();
+  await page
+    .locator('article', { hasText: 'HLS audio-only rendition' })
+    .getByRole('button', { name: 'Play now' })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/player\/ep-hls-audio$/);
+
+  const audio = page.locator('audio');
+  await expect(audio).toHaveAttribute('src', /\/test-media\/hls\/audio\/media\.m3u8$/, { timeout: 10_000 });
+  await expect
+    .poll(async () => audio.evaluate((el) => (el as HTMLAudioElement).paused), { timeout: 15_000 })
+    .toBe(false);
+  await expect
+    .poll(async () => audio.evaluate((el) => (el as HTMLAudioElement).currentTime), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  console.log('AUDIO-HLS media requests:', mediaReqs.length, mediaReqs.join(' '));
+  expect(mediaReqs.length).toBeLessThanOrEqual(5);
+});
+
 test('broken_hls_falls_back_to_progressive: a 404 master lands on fallback_url', async ({ page }) => {
   // The broken master must REALLY have been requested and 404'd — otherwise
   // "fallback" could be the primary URL and this test would prove nothing.

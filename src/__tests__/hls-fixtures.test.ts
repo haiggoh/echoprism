@@ -52,6 +52,19 @@ describe('e2e HLS fixtures (e2e/fixtures/hls)', () => {
     }
   });
 
+  it('audio/media.m3u8 exists with existing aac segments (Task 2a audio-only rendition)', () => {
+    const pl = fs.readFileSync(path.join(root, 'audio/media.m3u8'), 'utf8') as string;
+    expect(pl).toContain('#EXT-X-ENDLIST');
+    const segs = [...pl.matchAll(/^([^\n#][^\n]*\.ts)$/gm)].map((m) => m[1]);
+    expect(segs.length).toBeGreaterThanOrEqual(2);
+    for (const seg of segs) {
+      expect(fs.existsSync(path.join(root, 'audio', seg)), `audio segment ${seg} must exist`).toBe(true);
+    }
+    const fb = fs.readFileSync(path.join(root, 'audio-fallback.m4a')) as unknown as { length: number; subarray(s: number, e: number): { toString(enc: string): string } };
+    expect(fb.length).toBeGreaterThan(1000);
+    expect(fb.subarray(4, 8).toString('latin1')).toBe('ftyp');
+  });
+
   it('fallback.mp4 exists and is a real mp4 (ftyp box)', () => {
     const buf = fs.readFileSync(path.join(root, 'fallback.mp4')) as unknown as {
       length: number;
