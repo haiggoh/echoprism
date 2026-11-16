@@ -44,7 +44,7 @@ style, receipts and adversarial review all still apply), `docs/plans/2026-11-15-
 | Write `~/Library/Application Support/app.echoprism/*` | **prohibited** | `sqlite3 -readonly` only |
 | Kill pid 59875 (if it revives), pid 29663 / session `ac3848bc`, anything on ports 4141–4151, `remote-session.sh --stop` | **prohibited** | — |
 | Launch another free session / handover from the executor | **prohibited** — owner only (handoff 2026-11-16) | you ARE the successor |
-| Edit THIS plan file (`docs/plans/*`) | **prohibited for the executor** — pin the commit you read (`git rev-parse HEAD`) and work from that; docs-only plan commits on canonical master, staged by path, are for owner/planning sessions only (history: `05f5cd94`…`d1b82056`) | versioned plan |
+| Edit THIS plan file (`docs/plans/*`) | **allowed, append-mostly** (owner ruling, 2026-11-16 ~20:36 UTC): §8 receipt lines are committed with each task (rule 10); wording may be refined when NEW VERIFIED information requires it, never overriding an owner decision; doc-only commits to `docs/plans/*` are permitted; the completion marker (`lasting-plans complete`) runs only at the very end | single source of truth = this file on master; pin the SHA you read at Phase 0 |
 | Anything not listed | needs owner | add a waypoint, continue with the rest |
 
 ## ⚠️ Side-effect classification
@@ -133,9 +133,13 @@ gets no part of this work); **ship through RELEASE**; the
 9. Never write `~/Library/Application Support/app.echoprism/*` (read with `sqlite3 -readonly`).
    No argv, keys or tokens in receipts.
 10. Append one line per receipt to §8 below, committed with that task.
-11. If your worktree shows `docs/plans/*` dirty (not yours): never commit it — copy it to a
-    `mktemp -d` path first, then `git checkout <pinned-master-sha> -- docs/plans/`; record both in
-    the receipt. The plan file changes only in owner/planning sessions (matrix above).
+11. If your worktree shows `docs/plans/*` dirty: if the diff is only your §8 progress-receipt
+    lines, COMMIT it with your task (rule 10 — progress documentation belongs in the plan).
+    If it contains requirement/task/matrix edits, keep them only if they rest on new verified
+    information and never override an owner decision; otherwise copy the file to a `mktemp -d`
+    path and restore the pinned SHA's version (`git checkout <pinned-sha> -- docs/plans/`).
+    Record which case it was in the receipt. (Owner ruling 2026-11-16 ~20:36 UTC supersedes the
+    earlier blanket "never commit the plan file" wording.)
 
 ## 5. Phase 0 — preflight (read-only first)
 - [ ] Three strategy sentences. Then: `git -C ~/ClaudeWorkspace/echoprism log --oneline -3`,
@@ -456,10 +460,10 @@ Format: tempting shortcut → plausible false success → harm → rule → dete
 - One e2e/vitest file becomes the gate floor → ship gate stalls at that file's wall time →
   per-file timings recorded in Receipt 0; split per §6c ONLY when all three conditions hold →
   Receipt 4 gate wall time vs Receipt 0.
-- Executor's worktree shows `docs/plans/*` dirty → moving target / plan edited mid-run → do NOT
-  commit it: copy it to a `mktemp -d` path, restore the pinned SHA's version
-  (`git checkout <pinned-sha> -- docs/plans/`), note the copy path in the receipt → matrix row
-  "Edit THIS plan file".
+- Executor's worktree shows `docs/plans/*` dirty → is it §8 receipts (commit per rule 10) or
+  requirement edits (owner-ruling case in rule 11)? Misreading the diff and reverting §8 lines
+  loses the progress record; committing requirement edits silently makes the plan a moving
+  target → rule 11 + matrix row "Edit THIS plan file"; receipt names which case applied.
 
 ## 🏁 Final delivery (answer each in the last report)
 Implemented vs only planned (e.g. helper not needed / not built)? Which receipts ran, which
@@ -551,5 +555,9 @@ new task will be added to this plan on master; until then video stays on the war
   authority matrix + Phase 0 + adversarial review + end-of-life extended for the two-session reality
 - 2026-11-16 · playbook integration pass (milestone-QC operative rules inlined into §6b; new §6c
   suite parallelism/per-file timing/splitting from the split-monolithic playbook; standing rule 11
-  for dirty plan files; adversarial rows for gate floor and plan-file drift) · this commit ·
+  for dirty plan files; adversarial rows for gate floor and plan-file drift) · `d8d81574` ·
   plan-airtight re-check: all 8 layers + completion signal present (see header Status line)
+- 2026-11-16 · owner ruling codified: rule 11 + matrix row relaxed to append-mostly plan edits —
+  §8 receipts committable per task, refinements allowed on new verified info (never overriding
+  owner decisions), doc-only `docs/plans` commits allowed, completion marker at the end only ·
+  this commit · supersedes the earlier blanket "executor never commits the plan file" wording
