@@ -28,10 +28,10 @@ style, receipts and adversarial review all still apply), `docs/plans/2026-11-15-
 | Operation | Status | Gate / evidence |
 |---|---|---|
 | Read-only inspection; `curl -4` / `yt-dlp --force-ipv4` probes of public URLs | allowed now | ≤ 30 yt-dlp runs/hour |
-| Create worktree `~/.wt/ep-followups`, edit, local commits on `feat/v0120-followups` | allowed now | Receipt 0 |
+| Create worktree `~/.wt/ep-startup-fixes`, edit, local commits on `feat/startup-fixes` | allowed now | Receipt 0 |
 | Add `libloading` (Rust) or any npm/crate dependency | allowed after gate | pinned version, named in the task receipt |
 | Generate + commit e2e media fixtures with ffmpeg | allowed now | < 300 KB total, README with commands |
-| Build the persistent extractor helper | allowed after gate | ONLY if Task 2 measurement shows audio-only HLS misses ≤ 5 s cold |
+| Build the persistent extractor helper | allowed now (REQUIRED, Task 2b) | owner-approved 2026-11-16; root cause proven (§10 B) |
 | Spawn/kill the helper process the app itself starts (in tests: fake helper) | allowed now | tests kill what they start; never other processes |
 | Launch the app binary for a live check / dogfood | allowed now | your own build; quit it afterwards |
 | Push branch, merge to master, bump, tag, GitHub release, refresh | allowed after gate | Task 4 gates green, via `rtc-ship.sh` on the WORKTREE |
@@ -83,10 +83,17 @@ gets no part of this work); **ship through RELEASE**; the
 - `ffmpeg` at `/opt/homebrew/bin/ffmpeg`.
 - Open waypoints this round closes: `echoprism-cold-start-still-5`, `echoprism-v0-1-20-follow-ups`.
   (`echoprism-audio-only-checkbox` is WATCH only — do not touch.)
+- **Superseded executor, do not touch:** an earlier successor (pid 40055) went idle at 11:46 UTC
+  with NO work done; it left worktree `~/.wt/ep-followups` (branch `feat/v0120-followups`, no
+  commits). Never use, edit, remove or kill either; you use `~/.wt/ep-startup-fixes`.
+- The canonical checkout may show uncommitted edits that are NOT yours (seen: 
+  `docs/plans/2026-11-15-cold-path-findings.md`, from the owner's live session). Never stage,
+  revert or overwrite them.
+- Planning-session scratch worktree `~/.wt/ep-debug` (detached, debug trace) is NOT yours — ignore it.
 
 ## 4. Standing rules (adopt for the whole session)
 1. Autonomous: decide and record; stop only for forks that cannot be weighed.
-2. Work ONLY in worktree `~/.wt/ep-followups` (branch `feat/v0120-followups`, created from local
+2. Work ONLY in worktree `~/.wt/ep-startup-fixes` (branch `feat/startup-fixes`, created from local
    `master`). NEVER switch/reset/edit `~/ClaudeWorkspace/echoprism` (live session + dev launcher).
 3. Commit each milestone staged BY PATH, with the running model's trailer from memory
    `commit-attribution-by-model` (read it before every commit).
@@ -111,8 +118,8 @@ gets no part of this work); **ship through RELEASE**; the
 
 ## 5. Phase 0 — preflight (read-only first)
 - [ ] Three strategy sentences. Then: `git -C ~/ClaudeWorkspace/echoprism log --oneline -3`,
-      `git fetch --tags origin`, latest tag, `git worktree add -b feat/v0120-followups
-      ~/.wt/ep-followups master`, `npm ci` in the worktree.
+      `git fetch --tags origin`, latest tag, `git worktree add -b feat/startup-fixes
+      ~/.wt/ep-startup-fixes master`, `npm ci` in the worktree.
 - [ ] Baselines (redirect to files, echo `EXIT:$?`): `cargo test --workspace --manifest-path
       src-tauri/Cargo.toml`, `npm run test:run`, `npm run test:e2e`, and `cargo build
       --manifest-path src-tauri/Cargo.toml 2>&1 | grep -c warning` (record the warning count —
@@ -148,35 +155,61 @@ master and whose `fallback_url` points at a progressive mp4 fixture — create a
   per-project pass counts (chromium count ≥ Receipt 0); the discriminant's RED run; fixture size
   (`du -sh e2e/fixtures/hls`); the `dist` grep result; offload verdict + `model_used`.
 
-### Task 2: Cold audio ≤ 5 s
-- [ ] **Measure first** (scratch script outside the repo, `--help`): for 3 videos, from the
-      HLS master yt-dlp returns with the current `YT_DLP_EXTRACTOR_ARGS`, find audio-only
-      renditions (`#EXT-X-MEDIA:TYPE=AUDIO` URIs, or audio-only variants), and check: no
-      `available_at` lock (fetch immediately, every 300 ms for 3 s), codec (`CODECS=` mp4a/opus),
-      no video codec, plays in Playwright WebKit (reuse the probe), and bytes per minute vs the
-      progressive m4a (format 140). Write the table to the findings doc.
-- [ ] If a usable audio-only HLS rendition exists: audio mode resolves to it (primary), with the
-      progressive audio-only candidate as `fallback_url`. Tests: `audio_hls_rendition_selected`
-      (fixture master with audio groups → the audio rendition URI), `audio_hls_never_contains_video`
-      (a rendition with `avc1` in CODECS is rejected), `audio_falls_back_to_progressive_when_no_rendition`.
-      Discriminant: accept a video variant → second test RED.
-- [ ] Live re-measure cold audio and cold video through the real resolve path (ignored live
-      tests, IPv4). Target ≤ 5 s each (click→URL; state that first-frame is not measured
-      unattended).
-- [ ] **If cold audio is still > 5 s:** build the persistent extractor (owner-approved
-      2026-11-16): a long-lived yt-dlp process (Python, `yt_dlp.YoutubeDL` in a small helper
-      script spoken to over stdin/stdout JSON lines) started lazily on first use, restarted on
-      crash, killed with the app, honouring `--force-ipv4`/NetPath and `YT_DLP_EXTRACTOR_ARGS`,
-      with a per-request timeout and fall back to the one-shot `yt-dlp -J` on any helper failure.
-      Tests with a fake helper (crash → restart → fallback; timeout → fallback). The helper gets
-      `--help`. Re-measure.
-- [ ] Close `echoprism-cold-start-still-5` ONLY with measured evidence ≤ 5 s
-      (`waypoints.py done … --evidence`); otherwise edit it with the new numbers and leave open.
-- Commit(s) `perf(audio): …` per milestone.
-- **🧪 Receipt 2:** the measurement table (per video: rendition found y/n, CODECS, lock y/n,
-  WebKit plays y/n, bytes/min vs format 140); RED→GREEN runs of the three named tests; live cold
-  audio + cold video ms per stage (`ResolveTimings`) vs 5000 ms; whether the helper was built
-  and, if so, its crash/timeout test runs; the waypoint command used; offload verdict.
+### Task 2: Playback start — the PROVEN root causes (planning session, 2026-11-16, see §10)
+Root causes are established; do not re-investigate them — implement the solutions, then
+prove the outcome. Each sub-task below is its own commit and its own receipt.
+
+#### 2a. Audio-only plays the audio-only HLS rendition (fixes the ~113 s audio start)
+- Cause (§10 A): progressive audio-only m4a (139/140) is a FRAGMENTED MP4; WebKit/AVFoundation
+  walks every fragment (one HTTP hop each, ~158 for a 25 MB file) before `playing`.
+- [ ] Audio mode selects a yt-dlp format with `protocol == "m3u8_native"`, `vcodec == "none"`,
+      `acodec != "none"` (observed ids `233`/`234`; prefer the higher `abr`/`tbr`), served by its
+      `url` (a media playlist; verify whether it needs headers — §10 measured it playing with
+      none in WebKit; proxy it only if headers are required). Progressive audio-only becomes
+      `fallback_url` (gated as today). No muxed/video format may ever be chosen.
+- [ ] Tests: `audio_mode_prefers_audio_only_hls` (fixture dump containing 233/234 + 140 →
+      233/234 chosen); `audio_hls_with_video_codec_rejected` (a fixture m3u8 entry with
+      `vcodec: avc1` is never chosen); `audio_falls_back_to_progressive_without_hls`.
+      Discriminant: drop the `vcodec == "none"` filter → second test RED.
+- [ ] **Delivery proof (playbook rule 1):** WebKit e2e/live: audio mode reaches `playing` with
+      `currentTime > 0` in ≤ 3 s for one real video, and the proxy/network log shows NO
+      fragment-hop pattern (≤ 5 media requests before `playing`).
+
+#### 2b. Persistent pre-warmed extractor (fixes the 13–32 s yt-dlp cost; now REQUIRED)
+- Cause (§10 B): each click spawns a new yt-dlp; start-up alone stalls 10–30 s on this Mac
+  (15.9 s before the first stderr line; real ≫ user CPU); a warm process extracts in 1.5–2.4 s.
+- [ ] A long-lived helper: `src-tauri/resources/ytdlp_helper.py` (gets `--help`), run with the
+      SAME Python yt-dlp uses (resolve the interpreter from the `yt-dlp` script's shebang, as
+      §10 did; fail loudly with a log line if it cannot be resolved), importing `yt_dlp` ONCE,
+      reading one JSON request per stdin line (`{"id","video_id","force_ipv4"}`), writing one
+      JSON line back (`{"id","ok","info"| "error"}`) with the `extract_info(..., download=False)`
+      dict (sanitized via `YoutubeDL.sanitize_info`). Options: `source_address 0.0.0.0` when
+      force_ipv4, `socket_timeout 15`, no warnings suppressed (warnings go to stderr → app log).
+- [ ] Started at APP LAUNCH (pre-warm: one throwaway `import` happens immediately), restarted
+      on crash, killed with the app, per-request timeout 30 s, serialized or bounded concurrency
+      (decide; record why), and on ANY helper failure fall back to the one-shot `yt-dlp -J`.
+- [ ] Tests with a FAKE helper script in a temp dir: `helper_reused_across_requests` (one spawn,
+      N requests), `helper_crash_restarts_then_serves`, `helper_timeout_falls_back_to_oneshot`,
+      `helper_missing_python_falls_back_to_oneshot`. Discriminant: spawn per request → first RED.
+- [ ] **Delivery proof:** ignored live test — after warm-up, 3 consecutive cold resolves of
+      different videos each ≤ 4 s click→URL (`ytdlp_ms` ≤ 3000).
+
+#### 2c. One extraction serves both modes; config + timer truth
+- [ ] A pre-resolve (hover/queue) caches BOTH `(id, Audio)` and `(id, Video)` entries from the
+      SAME dump (audio HLS + video HLS master + their fallbacks), so a mode switch is a cache
+      hit. Test: `one_dump_populates_both_modes` (resolver counter == 1 for audio then video).
+- [ ] Drop `player_client=mediaconnect` (§10 C: unsupported, silently ignored). Stop passing
+      `--no-warnings` to `-J` runs; route yt-dlp stderr warnings to the app log at WARN.
+      Test pins that no unsupported-client warning appears for the configured args (fake binary
+      echoing the argv is enough for the argv half; the live test checks the real warning text).
+- [ ] Timer truth (§10 D): `instances_ms` measures ONLY the instance attempts; a click that
+      JOINED an in-flight resolve reports `path="joined"` with the wait; `source` reflects the
+      mode actually played (video vs audio), not the toggle at click time. Tests pin each.
+- [ ] Close `echoprism-cold-start-still-5` ONLY with measured evidence (cold audio AND cold
+      video ≤ 5 s click→first-frame from `recent_startups` or stdout `startup` lines of a real
+      dogfood run); otherwise update it with the numbers and leave it open.
+- **🧪 Receipt 2 (a/b/c):** RED→GREEN runs of every named test; each discriminant's RED line;
+  the delivery proofs' numbers; the before/after `ResolveTimings`; offload verdicts (§6b M2).
 
 ### Task 3: v0.1.20 cleanup
 - [ ] Dead code: `InstancePool::mark_degraded` / `note_resolve_outcome` (unused since resolve
@@ -206,7 +239,7 @@ master and whose `fallback_url` points at a progressive mp4 fixture — create a
 - [ ] Full gates: rust workspace, vitest, e2e **both projects**, `npm run build`, eslint,
       `tests/test_version_consistency.sh` after the bump — counts vs Receipt 0.
 - [ ] Whole-branch review (superpowers:requesting-code-review) + offloaded cross-family review
-      of `git diff master...feat/v0120-followups`; fix confirmed findings.
+      of `git diff master...feat/startup-fixes`; fix confirmed findings.
 - [ ] `git fetch origin`; rebase onto the latest master (local canonical master may have moved —
       see §3); rerun gates if anything changed. Bump version everywhere; CHANGELOG entry.
 - [ ] Ship with `rtc-ship.sh` against the WORKTREE; verify `git ls-remote --tags origin`,
@@ -247,7 +280,7 @@ evidence. Do not start the next task with an open finding."* The brief is the pl
 | Milestone | Requirements under review (spec/plan wording) | Delivery-shaped proof required |
 |---|---|---|
 | **M1 after Task 1** | WebKit plays the HLS master; broken HLS falls back to the progressive file; the master served lists no variant above the cap | e2e asserts `videoWidth > 0` AND `currentTime > 0` in the webkit project through the app's real player path (not a bare `<video>` page); fixture absent from `dist` |
-| **M2 after Task 2** | cold audio ≤ 5 s; audio-only never fetches video bytes | live timing numbers in the receipt; a test whose fixture contains a VIDEO-bearing rendition that must be rejected; the CODECS of the rendition actually played |
+| **M2 after Task 2** | audio-only plays the audio-only HLS rendition and never fetches video bytes; ONE warm extractor serves all requests; one dump serves both modes; timer splits are truthful | audio reaches `playing` + `currentTime > 0` in ≤ 3 s with ≤ 5 media requests (no fragment walk); live: 3 consecutive cold resolves ≤ 4 s with a single helper pid; a fixture with a VIDEO-bearing m3u8 entry that must be rejected; the CODECS of the stream actually played |
 | **M3 after Task 3** | a missing net-monitor helper never blocks launch; removed symbols were truly unused | the app binary launched from a temp dir with no helper shows the app alive (not just a unit test); grep proof per symbol |
 | **M4 before ship** | everything above, on the rebased branch | re-run M1–M3 delivery probes on the final commit |
 
@@ -273,8 +306,10 @@ Format: tempting shortcut → plausible false success → harm → rule → dete
 - Trust a free reviewer's finding blindly → hallucinated file → wasted or wrong fix → confirm in
   source → receipts quote file:line.
 - Measure without IPv4 → 183 s blackhole numbers → wrong conclusion → rule 7 → `real` vs `user`.
-- Build the persistent helper without measuring first → unneeded complexity → matrix gate →
-  Receipt 2 shows the measurement before any helper commit.
+- Re-investigate the §10 root causes instead of implementing → hours lost re-deriving known
+  facts → §10 is authoritative ("do not re-test") → Receipt 2 starts with RED tests, not probes.
+- Warm helper "works" in tests with the fake but the real one re-imports per request → no speed
+  gain → delivery proof requires a single helper pid across 3 live resolves.
 - E2E passes in WebKit because the mock never actually loads the fixture → green-but-inert →
   assert `videoWidth > 0` and `currentTime > 0` after playing, not just a resolved promise.
 - Fixture leaks into the production bundle → bloat/confusion → `npm run build` + grep `dist`.
@@ -320,6 +355,43 @@ Findings for this round (each must be resolved or explained with evidence):
   `pre-resolved`; `instances_ms` equals the whole resolve, not the instance step; a video-mode
   play was labelled `source=youtube-audio`. Fix the labels (tests pin each).
 - Podcast first frame 5.2 s: check whether the played URL was tracker-stripped (log it).
+
+## 10. Root causes — proven by the planning session (2026-11-16 11:40–12:55 UTC)
+Debug build with a per-poll gate trace (`~/.wt/ep-debug`, throwaway, never merged), owner
+replayed the same plays. *All confirmed live unless marked.*
+
+**A. Audio ~113 s = fragmented-MP4 walk, not resolution.** Trace: prefetch resolved before the
+click (gate 2.63 s: 8×403 then 206), `click_to_url_ms=3` (cache hit), `url_to_first_frame_ms=
+112999`. Proxy log: WebKit opens an open-ended Range at successive offsets ~130–200 KB apart
+every 0.5–2 s. Box dump of format 140 (`g5gptFkgBlI`, 25,469,150 B): `ftyp 24, moov 699,
+sidx 1928`, then `moof`+`mdat` every ~161,618 B ⇒ ~158 fragments. **A/B in Playwright WebKit,
+same video:** audio-only HLS `233` → `playing` after **1.13 s**; progressive `140` through a
+header-adding proxy → **105.01 s, 101 proxy requests**. Script: `/tmp/ep-live.L7Oo/ab.cjs`.
+
+**B. Video 15–27 s = per-click yt-dlp process start-up.** Rust-spawned `yt-dlp -v` timeline:
+first stderr line at **15.91 s**, JS runtimes at 18.59 s, network work 19.88→22.30 s (~2.4 s).
+Shell runs vary 2.3–12.2 s wall vs ~1.0 s user CPU. Concurrency REJECTED (4 parallel runs 2.3–
+2.6 s each). Warm in-process extraction (one Python, `import yt_dlp` 0.50 s): **1.47–2.38 s**
+per video. *Likely, not proven:* endpoint security (Microsoft Defender ESF at 85 % CPU) scanning
+the ~1,747 extractor module imports + deno spawn per process. HLS video itself reached first
+frame 1.6 s after its URL.
+
+**C. `player_client=mediaconnect` is dead config.** yt-dlp 2026.10.26 prints `WARNING:
+[youtube] Skipping unsupported client "mediaconnect"` and uses the defaults (tv, visionos);
+`--no-warnings` hid it. The v0.1.20 "fewer clients" measurement measured the defaults.
+
+**D. The "80 s gate" was a mis-split.** First live run reported `gate_ms 80553`; the traced
+rerun's gate was 2.63 s and the time sat after URL-ready. `instances_ms` equals the whole
+resolve (`extractor/mod.rs:172`), and a joined in-flight prefetch is labelled `pre-resolved`
+(`stream_cache.rs:164`). Treat timer splits as untrusted until 2c lands.
+
+**Rejected hypotheses (do not re-test):** candidates never unlocking (all opened in 0.8–8.3 s);
+reqwest IPv6 stall (Happy Eyeballs 300 ms is on by default in reqwest 0.12.28); concurrent
+yt-dlp slowdown.
+
+**In parallel (planning session):** a throwaway spike of embedding YouTube's own player (IFrame
+API) in the app's WebKit with Brave-level ad blocking, for VIDEO mode only. If it is adopted, a
+new task will be added to this plan on master; until then video stays on the warm extractor + HLS.
 
 ## 8. Progress log (one line per receipt: date · task · commit · result)
 - 2026-11-16 · plan written · planning session (Opus 5.5) · execution not started
