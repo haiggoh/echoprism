@@ -4,6 +4,10 @@
 > every task yourself, then one final whole-branch review). Entry point: `run-to-completion:autopilot`
 > with this file as the queue. Checkbox (`- [ ]`) steps.
 
+**Status:** in-progress
+> **Lasting Plans:** when every task below is done, set the Status line to
+> `completed` by running `lasting-plans complete "<this file>"` as the closing step.
+
 **Goal:** close the three open follow-ups from v0.1.20 and ship them as the next patch release.
 **Spec / background:** `docs/plans/2026-11-15-streaming-startup-design.md` (design),
 `docs/plans/2026-11-15-streaming-startup-plan.md` (previous plan — its standing rules, Phase 0
@@ -38,7 +42,9 @@ style, receipts and adversarial review all still apply), `docs/plans/2026-11-15-
 | Force-push, move/delete a published tag, rewrite master | **prohibited** | fix forward |
 | Edit/reset/switch the canonical checkout `~/ClaudeWorkspace/echoprism` | **prohibited** | except the final `pull --ff-only` when clean on master |
 | Write `~/Library/Application Support/app.echoprism/*` | **prohibited** | `sqlite3 -readonly` only |
-| Kill pid 59875, anything on ports 4141–4151, `remote-session.sh --stop` | **prohibited** | — |
+| Kill pid 59875 (if it revives), pid 29663 / session `ac3848bc`, anything on ports 4141–4151, `remote-session.sh --stop` | **prohibited** | — |
+| Launch another free session / handover from the executor | **prohibited** — owner only (handoff 2026-11-16) | you ARE the successor |
+| Edit THIS plan file (`docs/plans/*`) | **prohibited for the executor** — pin the commit you read (`git rev-parse HEAD`) and work from that; docs-only plan commits on canonical master, staged by path, are for owner/planning sessions only (history: `05f5cd94`…`d1b82056`) | versioned plan |
 | Anything not listed | needs owner | add a waypoint, continue with the rest |
 
 ## ⚠️ Side-effect classification
@@ -67,14 +73,19 @@ gets no part of this work); **ship through RELEASE**; the
 **persistent extractor process MAY be built** if audio-only HLS alone does not get cold audio
 ≤ 5 s.
 
-## 3. State (verified by the planning session, 2026-11-16 ~10:40 UTC)
-- `origin/master` = `4128c27b` (= tag `v0.1.20`). Local canonical `master` is **1 ahead**:
-  `2f931976 docs(plans): handoff receipt — v0.1.20 shipped` (unpushed docs). This plan's commit
-  adds one more. The ship pushes them; do not drop them.
-- **Another live session works in the canonical checkout** (the owner talks to the v0.1.20
-  executor, pid 59875). It may commit to canonical `master` at any time. NEVER edit, reset or
-  switch that checkout; fetch + rebase your branch on the latest local AND remote master right
-  before shipping.
+## 3. State (re-verified live 2026-11-16 ~18:05 UTC by the plan-airtight pass; earlier readings dated)
+- *confirmed live ~18:05 UTC:* `origin/master` = `4128c27b` (= tag `v0.1.20`, highest tag).
+  Local canonical `master` = `d1b82056`, **8 docs commits ahead** and unpushed:
+  `2f931976`, `a7bcdef3`, `05f5cd94`, `32167417`, `e4799ea8`, `bc100a2a`, `5258c37d`, `d1b82056`
+  (all `docs(plans)`, this plan's own history). The ship pushes them; do not drop them.
+  Expected next version: `0.1.21` (fresh `fetch --tags` + `ls-remote` before bumping — Task 4).
+- *dated ~10:40 UTC, no longer live:* pid 59875 (v0.1.20 executor) was in the session registry
+  then; *confirmed live ~18:05 UTC:* it is NOT in `~/.claude/sessions/*.json` anymore. The
+  **active successor is `ac3848bc` (pid 29663, cwd `~/ClaudeWorkspace/echoprism`, started
+  12:03 UTC)**, launched with the instruction to follow this plan and work only in
+  `~/.wt/ep-startup-fixes`. Treat that session as live: it may commit/push at any time. NEVER
+  edit, reset or switch the canonical checkout's code, and never kill or message it; fetch +
+  rebase your branch on the latest local AND remote master right before shipping.
 - *confirmed live 2026-11-16:* Playwright 1.64.1 with `webkit-2370` installed; WebKit plays
   native HLS — `canPlayType('application/vnd.apple.mpegurl') === "maybe"`, an ffmpeg HLS VOD
   (320×180, 2 s segments, `application/vnd.apple.mpegurl` + `video/mp2t`) reached `playing`,
@@ -86,6 +97,10 @@ gets no part of this work); **ship through RELEASE**; the
 - **Superseded executor, do not touch:** an earlier successor (pid 40055) went idle at 11:46 UTC
   with NO work done; it left worktree `~/.wt/ep-followups` (branch `feat/v0120-followups`, no
   commits). Never use, edit, remove or kill either; you use `~/.wt/ep-startup-fixes`.
+- *confirmed live ~18:05 UTC:* `~/.wt/ep-startup-fixes` EXISTS, branch `feat/startup-fixes` at
+  `5258c37d` (2 docs commits behind local master `d1b82056`, no feature commits yet). Phase 0
+  must rebase it onto the latest master before any edit; Task 4 re-checks right before ship.
+  `~/.wt/ep-debug` (detached `e4799ea8`) and `~/.wt/ep-round13` also exist — not yours, ignore.
 - The canonical checkout may show uncommitted edits that are NOT yours (seen: 
   `docs/plans/2026-11-15-cold-path-findings.md`, from the owner's live session). Never stage,
   revert or overwrite them.
@@ -118,8 +133,13 @@ gets no part of this work); **ship through RELEASE**; the
 
 ## 5. Phase 0 — preflight (read-only first)
 - [ ] Three strategy sentences. Then: `git -C ~/ClaudeWorkspace/echoprism log --oneline -3`,
-      `git fetch --tags origin`, latest tag, `git worktree add -b feat/startup-fixes
-      ~/.wt/ep-startup-fixes master`, `npm ci` in the worktree.
+      `git fetch --tags origin`, latest tag, `git rev-parse master` (record it — the plan commit
+      you read is the target, not a moving guess), `git worktree add -b feat/startup-fixes
+      ~/.wt/ep-startup-fixes master` **or**, if the worktree already exists (confirmed live
+      2026-11-16: `~/.wt/ep-startup-fixes` @ `5258c37d`), `git -C ~/.wt/ep-startup-fixes
+      fetch origin && git -C ~/.wt/ep-startup-fixes rebase master` and record the new base;
+      `git -C ~/.wt/ep-startup-fixes status --porcelain` must be empty before the first edit;
+      `npm ci` in the worktree.
 - [ ] Baselines (redirect to files, echo `EXIT:$?`): `cargo test --workspace --manifest-path
       src-tauri/Cargo.toml`, `npm run test:run`, `npm run test:e2e`, and `cargo build
       --manifest-path src-tauri/Cargo.toml 2>&1 | grep -c warning` (record the warning count —
@@ -358,14 +378,36 @@ Format: tempting shortcut → plausible false success → harm → rule → dete
 - Shipping while the owner's live session committed to canonical master → lost commit or a
   rejected push → fetch + rebase immediately before `rtc-ship.sh`; never force.
 - Waypoint closed on an estimate → false done → close only with a measured number in `--evidence`.
+- Two live sessions on one repo (owner's + successor `ac3848bc`) → both commit to master/worktree →
+  lost update or a rejected push → docs-only commits by path; executor never touches canonical;
+  fetch + rebase immediately before `rtc-ship.sh` → Receipt 4 rebase base SHA.
+- Executor edits or re-reads a MOVING plan file mid-run → requirements drift under it → executor
+  pins `git rev-parse HEAD` at Phase 0 and works from that commit; plan updates come only from
+  owner/planning sessions (matrix row above) → Receipt 0 records the pinned SHA.
+- `rtc-ship.sh` run from the canonical checkout → git steps fail but exit 0 (silent no-ship) →
+  run it against the WORKTREE and prove visibility with `git ls-remote --tags origin` /
+  `gh release view` → Receipt 4.
+- e2e "green" but run without `--project=webkit` → WebKit HLS never exercised → receipt shows
+  per-project pass counts, chromium ≥ Receipt 0 AND webkit project present → Receipt 1.
+- Resuming from a stale transcript instead of this file → re-investigating proven §10 root causes
+  or using dead pids → §10 is authoritative; §3 labels every fact live/dated; Phase 0 re-verifies.
 
 ## 🏁 Final delivery (answer each in the last report)
 Implemented vs only planned (e.g. helper not needed / not built)? Which receipts ran, which
 tests did not (GUI first-frame)? Cold audio + cold video measured vs 5 s — met / not met? Is the
-owner's work preserved (canonical checkout untouched except ff-pull; pid 59875 untouched; live
-app data untouched)? Any secrets in receipts? Released version, tag and URL as verified by
-`ls-remote` / `gh`? Waypoints closed (with evidence) or updated? Did the run stop at release +
-refresh + dogfood and nothing beyond? Was this file reread before reporting?
+owner's work preserved (canonical checkout untouched except ff-pull and docs-only plan commits;
+no live session killed; live app data untouched)? Any secrets in receipts? Released version,
+tag and URL as verified by `ls-remote` / `gh`? Waypoints closed (with evidence) or updated? Did
+the run stop at release + refresh + dogfood and nothing beyond? Was this file reread before
+reporting?
+
+### End-of-life (lasting-plans 2.0.0, repo-resident plan)
+This plan lives in a repo (`docs/plans/`), so the closing step is: run
+`lasting-plans complete "docs/plans/2026-11-16-followups-plan.md"` — it flips `**Status:**` to
+`completed` on a short-lived `docs/plan-followups-complete` branch and pushes that docs-only
+branch. The OWNER fast-forward merges it to master (executors must not merge); afterwards the
+worktree `~/.wt/ep-startup-fixes` is removed and the remote feature branch deleted. The Status
+line above plus this section are the completion signal — never a naming scheme.
 
 ## 9. Live test of the v0.1.20 release (planning session, 2026-11-16 10:55–11:00 UTC)
 *confirmed live* — released dmg crashed (dyld, exit 134); the run used a copy with the helper
@@ -434,3 +476,8 @@ new task will be added to this plan on master; until then video stays on the war
 
 ## 8. Progress log (one line per receipt: date · task · commit · result)
 - 2026-11-16 · plan written · planning session (Opus 5.5) · execution not started
+- 2026-11-16 · plan-airtight pass (max effort, free-lane resume session) · this commit · Status
+  line + Lasting-Plans completion signal added; §3 state re-verified live ~18:05 UTC (master
+  `d1b82056`, origin `4128c27b`/v0.1.20, successor `ac3848bc`/pid 29663 live, worktree
+  `ep-startup-fixes` @ `5258c37d`); authority matrix + Phase 0 + adversarial review + end-of-life
+  extended for the two-session reality
