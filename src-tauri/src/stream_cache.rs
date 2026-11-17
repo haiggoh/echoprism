@@ -156,12 +156,20 @@ impl StreamCache {
             }
         };
         // Phase 2 (async): one shared future per key.
+        let t_join = std::time::Instant::now();
         let result = cell.get_or_init(|| resolve()).await;
+        let joined_wait = t_join.elapsed();
         match result {
             Ok(c) => {
                 let mut out = c.clone();
                 if let Some(t) = out.primary.timings.as_mut() {
                     t.cache_hit = !created; // joined a shared resolve → pre-resolved path
+                    // Task 2c (§10 D): a click that JOINED the in-flight resolve
+                    // reports path="joined" with the wait, distinct from a
+                    // completed cache hit ("pre-resolved", no wait).
+                    if !created {
+                        t.joined_ms = Some(joined_wait.as_millis() as u64);
+                    }
                 }
                 Ok(out)
             }
@@ -229,7 +237,9 @@ mod tests {
             url: url.to_string(),
             headers: None,
             format: "mp4".to_string(),
-            timings: None,
+            // Some(default) so tests can observe the cache's stamp mutations
+            // (cache_hit / joined_ms) on the returned entry.
+            timings: Some(Default::default()),
             fallback_url: None,
         }
     }
@@ -285,12 +295,27 @@ mod tests {
             "the click joined the in-flight prefetch — no second resolve"
         );
         gate.notify_one();
-        let cached = click.await.unwrap().expect("resolve succeeds");
-        assert_eq!(cached.primary.url, "http://x/v.mp4");
+        let joined = click.await.unwrap().expect("resolve succeeds");
+        assert_eq!(joined.primary.url, "http://x/v.mp4");
         assert!(
-            cached.primary.timings.is_none() || cached.primary.timings.as_ref().unwrap().cache_hit,
+            joined.primary.timings.is_none() || joined.primary.timings.as_ref().unwrap().cache_hit,
             "a play served from the shared in-flight resolve is marked pre-resolved"
         );
+        // Task 2c (§10 D): the JOINED play carries the wait as joined_ms.
+        let t = joined.primary.timings.as_ref().expect("timings present");
+        assert!(t.cache_hit, "joined → cache_hit");
+        assert!(t.joined_ms.is_some(), "joined in-flight → joined_ms set: {t:?}");
+        // a later cache HIT has no join wait (resolver never runs on a hit):
+        let again = cache
+            .get_or_resolve(key("ep"), || {
+                Box::pin(async {
+                    Ok(cached("http://x/never-called", Instant::now() + Duration::from_secs(600)))
+                }) as BoxFut
+            })
+            .await
+            .expect("cached");
+        let t2 = again.primary.timings.as_ref().unwrap();
+        assert!(t2.cache_hit && t2.joined_ms.is_none(), "completed cache hit → no joined_ms: {t2:?}");
     }
 
     #[tokio::test]

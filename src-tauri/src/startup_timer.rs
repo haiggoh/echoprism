@@ -20,6 +20,11 @@ pub struct ResolveTimings {
     pub gate_ms: u64,
     pub probe_ms: u64,
     pub cache_hit: bool,
+    /// Task 2c (§10 D): set when this play JOINED an in-flight pre-resolve —
+    /// the wait in ms. The frontend derives path="joined" from it (distinct
+    /// from a completed cache hit = "pre-resolved").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joined_ms: Option<u64>,
 }
 
 /// One measured play, reported by the frontend when the media element first

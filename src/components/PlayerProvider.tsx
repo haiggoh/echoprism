@@ -414,7 +414,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Only commit if this episode is still the one the engine is playing.
         if (currentEpisodeRef.current?.id === ep.id) {
           // Task 1: the URL is committed — stop the click→URL leg.
-          startupTimer.urlReady(ep.id, info.timings);
+          // Task 2c (§10 D): pass the mode the resolve ACTUALLY used so the
+          // record's source labels the played mode, not the click-time toggle.
+          startupTimer.urlReady(ep.id, info.timings, undefined, wantAudio ? 'audio' : 'video');
           lastStreamCacheHitRef.current = info.timings?.cache_hit ?? false;
           setStreamUrl(info.url);
           setFallbackUrl(info.fallback_url ?? null);

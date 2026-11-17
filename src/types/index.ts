@@ -454,6 +454,9 @@ export interface ResolveTimings {
   gate_ms: number;
   probe_ms: number;
   cache_hit: boolean;
+  /** Task 2c (§10 D): set when this play JOINED an in-flight pre-resolve — the
+   * wait in ms. Drives path="joined" (distinct from a cache hit). */
+  joined_ms?: number | null;
 }
 
 /** What a measured play resolved through. */
@@ -463,7 +466,7 @@ export type StartupSource = 'youtube-video' | 'youtube-audio' | 'podcast';
 export interface StartupRecord {
   episode_id: string;
   source: StartupSource;
-  path: 'pre-resolved' | 'cold';
+  path: 'pre-resolved' | 'cold' | 'joined';
   click_to_url_ms: number;
   url_to_first_frame_ms: number;
   total_ms: number;

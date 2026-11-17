@@ -297,7 +297,10 @@ for line in sys.stdin:
     async fn helper_timeout_returns_err_and_respawns() {
         let dir = tempfile::tempdir().unwrap();
         let script = fake_helper(dir.path(), "hang");
-        let h = YtdlpHelper::with_parts(script, python3(), std::time::Duration::from_millis(300));
+        let h = YtdlpHelper::with_parts(script, python3(), std::time::Duration::from_secs(2));
+        // Pre-spawn explicitly so the pid file is written before any timeout
+        // race with interpreter startup.
+        h.ensure_running().await.expect("pre-spawn");
         let r = h.request("vid", false).await;
         assert!(r.is_err(), "hung helper must time out, got {r:?}");
         assert!(r.unwrap_err().contains("timed out"));

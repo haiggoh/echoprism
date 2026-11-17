@@ -62,4 +62,43 @@ describe('startupTimer', () => {
     expect(rec?.click_to_url_ms).toBe(500);
     expect(rec?.timings?.ytdlp_ms).toBe(300);
   });
+
+  it('Task 2c: a play that joined an in-flight resolve reports path=joined with the wait', () => {
+    startupTimer.click('ep-1', 'youtube-video');
+    vi.setSystemTime(500);
+    startupTimer.urlReady('ep-1', {
+      instances_ms: 0,
+      ytdlp_ms: 300,
+      gate_ms: 0,
+      probe_ms: 5,
+      cache_hit: true,
+      joined_ms: 480,
+    });
+    vi.setSystemTime(700);
+    const rec = startupTimer.firstFrame('ep-1');
+    expect(rec?.path).toBe('joined');
+    expect(rec?.timings?.joined_ms).toBe(480);
+    // a plain cache hit (no joined_ms) stays pre-resolved:
+    startupTimer.click('ep-2', 'youtube-video');
+    vi.setSystemTime(900);
+    startupTimer.urlReady('ep-2', { instances_ms: 0, ytdlp_ms: 1, gate_ms: 0, probe_ms: 0, cache_hit: true, joined_ms: null });
+    vi.setSystemTime(1000);
+    expect(startupTimer.firstFrame('ep-2')?.path).toBe('pre-resolved');
+  });
+
+  it('Task 2c: source labels the mode actually played, not the click-time toggle', () => {
+    // Clicked while the toggle said audio, but the resolve ran video:
+    startupTimer.click('ep-1', 'youtube-audio');
+    vi.setSystemTime(300);
+    startupTimer.urlReady('ep-1', undefined, false, 'video');
+    vi.setSystemTime(400);
+    const rec = startupTimer.firstFrame('ep-1');
+    expect(rec?.source).toBe('youtube-video');
+    // podcast source is never overridden by a format:
+    startupTimer.click('ep-2', 'podcast');
+    vi.setSystemTime(500);
+    startupTimer.urlReady('ep-2', undefined, false, 'audio');
+    vi.setSystemTime(600);
+    expect(startupTimer.firstFrame('ep-2')?.source).toBe('podcast');
+  });
 });

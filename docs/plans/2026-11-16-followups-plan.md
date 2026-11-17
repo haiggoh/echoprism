@@ -602,3 +602,13 @@ new task will be added to this plan on master; until then video stays on the war
   → restored EXIT:0 · gates: cargo build EXIT:0 · cargo 246/246 solo EXIT:0 (sweep flake = waypoint)
   · e2e EXIT:0 (axe goto-timeout flake rerun 30/30) · vitest/tsc/lint/build EXIT:0 ·
   tauri.conf.json bundles resources/ytdlp_helper.py
+- 2026-11-17 · Task 2c (executor ac3848bc) · this commit · ONE -J dump serves both modes (per-video
+  dump cache, 10 min TTL — one_dump_populates_both_modes: audio+video resolves → 1 yt-dlp invocation) ·
+  dead config removed (§10 C): no player_client=mediaconnect / --extractor-args on any -J run, no
+  --no-warnings on -J runs, yt-dlp stderr → app log at WARN (no_dead_client_or_no_warnings_on_j_invocations
+  pins the argv; helper stderr forwarded at WARN) · timer truth (§10 D): instances_ms = instance
+  attempts only (instances_ms_excludes_ytdlp_time, discriminant RED on the old mis-split), joined
+  in-flight → path="joined" + joined_ms wait (stream_cache + startupTimer tests), source labels the
+  mode actually played (urlReady actualFormat; startup-timer test) · gates: cargo build EXIT:0 ·
+  cargo 248/248 solo EXIT:0 (sweep flake = waypoint) · vitest 405/405 · e2e 72 pass EXIT:0 ·
+  tsc/lint/build EXIT:0

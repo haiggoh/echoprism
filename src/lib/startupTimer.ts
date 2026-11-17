@@ -27,11 +27,21 @@ export const startupTimer = {
   },
 
   /** Call when the resolved URL is committed (setStreamUrl). */
-  urlReady(episodeId: string, timings?: ResolveTimings | null, cacheHit?: boolean): void {
+  urlReady(
+    episodeId: string,
+    timings?: ResolveTimings | null,
+    cacheHit?: boolean,
+    // Task 2c (§10 D): the mode the resolve ACTUALLY used — overrides the
+    // click-time guess so source labels the played mode, not the toggle.
+    actualFormat?: 'video' | 'audio',
+  ): void {
     if (!pending || pending.episodeId !== episodeId) return;
     pending.urlAt = Date.now();
     pending.timings = timings ?? undefined;
     pending.cacheHit = cacheHit ?? timings?.cache_hit ?? false;
+    if (actualFormat && pending.source.startsWith('youtube-')) {
+      pending.source = `youtube-${actualFormat}`;
+    }
   },
 
   /**
@@ -47,7 +57,14 @@ export const startupTimer = {
     const rec: StartupRecord = {
       episode_id: pending.episodeId,
       source: pending.source,
-      path: pending.cacheHit ? 'pre-resolved' : 'cold',
+      // Task 2c (§10 D): joined-in-flight is its own path, with the wait in
+      // timings.joined_ms — distinct from a completed cache hit.
+      path:
+        pending.timings?.joined_ms != null
+          ? 'joined'
+          : pending.cacheHit
+            ? 'pre-resolved'
+            : 'cold',
       click_to_url_ms: pending.urlAt - pending.clickAt,
       url_to_first_frame_ms: now - pending.urlAt,
       total_ms: now - pending.clickAt,
