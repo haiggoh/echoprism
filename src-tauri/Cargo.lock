@@ -1754,6 +1754,7 @@ dependencies = [
  "hyper-util",
  "ignore",
  "jsonwebtoken",
+ "libloading",
  "mime",
  "notify",
  "once_cell",

@@ -308,7 +308,6 @@ async fn resolve_episode_to_cached(
         let expires_at = expiry_from_url(&info.url, std::time::Instant::now());
         return Ok(CachedStream {
             primary: info,
-            fallback: None,
             expires_at,
         });
     }
@@ -317,7 +316,6 @@ async fn resolve_episode_to_cached(
     let expires_at = expiry_from_url(&info.url, std::time::Instant::now());
     Ok(CachedStream {
         primary: info,
-        fallback: None,
         expires_at,
     })
 }

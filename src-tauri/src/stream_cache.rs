@@ -41,9 +41,9 @@ impl StreamMode {
 #[derive(Clone)]
 pub struct CachedStream {
     pub primary: StreamInfo,
-    /// Task 7 fills the podcast original-URL fallback; Task 9 the
-    /// format-18 progressive fallback. None until then.
-    pub fallback: Option<StreamInfo>,
+    // Task 3: the separate `fallback` field is gone (never read) — the ONE
+    // fallback channel is StreamInfo.fallback_url, which PlayerProvider swaps
+    // to on media error.
     pub expires_at: Instant,
 }
 
@@ -247,7 +247,6 @@ mod tests {
     fn cached(url: &str, expires_at: Instant) -> CachedStream {
         CachedStream {
             primary: info(url),
-            fallback: None,
             expires_at,
         }
     }

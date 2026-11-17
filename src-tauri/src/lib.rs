@@ -178,11 +178,14 @@ pub fn run() {
 
             // Task 11 (macOS): network-cost monitor → `network-cost-changed`
             // events { expensive, constrained } for the metered audio-only rule.
-            #[cfg(target_os = "macos")]
+            // Task 3: the helper is dlopen'd at runtime; when it cannot be
+            // loaded the app still launches and the setting reports unavailable.
             {
                 use tauri::Emitter;
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(bool, bool)>();
-                network_cost::start_monitor(tx);
+                let resource_dir = app.path().resource_dir().ok();
+                let available = network_cost::start_monitor_with_paths(tx, &network_cost::helper_candidates(resource_dir));
+                app.manage(network_cost::Availability(available));
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     let mut last: Option<(bool, bool)> = None;
@@ -288,6 +291,7 @@ pub fn run() {
             // Settings commands
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::net_monitor_available,
 
             // History commands
             commands::history::list_history,

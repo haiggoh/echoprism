@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { invoke } from '../../tauri-bridge';
 import { channelCommands, crashCommands, instanceCommands, playModeRuleCommands, podcastCommands, retentionCommands, settingsCommands } from '../../hooks/useTauriCommands';
 import { crashIssueUrl } from '../../lib/crashIssue';
 import { Button } from '../ui/Button';
@@ -171,6 +172,14 @@ function InstanceSettingsTab() {
 function PreferencesTab() {
   const { data: preferences } = useQuery({ queryKey: ['preferences'], queryFn: settingsCommands.get });
   const queryClient = useQueryClient();
+  // Task 3: net-monitor helper availability (runtime dlopen) — disables the
+  // metered-audio toggle with a reason when the helper is missing.
+  const [netMonitorAvailable, setNetMonitorAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    invoke<boolean>('net_monitor_available')
+      .then(setNetMonitorAvailable)
+      .catch(() => setNetMonitorAvailable(false));
+  }, []);
   // The live theme mechanism (ThemeProvider + localStorage) — the control
   // below writes through this, not only the DB preference.
   const { theme: currentTheme, setTheme } = useTheme();
@@ -346,8 +355,15 @@ function PreferencesTab() {
               checked={preferences?.audio_only_on_metered ?? false}
               onChange={(e) => updateMutation.mutate({ audio_only_on_metered: e.target.checked })}
               className="w-4 h-4 accent-accent rounded border-border"
+              // Task 3: the net-monitor helper is dlopen'd at runtime; when it
+              // is missing the toggle is disabled with a reason.
+              disabled={netMonitorAvailable === false}
+              title={netMonitorAvailable === false ? 'Network monitor unavailable on this system' : undefined}
             />
             <span className="text-sm">Audio only on metered networks (expensive / Low Data Mode)</span>
+            {netMonitorAvailable === false && (
+              <span className="text-xs text-text-muted">network monitor unavailable</span>
+            )}
           </label>
           <label className="flex items-center justify-between gap-3">
             <span className="text-sm">Back on normal network</span>

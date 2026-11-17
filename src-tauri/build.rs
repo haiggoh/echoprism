@@ -26,13 +26,15 @@ fn main() {
         }
         let status = cmd.status().expect("swiftc must run to build the netmonitor helper");
         assert!(status.success(), "swiftc failed on swift/netmonitor.swift");
-        // stable path for the bundled app (tauri.conf.json resources) + rpath
+        // stable path for the bundled app (tauri.conf.json resources)
         let bundled = gen_dir.join("libepnetmonitor.dylib");
         std::fs::copy(&dylib, &bundled).expect("copy dylib to gen/");
-        println!("cargo:rustc-link-search=native={out_dir}");
-        println!("cargo:rustc-link-lib=dylib=epnetmonitor");
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{out_dir}");
-        println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Resources");
+        // Task 3 (2026-11-16-followups-plan): NO link-time dependency anymore —
+        // the released v0.1.20 .app linked the helper by an ABSOLUTE CI path
+        // (/Users/runner/...) and dyld aborted (exit 134) on every Mac. The
+        // binary now dlopens the dylib at RUNTIME from the bundle Resources
+        // (libloading, network_cost.rs), so `otool -L <binary>` must show 0
+        // netmon entries. The rpath/link lines are deliberately gone.
         println!("cargo:rerun-if-changed=swift/netmonitor.swift");
     }
 

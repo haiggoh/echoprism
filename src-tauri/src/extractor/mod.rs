@@ -438,7 +438,7 @@ impl Extractor {
             let format_id = format_id.clone();
             let prefer_hls = prefer_hls;
             Box::pin(async move {
-                let mut args = vec!["--no-playlist".to_string(),
+                let args = vec!["--no-playlist".to_string(),
                     "-J".to_string(),
                     format!("https://www.youtube.com/watch?v={vid}")];
                 let out = crate::netpath::run_with_netpath(
@@ -1273,11 +1273,11 @@ const MAX_AVAILABLE_AT_WAIT: std::time::Duration = std::time::Duration::from_sec
 /// Task 3: the gate poll interval — a 1-byte Range GET every 300 ms.
 pub(crate) const GATE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(300);
 
-/// What the gate saw when the lock opened.
+/// What the gate saw when the lock opened. (Task 3: the `status`/`waited`
+/// fields are gone — nothing read them; the gate wait is already accumulated
+/// into gate_ms by the caller. Only the content-type matters here.)
 pub struct PollOutcome {
-    pub status: u16,
     pub content_type: Option<String>,
-    pub waited: std::time::Duration,
 }
 
 /// Task 3: poll the candidate URL DIRECTLY — never through the stream proxy,
@@ -1309,9 +1309,7 @@ pub(crate) async fn poll_until_playable(
                         .and_then(|v| v.to_str().ok())
                         .map(|s| s.to_string());
                     return Ok(PollOutcome {
-                        status,
                         content_type,
-                        waited: start.elapsed(),
                     });
                 }
                 if status != 403 {
@@ -2883,16 +2881,12 @@ mod tests {
             .await
             .expect("gate must open at ~1 s");
         let waited = t0.elapsed();
-        assert_eq!(outcome.status, 206);
         assert!(
             waited >= std::time::Duration::from_secs_f64(1.0) && waited < std::time::Duration::from_secs_f64(1.5),
             "must return soon after the lock opens, waited {waited:?}"
         );
-        assert!(
-            (outcome.waited.as_secs_f64() - waited.as_secs_f64()).abs() < 0.05,
-            "PollOutcome.waited reports the gate wait: {:?} vs {waited:?}",
-            outcome.waited
-        );
+        // Task 3: PollOutcome no longer carries status/waited (unused) — the
+        // gate wait is accumulated into gate_ms by the caller instead.
     }
 
     #[tokio::test]
@@ -3008,7 +3002,6 @@ mod tests {
                             timings: s.timings,
                             fallback_url: s.fallback_url,
                         },
-                        fallback: None,
                         expires_at,
                     })
                 }) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<CachedStream, String>> + Send>>

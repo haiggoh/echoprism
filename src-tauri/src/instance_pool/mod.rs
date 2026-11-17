@@ -139,31 +139,6 @@ impl InstancePool {
         instances.get(id).cloned()
     }
 
-    /// Mark an instance Degraded after a failed resolve attempt (round 9
-    /// option 0). Degraded — not Failed — deliberately: order_for_search
-    /// still TRIES degraded instances (sorted last), so the next resolve can
-    /// prove the instance healthy again; Failed would exclude it outright.
-    pub async fn mark_degraded(&self, id: &str) {
-        let mut instances = self.instances.write().await;
-        if let Some(instance) = instances.get_mut(id) {
-            if instance.health == InstanceHealth::Healthy || instance.health == InstanceHealth::Unknown {
-                instance.health = InstanceHealth::Degraded;
-            }
-        }
-    }
-
-    /// Round 13 refinement: note a resolve-attempt outcome for one instance —
-    /// failures build a streak that flips the instance to Failed at
-    /// FAIL_STREAK_LIMIT (excluded from candidates); a success (or a passing
-    /// probe) resets it. Pure logic lives in apply_resolve_outcome (unit-tested).
-    pub async fn note_resolve_outcome(&self, id: &str, failed: bool) {
-        let mut streaks = self.resolve_fail_streaks.write().await;
-        let mut instances = self.instances.write().await;
-        if let Some(inst) = instances.get_mut(id) {
-            apply_resolve_outcome(&mut streaks, &mut inst.health, id, failed);
-        }
-    }
-
     /// Task 2: a STREAM resolve outcome feeds the stream-capability maps
     /// only — the instance's search health is untouched (a Piped instance
     /// can be search-healthy while bot-blocked for /streams).

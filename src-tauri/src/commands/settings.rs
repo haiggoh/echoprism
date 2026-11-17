@@ -4,6 +4,14 @@ use crate::db::Database;
 use crate::types::*;
 use tauri::{command, State};
 
+/// Task 3: is the net-monitor helper (runtime dlopen) available? The Settings
+/// screen disables the "audio only on metered networks" toggle with a reason
+/// when this is false — launch never blocks on the helper either way.
+#[command]
+pub fn net_monitor_available(state: State<'_, crate::network_cost::Availability>) -> bool {
+    state.0
+}
+
 #[command]
 pub async fn get_settings(db: State<'_,  Database>) -> std::result::Result<UserPreferences, String> {
     db.get_preferences().await

@@ -612,3 +612,15 @@ new task will be added to this plan on master; until then video stays on the war
   mode actually played (urlReady actualFormat; startup-timer test) · gates: cargo build EXIT:0 ·
   cargo 248/248 solo EXIT:0 (sweep flake = waypoint) · vitest 405/405 · e2e 72 pass EXIT:0 ·
   tsc/lint/build EXIT:0
+- 2026-11-17 · Task 3 (executor ac3848bc) · this commit · dead code removed with grep proof (0 non-test
+  call sites): InstancePool::mark_degraded + note_resolve_outcome, PollOutcome.status/waited,
+  CachedStream.fallback (ONE fallback channel kept: StreamInfo.fallback_url) · cargo build warnings
+  20→16 lines, echoprism lib 3→0 (remaining 15 = pre-existing manifest unused-deps) · net-monitor
+  helper now dlopen'd at RUNTIME via libloading =0.7.4 (pinned; already in Cargo.lock) from bundle
+  Resources then dev gen/ — build.rs link lines removed · tests: missing-helper Err-not-panic +
+  unavailable report, gen-dylib symbol load, monitor ABI; discriminant (unwrap in loader) RED
+  EXIT:101 → restored EXIT:0 · frontend: net_monitor_available command; Settings metered-audio
+  toggle disabled with reason when unavailable · LIVE GATE: tauri build → .app built (dmg step fails
+  locally — environmental, CI produces it) · otool -L binary: netmon 0, /Users/runner 0 · .app copied
+  to mktemp launched ALIVE 12 s, clean quit · gates: e2e 72/0 · vitest 405/405 · cargo 250/250 ·
+  tsc/lint/build/cargo-build EXIT:0
