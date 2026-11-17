@@ -7,6 +7,14 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.22] - 2026-11-17
+
+### Fixed — playhead jumped on video<->audio-only switches (owner report 2026-11-17)
+
+- **Root cause:** a cache-hit re-resolve returns the SAME stream url, and the always-mounted `<audio>` element still carries it as `src` on the second video→audio leg, so the format-switch position restore (which only ran on a src *change*) was skipped and playback resumed at the element's own stale position.
+- **Fix:** the player's element-sync effect now restores the stored position whenever the active media element *identity* changes, not only when the src string changes (`PlayerProvider.tsx`).
+- **Evidence:** unit discriminant RED→GREEN; WebKit e2e `e2e/position-switch.spec.ts` with a 3-leg cache-hit test that pins the same-url shape (audio `src` unchanged across the re-resolve) — deleting the fix turns leg 3 RED in the real engine, restoring it GREEN. Cross-family validator (Nemotron 3 Ultra) finding addressed. Gates: tsc/eslint EXIT:0, vitest 407/407, e2e 74/74 both projects.
+
 ## [0.1.21] - 2026-11-17
 
 ### Fixed — v0.1.20 release crash (dyld exit 134) on every Mac
