@@ -52,13 +52,23 @@ describe('e2e HLS fixtures (e2e/fixtures/hls)', () => {
     }
   });
 
-  it('audio/media.m3u8 exists with existing aac segments (Task 2a audio-only rendition)', () => {
+  it('master rungs carry their CODECS strings (M2/M3 offload: pin them)', () => {
+    const master = fs.readFileSync(path.join(root, 'master.m3u8'), 'utf8') as string;
+    // 180p Constrained Baseline 3.0 + AAC-LC; 360p Main 3.1 + AAC-LC
+    expect(master).toContain('CODECS="avc1.42C01E,mp4a.40.2"');
+    expect(master).toContain('CODECS="avc1.4D401F,mp4a.40.2"');
+  });
+
+  it('audio/media.m3u8 is an audio-only media playlist with sized segments (Task 2a)', () => {
     const pl = fs.readFileSync(path.join(root, 'audio/media.m3u8'), 'utf8') as string;
     expect(pl).toContain('#EXT-X-ENDLIST');
+    expect(pl).not.toContain('#EXT-X-STREAM-INF'); // media playlist, never a master
     const segs = [...pl.matchAll(/^([^\n#][^\n]*\.ts)$/gm)].map((m) => m[1]);
     expect(segs.length).toBeGreaterThanOrEqual(2);
     for (const seg of segs) {
-      expect(fs.existsSync(path.join(root, 'audio', seg)), `audio segment ${seg} must exist`).toBe(true);
+      const segPath = path.join(root, 'audio', seg);
+      expect(fs.existsSync(segPath), `audio segment ${seg} must exist`).toBe(true);
+      expect(fs.statSync(segPath).size).toBeGreaterThan(500); // not a stub
     }
     const fb = fs.readFileSync(path.join(root, 'audio-fallback.m4a')) as unknown as { length: number; subarray(s: number, e: number): { toString(enc: string): string } };
     expect(fb.length).toBeGreaterThan(1000);

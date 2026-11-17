@@ -69,13 +69,16 @@ test('audio_mode_plays_audio_only_hls_without_fragment_walk: the audio-only rend
   // Task 2a delivery proof (§10 A) in the shipped engine: audio-only HLS
   // reaches `playing` with a few media requests — NOT the ~158 fragment-hop
   // walk a fragmented progressive m4a forces (measured 105 s / 101 requests).
+  // Count ALL /test-media requests so a fallback swap or a video-rung fetch
+  // cannot hide (M2/M3 offload finding).
   const mediaReqs: string[] = [];
   page.on('request', (r) => {
-    if (r.url().includes('/test-media/hls/audio/')) mediaReqs.push(r.url());
+    if (r.url().includes('/test-media/')) mediaReqs.push(r.url());
   });
 
   await page.goto('/feed');
   await page.getByRole('checkbox', { name: 'Audio only mode' }).check();
+  const t0 = Date.now(); // click→playing is the plan's ≤ 3 s bar
   await page
     .locator('article', { hasText: 'HLS audio-only rendition' })
     .getByRole('button', { name: 'Play now' })
@@ -91,8 +94,21 @@ test('audio_mode_plays_audio_only_hls_without_fragment_walk: the audio-only rend
   await expect
     .poll(async () => audio.evaluate((el) => (el as HTMLAudioElement).currentTime), { timeout: 15_000 })
     .toBeGreaterThan(0);
-  console.log('AUDIO-HLS media requests:', mediaReqs.length, mediaReqs.join(' '));
-  expect(mediaReqs.length).toBeLessThanOrEqual(5);
+  const clickToPlayingMs = Date.now() - t0;
+
+  // FINAL src must STILL be the audio media playlist — if it had fallen back
+  // to audio-fallback.m4a, the polls above would pass but this goes RED
+  // (the same mutation class the M1 offload caught in the video spec).
+  await expect(audio).toHaveAttribute('src', /\/test-media\/hls\/audio\/media\.m3u8$/);
+
+  expect(clickToPlayingMs).toBeLessThanOrEqual(3000);
+  const audioReqs = mediaReqs.filter((u) => u.includes('/test-media/hls/audio/'));
+  expect(
+    mediaReqs.length,
+    `no fallback or video-rung fetches in audio mode: ${mediaReqs.join(' ')}`,
+  ).toBe(audioReqs.length);
+  console.log('AUDIO-HLS media requests:', audioReqs.length, 'click→playing ms:', clickToPlayingMs);
+  expect(audioReqs.length).toBeLessThanOrEqual(5);
 });
 
 test('broken_hls_falls_back_to_progressive: a 404 master lands on fallback_url', async ({ page }) => {

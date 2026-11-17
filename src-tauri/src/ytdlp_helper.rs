@@ -35,7 +35,17 @@ pub const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// Handles `#!/usr/bin/env python3` via PATH lookup. Err means "cannot be
 /// resolved" — the caller logs it loudly and falls back to one-shot yt-dlp.
 pub fn python_from_ytdlp_shebang(yt_dlp: &Path) -> Result<String, String> {
-    let first = std::fs::read_to_string(yt_dlp)
+    // A PATH-resolved bare name ("yt-dlp") can be read only relative to the
+    // CWD — resolve it to an absolute location first (a packaged app's CWD
+    // is not the shell's).
+    let yt_dlp = if yt_dlp.as_os_str().to_string_lossy().contains('/') || yt_dlp.exists() {
+        yt_dlp.to_path_buf()
+    } else {
+        which(yt_dlp.to_string_lossy().as_ref())
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("yt-dlp binary {yt_dlp:?} not found on PATH"))?
+    };
+    let first = std::fs::read_to_string(&yt_dlp)
         .ok()
         .and_then(|s| s.lines().next().map(|l| l.to_string()))
         .ok_or_else(|| format!("cannot read {yt_dlp:?}"))?;
@@ -82,6 +92,9 @@ pub struct YtdlpHelper {
     python: String,
     timeout: std::time::Duration,
     state: Arc<Mutex<Option<HelperProc>>>,
+    /// Request ids are matched against responses — safe only because the
+    /// mutex serializes, but a mismatched id is a protocol error, not a result.
+    next_id: std::sync::atomic::AtomicU64,
 }
 
 impl YtdlpHelper {
@@ -89,10 +102,24 @@ impl YtdlpHelper {
     /// repo in dev), interpreter from the yt-dlp shebang. Env overrides
     /// (EP_YTDLP_HELPER_SCRIPT / EP_YTDLP_PYTHON) exist for tests.
     pub fn new(resource_dir: Option<PathBuf>, yt_dlp: &Path) -> Result<Self, String> {
-        let script = std::env::var_os("EP_YTDLP_HELPER_SCRIPT")
-            .map(PathBuf::from)
-            .or_else(|| resource_dir.map(|d| d.join("ytdlp_helper.py")))
-            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ytdlp_helper.py"));
+        // Candidates in order: env override (tests), the bundle Resources dir
+        // — flat name (map-form bundle.resources) AND the structure-preserved
+        // subpath (Tauri v2 array-form preserves directories) — then the dev
+        // repo path. First existing candidate wins; if none exists the first
+        // is kept so spawn fails loudly and the caller falls back.
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(p) = std::env::var_os("EP_YTDLP_HELPER_SCRIPT") {
+            candidates.push(PathBuf::from(p));
+        } else if let Some(d) = resource_dir {
+            candidates.push(d.join("ytdlp_helper.py"));
+            candidates.push(d.join("resources/ytdlp_helper.py"));
+        }
+        candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ytdlp_helper.py"));
+        let script = candidates
+            .iter()
+            .find(|p| p.exists())
+            .cloned()
+            .unwrap_or_else(|| candidates[0].clone());
         let python = match std::env::var_os("EP_YTDLP_PYTHON") {
             Some(p) => p.to_string_lossy().into_owned(),
             None => python_from_ytdlp_shebang(yt_dlp)?,
@@ -102,6 +129,7 @@ impl YtdlpHelper {
             python,
             timeout: REQUEST_TIMEOUT,
             state: Arc::new(Mutex::new(None)),
+            next_id: std::sync::atomic::AtomicU64::new(1),
         })
     }
 
@@ -118,6 +146,7 @@ impl YtdlpHelper {
             python,
             timeout,
             state: Arc::new(Mutex::new(None)),
+            next_id: std::sync::atomic::AtomicU64::new(1),
         }
     }
 
@@ -142,7 +171,8 @@ impl YtdlpHelper {
             *guard = Some(spawn(&self.script, &self.python).await?);
         }
         let proc = guard.as_mut().expect("just ensured");
-        let req = serde_json::json!({"id": 1, "video_id": video_id, "force_ipv4": force_ipv4});
+        let req_id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let req = serde_json::json!({"id": req_id, "video_id": video_id, "force_ipv4": force_ipv4});
         let mut line = serde_json::to_string(&req).map_err(|e| e.to_string())?;
         line.push('\n');
         let attempt = async {
@@ -161,6 +191,13 @@ impl YtdlpHelper {
         };
         match outcome {
             Ok(l) => match serde_json::from_str::<serde_json::Value>(&l) {
+                Ok(v) if v.get("id").and_then(|i| i.as_u64()) != Some(req_id) => {
+                    // Protocol desync: kill + clear so the next request respawns.
+                    if let Some(mut p) = guard.take() {
+                        p.kill().await;
+                    }
+                    Err(format!("helper response id mismatch: sent {req_id}, got {:?}", v.get("id")))
+                }
                 Ok(v) if v.get("ok").and_then(|b| b.as_bool()) == Some(true) => {
                     Ok(v.get("info").cloned().unwrap_or(serde_json::Value::Null))
                 }
@@ -257,6 +294,14 @@ with open(sys.argv[1], "a") as f: f.write(str(os.getpid()) + "\n")
 for line in sys.stdin:
     time.sleep(3600)
 "#,
+            // answer with the WRONG id: a protocol desync must be an Err + respawn
+            "wrong_id" => r#"
+import json, os, sys
+with open(sys.argv[1], "a") as f: f.write(str(os.getpid()) + "\n")
+for line in sys.stdin:
+    req = json.loads(line)
+    print(json.dumps({"id": req["id"] + 1000, "ok": True, "info": {"id": req["video_id"]}}), flush=True)
+"#,
             _ => unreachable!(),
         };
         std::fs::write(&script, format!("import sys\nsys.argv.append({:?})\n{}", spawns.display(), body)).unwrap();
@@ -315,6 +360,21 @@ for line in sys.stdin:
         assert!(r2.is_err());
         let spawns = std::fs::read_to_string(dir.path().join("spawns")).unwrap();
         assert_eq!(spawns.lines().count(), 2, "each timed-out request spawned a fresh helper");
+    }
+
+    #[tokio::test]
+    async fn helper_response_id_mismatch_is_an_err_and_respawns() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = fake_helper(dir.path(), "wrong_id");
+        let h = YtdlpHelper::with_parts(script, python3(), std::time::Duration::from_secs(10));
+        let r = h.request("vid", false).await;
+        assert!(r.is_err(), "wrong response id must Err, got {r:?}");
+        assert!(r.unwrap_err().contains("id mismatch"));
+        // the desynced process was killed; the next request respawns
+        let r2 = h.request("vid", false).await;
+        assert!(r2.is_err());
+        let spawns = std::fs::read_to_string(dir.path().join("spawns")).unwrap();
+        assert_eq!(spawns.lines().count(), 2, "id-mismatch must respawn: {spawns}");
     }
 
     #[test]

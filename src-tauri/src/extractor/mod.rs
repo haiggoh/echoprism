@@ -80,31 +80,38 @@ impl Extractor {
         }
         #[cfg(not(test))]
         {
-            self.helper
-                .get_or_init(|| async {
-                    let Ok(yt_dlp) = self.find_yt_dlp().await else {
-                        tracing::warn!("yt-dlp binary not found — persistent helper disabled, one-shot only");
-                        return None;
-                    };
-                    match crate::ytdlp_helper::YtdlpHelper::new(self.resource_dir.clone(), std::path::Path::new(&yt_dlp)) {
-                        Ok(h) => match h.ensure_running().await {
-                            Ok(()) => {
-                                tracing::info!("ytdlp helper pre-warmed (one process, yt_dlp imported)");
-                                Some(std::sync::Arc::new(h))
-                            }
-                            Err(e) => {
-                                tracing::warn!("ytdlp helper failed to start ({e}) — one-shot fallback");
-                                None
-                            }
-                        },
+            if let Some(v) = self.helper.get() {
+                return v.clone();
+            }
+            let built = async {
+                let Ok(yt_dlp) = self.find_yt_dlp().await else {
+                    tracing::warn!("yt-dlp binary not found — persistent helper disabled, one-shot only");
+                    return None;
+                };
+                match crate::ytdlp_helper::YtdlpHelper::new(self.resource_dir.clone(), std::path::Path::new(&yt_dlp)) {
+                    Ok(h) => match h.ensure_running().await {
+                        Ok(()) => {
+                            tracing::info!("ytdlp helper pre-warmed (one process, yt_dlp imported)");
+                            Some(std::sync::Arc::new(h))
+                        }
                         Err(e) => {
-                            tracing::warn!("ytdlp helper interpreter unresolvable ({e}) — one-shot fallback");
+                            tracing::warn!("ytdlp helper failed to start ({e}) — one-shot fallback");
                             None
                         }
+                    },
+                    Err(e) => {
+                        tracing::warn!("ytdlp helper interpreter unresolvable ({e}) — one-shot fallback");
+                        None
                     }
-                })
-                .await
-                .clone()
+                }
+            }
+ .await;
+            // A failure is NOT cached: a transient launch-time failure must not
+            // disable the warm helper for the whole session — the next call retries.
+            if built.is_some() {
+                let _ = self.helper.set(built.clone());
+            }
+            built
         }
     }
 
@@ -139,10 +146,24 @@ impl Extractor {
             }
         }
         let stdout = self.yt_dlp_dump(video_id).await?;
-        self.dump_cache
-            .lock()
-            .unwrap()
-            .insert(video_id.to_string(), (std::time::Instant::now(), stdout.clone()));
+        let mut map = self.dump_cache.lock().unwrap();
+        // Bound the cache: evict expired entries, then cap at 32 (evict oldest).
+        // A long session must not accumulate full -J dumps forever.
+        map.retain(|_, (at, _)| at.elapsed() < DUMP_CACHE_TTL);
+        const DUMP_CACHE_MAX: usize = 32;
+        while map.len() >= DUMP_CACHE_MAX {
+            let oldest = map
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(k, _)| k.clone());
+            match oldest {
+                Some(k) => {
+                    map.remove(&k);
+                }
+                None => break,
+            }
+        }
+        map.insert(video_id.to_string(), (std::time::Instant::now(), stdout.clone()));
         Ok(stdout)
     }
 

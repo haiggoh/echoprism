@@ -52,12 +52,16 @@ mod imp {
     }
 
     /// Candidate locations for the helper dylib, in order: the bundle's
-    /// Resources dir (packaged app), then the dev `gen/` dir (build.rs copies
-    /// it there; tauri.conf.json bundles `gen/libepnetmonitor.dylib`).
+    /// Resources dir (packaged app) — both the flat name (map-form
+    /// bundle.resources in tauri.conf.json) and the structure-preserved
+    /// subpath (array-form), because Tauri v2 preserves directory structure
+    /// for array-form entries — then the dev `gen/` dir (build.rs copies it
+    /// there).
     pub fn helper_candidates(resource_dir: Option<PathBuf>) -> Vec<PathBuf> {
         let mut v = Vec::new();
         if let Some(d) = resource_dir {
             v.push(d.join("libepnetmonitor.dylib"));
+            v.push(d.join("gen/libepnetmonitor.dylib"));
         }
         v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("gen/libepnetmonitor.dylib"));
         v
@@ -142,31 +146,31 @@ mod imp {
             assert!(!start_monitor_with_paths(tx, &missing), "start must report false when the helper is missing");
         }
 
-        /// The dev gen/ dylib (built by build.rs) loads and exposes both
-        /// symbols — this is what makes the packaged-app path work.
+        /// The dev gen/ dylib (built by build.rs on every macOS build) loads
+        /// and exposes both symbols — this is what makes the packaged-app path
+        /// work. Hard assert: a silent skip here is green-but-inert (M2/M3
+        /// offload finding).
         #[test]
         fn gen_dylib_loads_and_exposes_symbols() {
             let paths = helper_candidates(None);
             let gen = paths.last().unwrap();
-            if !gen.exists() {
-                eprintln!("gen dylib not built in this environment — skipping");
-                return;
-            }
+            assert!(gen.exists(), "build.rs must have produced {}", gen.display());
             let lib = load_helper(&paths).expect("gen dylib must dlopen");
             assert!(unsafe { lib.get::<StartFn>(b"ep_netmonitor_start\0") }.is_ok());
             assert!(unsafe { lib.get::<StopFn>(b"ep_netmonitor_stop\0") }.is_ok());
         }
 
         /// The ABI proof: the monitor's handler must fire with the CURRENT
-        /// path within a few seconds on a networked machine. Skipped (not
-        /// failed) when the helper dylib is absent in this environment.
+        /// path within a few seconds on a networked machine. Hard assert on
+        /// start (the dylib is always built on macOS) so a missing helper can
+        /// never pass green here.
         #[tokio::test]
         async fn monitor_handler_fires_with_current_path() {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(bool, bool)>();
-            if !start_monitor_with_paths(tx, &helper_candidates(None)) {
-                eprintln!("net-monitor helper unavailable here — skipping the ABI proof");
-                return;
-            }
+            assert!(
+                start_monitor_with_paths(tx, &helper_candidates(None)),
+                "net-monitor helper must load and start on macOS"
+            );
             let got = tokio::time::timeout(std::time::Duration::from_secs(8), rx.recv())
                 .await
                 .expect("NWPathMonitor handler must fire within 8 s")

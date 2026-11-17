@@ -31,10 +31,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "gen/libepnetmonitor.dylib",
-      "resources/ytdlp_helper.py"
-    ],
+    "resources": {
+      "gen/libepnetmonitor.dylib": "libepnetmonitor.dylib",
+      "resources/ytdlp_helper.py": "ytdlp_helper.py"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",
