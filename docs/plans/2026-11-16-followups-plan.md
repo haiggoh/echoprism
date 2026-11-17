@@ -587,3 +587,18 @@ new task will be added to this plan on master; until then video stays on the war
   fragmented m4a · gates: e2e EXIT:0 72 pass/20 skip · vitest 403/403 · cargo 238/238 solo (sweep
   flake = waypoint pre-existing-flaky-rust-tests) · tsc/lint/build EXIT:0 · dist .m3u8 count 0 ·
   fixtures 240K
+- 2026-11-17 · Task 2b (executor ac3848bc) · 1a3e9e0f · persistent pre-warmed extractor helper
+  (REQUIRED, §10 B): resources/ytdlp_helper.py (--help verified under system python3 AND the
+  yt-dlp shebang python; line-JSON protocol; yt_dlp imported once at start = the pre-warm;
+  socket_timeout 15; source_address 0.0.0.0 when force_ipv4; warnings→stderr→app log) +
+  src/ytdlp_helper.rs (interpreter from the yt-dlp shebang, fail-loud + one-shot fallback;
+  spawned at app launch via prewarm_helper in lib.rs; kill_on_drop; restart on crash; 30 s
+  per-request timeout; serialized via one mutex — single-process by design, warm extraction
+  1.5–2.4 s) · wired into yt_dlp_dump for the stream + storyboard -J calls; ANY helper failure →
+  one-shot yt-dlp -J · tests: helper_reused_across_requests (1 pid / 3 reqs),
+  helper_crash_restarts_then_serves (new pid), helper_timeout_returns_err_and_respawns,
+  missing-script/shebang Err tests, extractor fallback tests helper_timeout_falls_back_to_oneshot +
+  helper_unresolvable_python_falls_back_to_oneshot · discriminant spawn-per-request RED (3 pids)
+  → restored EXIT:0 · gates: cargo build EXIT:0 · cargo 246/246 solo EXIT:0 (sweep flake = waypoint)
+  · e2e EXIT:0 (axe goto-timeout flake rerun 30/30) · vitest/tsc/lint/build EXIT:0 ·
+  tauri.conf.json bundles resources/ytdlp_helper.py

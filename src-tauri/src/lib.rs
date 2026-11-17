@@ -11,6 +11,7 @@ mod logging;
 mod db;
 mod instance_pool;
 mod extractor;
+mod ytdlp_helper;
 mod netpath;
 mod startup_timer;
 mod stream_cache;
@@ -123,7 +124,13 @@ pub fn run() {
                     types::StartQualityPref::Cap => hls_master::StartQuality::Cap,
                 };
             }
-            app.manage(Arc::new(extractor));
+            let extractor = Arc::new(extractor);
+            app.manage(extractor.clone());
+            // Task 2b: pre-warm the persistent yt-dlp helper at app launch
+            // (spawning it runs the yt_dlp import inside the helper). Never
+            // blocks launch; a failure just means one-shot until next resolve.
+            let prewarm = extractor.clone();
+            tauri::async_runtime::spawn(async move { prewarm.prewarm_helper().await; });
 
             // Start-up timing (Task 1): the last 50 measured plays.
             app.manage(startup_timer::StartupLog::default());

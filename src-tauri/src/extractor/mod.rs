@@ -2,6 +2,7 @@
 
 use crate::types::*;
 use tauri::AppHandle;
+use tauri::Manager; // app_handle.path() for the bundle resource dir (Task 2b)
 use serde::{Deserialize, Serialize};
 
 pub struct Extractor {
@@ -16,6 +17,12 @@ pub struct Extractor {
     /// — data saver forces 480). Written by update_settings, read per resolve.
     pub hls_cap: std::sync::Arc<std::sync::RwLock<Option<u32>>>,
     pub hls_start: std::sync::Arc<std::sync::RwLock<crate::hls_master::StartQuality>>,
+    /// Task 2b: bundle resource dir (for ytdlp_helper.py) when running as a
+    /// packaged app; None in dev/tests → the repo's resources/ is used.
+    resource_dir: Option<std::path::PathBuf>,
+    /// Task 2b: the persistent pre-warmed helper, built lazily on first -J use
+    /// (needs find_yt_dlp, which is async). None = unresolvable → one-shot only.
+    helper: tokio::sync::OnceCell<Option<std::sync::Arc<crate::ytdlp_helper::YtdlpHelper>>>,
 }
 
 impl Extractor {
@@ -23,8 +30,11 @@ impl Extractor {
     /// call sites (search/stream commands pass ordered candidates), so the
     /// extractor no longer reads any managed state. Kept in the signature to
     /// avoid touching the managed-state construction order in lib.rs.
-    pub fn new(_app_handle: AppHandle, netpath: std::sync::Arc<crate::netpath::NetPath>) -> Self {
-        Self::from_parts(netpath)
+    pub fn new(app_handle: AppHandle, netpath: std::sync::Arc<crate::netpath::NetPath>) -> Self {
+        let resource_dir = app_handle.path().resource_dir().ok();
+        let mut ex = Self::from_parts(netpath);
+        ex.resource_dir = resource_dir;
+        ex
     }
 
     pub(crate) fn from_parts(netpath: std::sync::Arc<crate::netpath::NetPath>) -> Self {
@@ -38,7 +48,83 @@ impl Extractor {
                 .expect("Failed to create HTTP client"),
             yt_dlp_path: std::sync::OnceLock::new(),
             netpath,
+            resource_dir: None,
+            helper: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Task 2b: pre-warm the persistent helper at app launch (spawning it runs
+    /// the yt_dlp import inside the helper). Never blocks launch: any failure
+    /// just means one-shot yt-dlp until the next resolve.
+    pub async fn prewarm_helper(&self) {
+        let _ = self.helper().await;
+    }
+
+    /// The persistent helper, built once. None when the interpreter/script
+    /// cannot be resolved — the failure is logged loudly and every -J falls
+    /// back to the one-shot spawn.
+    async fn helper(&self) -> Option<std::sync::Arc<crate::ytdlp_helper::YtdlpHelper>> {
+        #[cfg(test)]
+        {
+            // Tests opt in explicitly via set_helper_for_test; an unset cell
+            // means "no helper" so stub-yt-dlp harnesses stay one-shot.
+            self.helper.get().cloned().flatten()
+        }
+        #[cfg(not(test))]
+        {
+            self.helper
+                .get_or_init(|| async {
+                    let Ok(yt_dlp) = self.find_yt_dlp().await else {
+                        tracing::warn!("yt-dlp binary not found — persistent helper disabled, one-shot only");
+                        return None;
+                    };
+                    match crate::ytdlp_helper::YtdlpHelper::new(self.resource_dir.clone(), std::path::Path::new(&yt_dlp)) {
+                        Ok(h) => match h.ensure_running().await {
+                            Ok(()) => {
+                                tracing::info!("ytdlp helper pre-warmed (one process, yt_dlp imported)");
+                                Some(std::sync::Arc::new(h))
+                            }
+                            Err(e) => {
+                                tracing::warn!("ytdlp helper failed to start ({e}) — one-shot fallback");
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!("ytdlp helper interpreter unresolvable ({e}) — one-shot fallback");
+                            None
+                        }
+                    }
+                })
+                .await
+                .clone()
+        }
+    }
+
+    /// Task 2b: one `-J` dump for a video — persistent helper first, one-shot
+    /// spawn on ANY helper failure. `force_ipv4` follows the current netpath
+    /// verdict (the helper gets it per request, since it is long-lived).
+    async fn yt_dlp_dump(&self, video_id: &str) -> Result<Vec<u8>, String> {
+        let v4 = crate::netpath::force_ipv4(self.netpath.current());
+        if let Some(h) = self.helper().await {
+            match h.request(video_id, v4).await {
+                Ok(info) => return serde_json::to_vec(&info).map_err(|e| e.to_string()),
+                Err(e) => {
+                    tracing::warn!("ytdlp helper request failed ({e}) — falling back to one-shot yt-dlp -J");
+                }
+            }
+        }
+        let args = vec![
+            "--no-playlist".into(),
+            "--no-warnings".into(),
+            "-J".into(),
+            format!("https://www.youtube.com/watch?v={}", video_id),
+        ];
+        Ok(self.yt_dlp_output(&args).await?.stdout)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_helper_for_test(&self, h: Option<crate::ytdlp_helper::YtdlpHelper>) {
+        let _ = self.helper.set(h.map(std::sync::Arc::new));
     }
 
     /// Run yt-dlp with `args` under the current IPv6 verdict: IPv4 at once
@@ -205,17 +291,14 @@ impl Extractor {
     /// formats. One invocation per call site miss (the caller's LRU bounds
     /// it to once per hovered id).
     async fn storyboard_with_yt_dlp(&self, video_id: &str) -> Option<StoryboardSpec> {
-        let watch_url = format!("https://www.youtube.com/watch?v={video_id}");
-        let args: Vec<String> = ["-J", "--skip-download", "--no-warnings", &watch_url]
-            .iter()
-            .map(|a| a.to_string())
-            .collect();
-        // A preview is decoration: keep its old 30 s bound on top of the policy.
-        let output = tokio::time::timeout(std::time::Duration::from_secs(30), self.yt_dlp_output(&args))
+        // Task 2b: share the warm helper — hover prefetch and stream resolve
+        // used to spawn TWO yt-dlp processes per id (§9 concurrency finding).
+        // A preview is decoration: keep its old 30 s bound on top.
+        let stdout = tokio::time::timeout(std::time::Duration::from_secs(30), self.yt_dlp_dump(video_id))
             .await
             .ok()?
             .ok()?;
-        parse_yt_dlp_storyboard(&String::from_utf8_lossy(&output.stdout))
+        parse_yt_dlp_storyboard(&String::from_utf8_lossy(&stdout))
     }
     
     /// Resolve a stream from one instance. The instance TYPE decides the
@@ -375,14 +458,10 @@ impl Extractor {
         // yt-dlp is the only source and its raw URL failed to load —
         // "Stream error"). Headered URLs go through the local stream proxy.
         let t_extract = std::time::Instant::now();
-        let args = vec![
-            "--no-playlist".into(),
-            "--no-warnings".into(),
-            "-J".into(),
-            format!("https://www.youtube.com/watch?v={}", video_id),
-        ];
-        let output = self.yt_dlp_output(&args).await?;
-        let dump: YtDlpDump = serde_json::from_slice(&output.stdout)
+        // Task 2b: one -J dump via the persistent warm helper when available,
+        // one-shot spawn on ANY helper failure (yt_dlp_dump owns the fallback).
+        let stdout = self.yt_dlp_dump(video_id).await?;
+        let dump: YtDlpDump = serde_json::from_slice(&stdout)
             .map_err(|e| format!("yt-dlp -J parse failed: {e}"))?;
         let ytdlp_ms = t_extract.elapsed().as_millis() as u64;
         let want_audio = format.is_some_and(|f| f.eq_ignore_ascii_case("audio"));
@@ -1711,7 +1790,50 @@ mod tests {
         np.set(crate::netpath::Ipv6Verdict::Works);
         let ex = Extractor::from_parts(np);
         ex.yt_dlp_path.set(bin.display().to_string()).unwrap();
+        ex.set_helper_for_test(None); // stub tests run one-shot unless they opt in
         (ex, dir)
+    }
+
+    #[tokio::test]
+    async fn helper_timeout_falls_back_to_oneshot() {
+        // Task 2b: a hung helper (short timeout here) must not hang the
+        // resolve — the extractor falls back to the one-shot yt-dlp, which the
+        // stub harness serves.
+        let dir = tempfile::tempdir().unwrap();
+        let hang = dir.path().join("hang.py");
+        std::fs::write(&hang, "import sys, time\nfor line in sys.stdin: time.sleep(3600)\n").unwrap();
+        let h = crate::ytdlp_helper::YtdlpHelper::with_parts(
+            hang,
+            "python3".to_string(),
+            std::time::Duration::from_millis(300),
+        );
+        let (port, _early) = spawn_gate_upstream(0.0).await;
+        let (ex, _d2) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"140\",\"url\":\"http://127.0.0.1:{port}/a140.m4a\",\"ext\":\"m4a\",\"vcodec\":\"none\",\"acodec\":\"mp4a.40.2\",\"abr\":130.0,\"protocol\":\"https\"}}]"
+        ));
+        ex.set_helper_for_test(Some(h));
+        let s = ex
+            .get_stream_with_yt_dlp("vid", Some("audio"), None)
+            .await
+            .expect("one-shot fallback must serve the stub dump");
+        assert!(s.url.contains("a140.m4a"), "one-shot fallback served the stub format: {}", s.url);
+    }
+
+    #[tokio::test]
+    async fn helper_unresolvable_python_falls_back_to_oneshot() {
+        // A yt-dlp whose shebang interpreter does not exist → the helper is
+        // never built (logged loudly) → every -J is the one-shot spawn.
+        let dir = tempfile::tempdir().unwrap();
+        let fake_ytdlp = dir.path().join("yt-dlp-bad");
+        std::fs::write(&fake_ytdlp, "#!/nonexistent/python\n").unwrap();
+        assert!(crate::ytdlp_helper::python_from_ytdlp_shebang(&fake_ytdlp).is_err());
+        let (port, _early) = spawn_gate_upstream(0.0).await;
+        let (ex, _d2) = extractor_with_stub_formats(&format!(
+            "[{{\"format_id\":\"140\",\"url\":\"http://127.0.0.1:{port}/a140.m4a\",\"ext\":\"m4a\",\"vcodec\":\"none\",\"acodec\":\"mp4a.40.2\",\"abr\":130.0,\"protocol\":\"https\"}}]"
+        ));
+        ex.set_helper_for_test(None); // what helper() concludes for the bogus shebang
+        let s = ex.get_stream_with_yt_dlp("vid", Some("audio"), None).await.unwrap();
+        assert!(s.url.contains("a140.m4a"), "{}", s.url);
     }
 
     /// Round 6 root cause (measured live 2026-11-05): yt-dlp -J formats carry
@@ -2438,6 +2560,8 @@ mod tests {
             netpath: std::sync::Arc::new(crate::netpath::NetPath::in_memory()),
             hls_cap: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_FULLSCREEN_CAP)),
             hls_start: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_START_QUALITY)),
+            resource_dir: None,
+            helper: tokio::sync::OnceCell::new(),
         };
         let now = Utc::now().to_rfc3339();
         let piped = Instance {
