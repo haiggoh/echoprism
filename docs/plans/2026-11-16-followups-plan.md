@@ -640,3 +640,13 @@ new task will be added to this plan on master; until then video stays on the war
   nvidia-nemotron-3-ultra (family nvidia, avoided mistral, role_matched) verdict WEAK "e2e never
   exercises the same-url branch in WebKit" → fixed by the 3-leg cache-hit test + shape assertion ·
   gates: tsc/eslint EXIT:0 · vitest 407/407 · e2e 73/73 both projects · receipts /tmp/ep-fix-receipts/f-*
+- 2026-11-17/18 · ship v0.1.22 (resumed session, owner "yes ship") · 02c8072d on master · rtc-ship.sh
+  from the worktree EXIT:0 (worktree reaped, backed up to ~/.claude/backups/worktrees/): tests gate
+  pass, ff-merge, annotated tag v0.1.22 (cec4fdee) VISIBLE via ls-remote, release published
+  github.com/haiggoh/echoprism/releases/tag/v0.1.22 · release-artifact launch gate on the CI dmg
+  EchoPrism_0.1.22_aarch64.dmg (sha256 90bbc3ff2dfb63f56b31b9ade05d12506c51c765079c9cd8a67184b4e511e6a1):
+  otool -L 0 /Users/runner + 0 netmonitor entries, binary ALIVE 12 s from the readonly mount ·
+  homebrew-tap cask bump db8d179 (brew info --cask echoprism → 0.1.22) · canonical master ff-pulled to
+  02c8072d · live AX dogfood of the playhead switch: NOT TESTED (AX button discovery unreliable in
+  this headless context) — the delivery proof is the webkit e2e 3-leg cache-hit test, mutation
+  RED→GREEN in the real engine
