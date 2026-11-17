@@ -105,6 +105,12 @@ impl YtdlpHelper {
         })
     }
 
+    /// The helper process pid (test/inspection only).
+    #[cfg(test)]
+    pub(crate) async fn pid(&self) -> Option<u32> {
+        self.state.lock().await.as_ref().map(|p| p.child.id().unwrap_or(0))
+    }
+
     #[cfg(test)]
     pub(crate) fn with_parts(script: PathBuf, python: String, timeout: std::time::Duration) -> Self {
         Self {

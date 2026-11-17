@@ -151,6 +151,14 @@ impl Extractor {
         let _ = self.helper.set(h.map(std::sync::Arc::new));
     }
 
+    #[cfg(test)]
+    pub(crate) async fn helper_pid(&self) -> Option<u32> {
+        match self.helper.get() {
+            Some(Some(h)) => h.pid().await,
+            _ => None,
+        }
+    }
+
     /// Run yt-dlp with `args` under the current IPv6 verdict: IPv4 at once
     /// when the network is known-broken, otherwise dual-stack with a
     /// mid-flight switch to IPv4 the moment the background probe says so.
@@ -3101,6 +3109,40 @@ mod tests {
         let count = std::fs::read_to_string(&log).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).count();
         assert_eq!(count, 1, "audio then video on the same video must share ONE yt-dlp dump, got {count} invocations");
         let _ = std::fs::remove_file(&log);
+    }
+
+    /// Task 2b DELIVERY PROOF (LIVE, ignored; ≤ 30 yt-dlp runs/hour budget —
+    /// this uses 3): with the REAL persistent helper warm, 3 consecutive cold
+    /// resolves of different videos must each take ≤ 4 s (ytdlp_ms ≤ 3000)
+    /// vs the 10–30 s one-shot spawn (§10 B). Run:
+    ///   cargo test -p echoprism --lib live_helper_warm_resolves -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "live network: real yt-dlp via the persistent helper, IPv4, 3 videos"]
+    async fn live_helper_warm_resolves_under_4s() {
+        let yt_dlp = std::path::PathBuf::from("/opt/homebrew/bin/yt-dlp");
+        let helper = crate::ytdlp_helper::YtdlpHelper::new(None, &yt_dlp).expect("helper builds");
+        helper.ensure_running().await.expect("helper pre-warmed");
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Broken); // this network: force IPv4
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set(yt_dlp.display().to_string()).unwrap();
+        ex.set_helper_for_test(Some(helper));
+        // Warm-up (NOT measured): the first extraction in a fresh process
+        // still pays lazy extractor init. The plan measures AFTER warm-up.
+        let _ = ex.get_stream_with_yt_dlp("jNQXAC9IVRw", Some("video"), None).await.expect("warm-up resolve");
+        let pid0 = ex.helper_pid().await;
+        for vid in ["hRpi46C3dQ4", "g5gptFkgBlI", "dQw4w9WgXcQ"] {
+            let t0 = std::time::Instant::now();
+            let s = ex
+                .get_stream_with_yt_dlp(vid, Some("video"), None)
+                .await
+                .unwrap_or_else(|e| panic!("resolve {vid} failed: {e}"));
+            let wall = t0.elapsed();
+            let ytdlp_ms = s.timings.as_ref().map(|t| t.ytdlp_ms).unwrap_or(0);
+            println!("vid={vid} wall={wall:?} ytdlp_ms={ytdlp_ms} pid={:?} url={}", ex.helper_pid().await, &s.url[..s.url.len().min(80)]);
+            assert!(ytdlp_ms <= 3000, "warm resolve {vid} must be ≤ 3000 ms ytdlp (≤ 4 s click→URL), got {ytdlp_ms} ms (wall {wall:?})");
+            assert_eq!(ex.helper_pid().await, pid0, "one helper pid across all live resolves");
+        }
     }
 
     /// Task 2c (§10 D): instances_ms measures ONLY the instance attempts —

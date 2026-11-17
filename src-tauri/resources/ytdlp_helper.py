@@ -55,7 +55,11 @@ def main() -> int:
             continue
         params = {
             "skip_download": True,
-            "quiet": False,  # warnings -> stderr -> app log (Task 2c)
+            # quiet keeps yt-dlp's INFO lines off STDOUT (the protocol channel);
+            # warnings still go to stderr -> app log (no_warnings stays False).
+            "quiet": True,
+            "noprogress": True,
+            "no_warnings": False,
             "socket_timeout": socket_timeout,
         }
         if force_ipv4:
