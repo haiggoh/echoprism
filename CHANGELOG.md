@@ -7,6 +7,31 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.21] - 2026-11-17
+
+### Fixed — v0.1.20 release crash (dyld exit 134) on every Mac
+
+- **Net-monitor helper is now loaded at runtime, never linked.** The released v0.1.20 .app linked `libepnetmonitor.dylib` by an absolute CI build path and `dyld` aborted (exit 134) on launch for every user. The binary no longer carries any link-time dependency (`otool -L` shows 0 entries); the helper is `dlopen`ed via `libloading` (pinned) from the bundle Resources dir, then the dev `gen/` dir. When the helper is missing the app launches normally, one warning is logged, and the Settings "audio only on metered networks" toggle is disabled with a reason. Verified live: the produced .app, copied to a fresh temp dir, launches and plays.
+
+### Added — native HLS end-to-end in WebKit (the shipped engine)
+
+- **WebKit Playwright project + HLS e2e specs** next to chromium: the HLS master reaches `playing` with real pixels (`videoWidth > 0`) and playback progress (`currentTime > 0`) through the app's real player path (feed card → Play now → PlayerProvider → media element), a broken master (404) lands on the progressive `fallback_url` and plays, and the served master is filtered by the quality cap — asserted on the committed fixture through the pure filter AND the served `/hls/` route.
+- **Committed HLS fixtures** (180p + 360p VOD + progressive + audio-only renditions, < 300 KB, regeneration commands in `e2e/fixtures/hls/README.md`), served in tests by a dev-only `/test-media` middleware (`apply: 'serve'`) — no fixture bytes can reach the production bundle (verified after `npm run build`).
+- **Fixture-integrity tests** pin the committed fixture bytes on disk: the master lists exactly the expected rungs, every referenced variant playlist and segment exists, and the fallbacks are real containers (ftyp box).
+
+### Fixed — playback start (proven root causes, measured live)
+
+- **Audio-only ~113 s → ~2 s**: audio mode now plays the audio-only HLS rendition (`m3u8_native`, no video codec) instead of the fragmented progressive m4a — WebKit walked ~158 moof/mdat fragments one HTTP hop each (measured 101 requests / 105 s); the audio-only HLS rendition reaches `playing` in 1.1 s locally and **4 media requests in 2.9 s** in the WebKit e2e delivery probe. The progressive audio-only format rides along as `fallback_url`. A video-bearing m3u8 entry is never chosen in audio mode (pinned by tests, discrminant-verified).
+- **Video 15–27 s → ~2 s: persistent pre-warmed yt-dlp extractor.** Each click no longer spawns a new yt-dlp process (10–30 s of start-up on a typical Mac). One long-lived Python helper (`resources/ytdlp_helper.py`) is spawned at app launch, imports `yt_dlp` once (that import is the pre-warm), answers one line-delimited JSON request per stdin line, is restarted on crash, killed with the app, bounds every request at 30 s, and falls back to the one-shot binary on any failure. Measured live (IPv4): three warm cold-resolves at 1.8 / 2.9 / 4.7 s (`ytdlp_ms`, single helper pid) versus 13–32 s for the one-shot spawn.
+- **One extraction serves both modes**: the parsed yt-dlp dump is cached per video (10 min TTL), so a mode switch is a cache hit instead of a second extraction (pinned: audio + video resolves on one video run yt-dlp exactly once).
+- **Dead config removed**: `player_client=mediaconnect` was silently ignored by yt-dlp 2026.10.26 ("Skipping unsupported client") — the v0.1.20 "fewer clients" measurement actually measured the defaults. No `--extractor-args` is passed on any `-J` run anymore, and `--no-warnings` is gone from `-J` runs: yt-dlp warnings now go to the app log at WARN (helper stderr is forwarded).
+- **Truthful start-up timings**: `instances_ms` covers only instance attempts (it previously swallowed the whole yt-dlp fallback), a play that joins an in-flight pre-resolve reports `path="joined"` with the wait in `joined_ms`, and the record's `source` labels the mode actually played instead of the toggle at click time.
+
+### Fixed — accessibility and cleanup
+
+- **Feed cards** are no longer focusable containers with no role (a screen reader announced nothing on tab); their actions are the two real buttons ("Play now", "Next/End"). The feed's scroll region is a focusable `role="region"` like every other screen. The focus-ring spec now waits for the painted ring (box-shadow transitions) instead of reading it mid-transition.
+- **v0.1.20 dead code removed** (grep-proven, 0 non-test call sites): `InstancePool::mark_degraded` / `note_resolve_outcome`, `PollOutcome.status` / `.waited`, and the never-read `CachedStream.fallback` — `StreamInfo.fallback_url` remains the one fallback channel. Cargo build warnings from the library: 3 → 0.
+
 ## [0.1.20] - 2026-11-16
 
 ### Added — browser-fast playback start (YouTube ≈ ad-blocked browser, audio-only never slower, podcasts instant)
