@@ -299,6 +299,47 @@ describe('Round 6 Task 1: the audio-only toggle keeps the playhead [echoprism-au
     expect(audio.currentTime).toBe(120);
     stream.mockRestore();
   });
+
+  it('cache-hit switch-back (SAME re-resolved url) still restores the store position', async () => {
+    // The backend stream cache returns the SAME url on a cache-hit re-resolve,
+    // so the reactivated element already carries it as src and the src-change
+    // restore branch is skipped (owner 2026-11-17: the playhead jumped on
+    // video<->audio switches). The mock below returns a STABLE video url.
+    const stream = vi.spyOn(episodeCommands, 'stream').mockImplementation((id: string, format?: string) =>
+      Promise.resolve({
+        url: format === 'audio' ? `https://mock/audio/${id}.m3u8` : `https://mock/media/${id}.m3u8`,
+        format: format ?? 'video',
+      }));
+    const { container } = renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const video = container.querySelector('video') as HTMLVideoElement;
+    const audio = container.querySelector('audio') as HTMLMediaElement;
+
+    await act(async () => { api.play(videoEpisode('ep-vid-1', 'A video episode')); });
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('ep-vid-1', 'video'));
+    await waitFor(() => expect(video.getAttribute('src')).toBe('https://mock/media/ep-vid-1.m3u8'));
+    await act(async () => { api.seek(120); });
+    expect(storedPosition()).toBe(120);
+
+    // video -> audio: different url, the src-change branch restores 120.
+    await act(async () => { fireEvent.click(screen.getByText('audio-on')); });
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'audio'));
+    await waitFor(() => expect(audio.getAttribute('src')).toBe('https://mock/audio/ep-vid-1.m3u8'));
+    await act(async () => { fireEvent(audio, new Event('seeked')); });
+    // Audio plays on to 130 s: the store follows the ACTIVE element.
+    await act(async () => { audio.currentTime = 130; fireEvent(audio, new Event('timeupdate')); });
+    expect(storedPosition()).toBe(130);
+
+    // audio -> video: cache hit, SAME url the video element still carries.
+    await act(async () => { fireEvent.click(screen.getByText('audio-off')); });
+    await waitFor(() => expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'video'));
+
+    // THE discriminant: the reactivated element resumes at the STORE position
+    // (130), not at its own stale 120.
+    await waitFor(() => expect(video.currentTime, 'cache-hit switch-back restores the store position').toBe(130));
+    expect(storedPosition()).toBe(130);
+    stream.mockRestore();
+  });
 });
 
 describe('Round 6 Task 2: seeking works in audio-only [echoprism-audio-only-seek]', () => {

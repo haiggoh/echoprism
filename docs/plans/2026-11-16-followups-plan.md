@@ -624,3 +624,19 @@ new task will be added to this plan on master; until then video stays on the war
   locally — environmental, CI produces it) · otool -L binary: netmon 0, /Users/runner 0 · .app copied
   to mktemp launched ALIVE 12 s, clean quit · gates: e2e 72/0 · vitest 405/405 · cargo 250/250 ·
   tsc/lint/build/cargo-build EXIT:0
+- 2026-11-17 · position-switch playhead fix (executor ac3848bc, resumed after mid-tool kill; follow-up
+  to owner report 11:17 UTC "playhead jumped on video<->audio switches") · this commit · root cause:
+  a cache-hit re-resolve returns the SAME url, and the always-mounted <audio> element still carries
+  it as src on the second video->audio leg, so the src-change restore branch was skipped and play()
+  resumed the element at its own stale position · fix (PlayerProvider element-sync effect): restore
+  the store position whenever the active ELEMENT identity changes (lastActiveElRef), not only on src
+  change · unit discriminant cache-hit switch-back RED "expected 120 to be 130" → GREEN 10/10 ·
+  webkit e2e position-switch.spec.ts: fresh-url leg + cache-hit 3-leg test (leg 3 pins the same-url
+  shape: audio src unchanged across re-resolve) GREEN 2/2; mutation (delete elementSwitched branch,
+  CI=true fresh dev server) RED in real WebKit "playhead jumped on same-url switch to 2.03 — store
+  had 3" → restored GREEN 3.50 · spec flake fixed: fixed sleeps replaced by polls on the store-driven
+  slider aria-valuenow · mock router: stable url by default (cache-hit shape), per-resolve nonce
+  opt-in via window.__EP_STREAM_NONCE; hls.spec src anchors loosened to (\?|$) · offload M-validator:
+  nvidia-nemotron-3-ultra (family nvidia, avoided mistral, role_matched) verdict WEAK "e2e never
+  exercises the same-url branch in WebKit" → fixed by the 3-leg cache-hit test + shape assertion ·
+  gates: tsc/eslint EXIT:0 · vitest 407/407 · e2e 73/73 both projects · receipts /tmp/ep-fix-receipts/f-*

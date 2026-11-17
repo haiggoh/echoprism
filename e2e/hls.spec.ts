@@ -33,7 +33,7 @@ test('hls_video_plays_in_webkit: the HLS master reaches playing through the real
   const video = page.locator('video');
   await expect(video).toBeVisible();
   // Committed to the HLS master itself.
-  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/master\.m3u8$/, { timeout: 10_000 });
+  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/master\.m3u8(\?|$)/, { timeout: 10_000 });
 
   // Delivery-shaped proof (M1): real playlist fetch + real pixels + real
   // playback progress on the element itself, not a resolved promise.
@@ -52,7 +52,7 @@ test('hls_video_plays_in_webkit: the HLS master reaches playing through the real
   // the spec catch a broken master: if the master had failed and the fallback
   // (fallback.mp4, also 640x360) had played, every poll above would pass —
   // but this one goes RED. (M1 validator mutation a1.)
-  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/master\.m3u8$/);
+  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/master\.m3u8(\?|$)/);
 
   // The resolve went through PlayerProvider (its .then writes the history row),
   // not a bare <video> page that loads the URL directly. Navigate IN-APP — a
@@ -87,7 +87,7 @@ test('audio_mode_plays_audio_only_hls_without_fragment_walk: the audio-only rend
   await expect(page).toHaveURL(/\/player\/ep-hls-audio$/);
 
   const audio = page.locator('audio');
-  await expect(audio).toHaveAttribute('src', /\/test-media\/hls\/audio\/media\.m3u8$/, { timeout: 10_000 });
+  await expect(audio).toHaveAttribute('src', /\/test-media\/hls\/audio\/media\.m3u8(\?|$)/, { timeout: 10_000 });
   await expect
     .poll(async () => audio.evaluate((el) => (el as HTMLAudioElement).paused), { timeout: 15_000 })
     .toBe(false);
@@ -99,7 +99,7 @@ test('audio_mode_plays_audio_only_hls_without_fragment_walk: the audio-only rend
   // FINAL src must STILL be the audio media playlist — if it had fallen back
   // to audio-fallback.m4a, the polls above would pass but this goes RED
   // (the same mutation class the M1 offload caught in the video spec).
-  await expect(audio).toHaveAttribute('src', /\/test-media\/hls\/audio\/media\.m3u8$/);
+  await expect(audio).toHaveAttribute('src', /\/test-media\/hls\/audio\/media\.m3u8(\?|$)/);
 
   expect(clickToPlayingMs).toBeLessThanOrEqual(3000);
   const audioReqs = mediaReqs.filter((u) => u.includes('/test-media/hls/audio/'));
@@ -132,7 +132,7 @@ test('broken_hls_falls_back_to_progressive: a 404 master lands on fallback_url',
 
   // The player's media-error path swaps to the progressive fallback, which
   // then plays (PlayerProvider onError → setStreamUrl(fallbackUrl)).
-  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/fallback\.mp4$/, { timeout: 15_000 });
+  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/fallback\.mp4(\?|$)/, { timeout: 15_000 });
   await expect
     .poll(async () => video.evaluate((el) => (el as HTMLVideoElement).paused), { timeout: 15_000 })
     .toBe(false);

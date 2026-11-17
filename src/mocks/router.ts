@@ -8,6 +8,17 @@ import type { Channel, CrashRecord, Download, Episode, Instance, NewEpisodeItem,
 import { mockDb, type MockDb } from './data';
 
 let db: MockDb;
+// Per-resolve nonce, OPT-IN via window.__EP_STREAM_NONCE (see stream_episode):
+// the real backend issues a fresh proxy token on a COLD resolve, but a
+// stream-cache HIT returns the SAME url — and that same-url shape is exactly
+// what the position restore must survive (owner 2026-11-17: the playhead
+// jumped on a video<->audio switch-back). Default mock = cache-hit (stable
+// url per format). The /test-media middleware and the proxy both ignore query
+// strings on the URL path, so the nonce form is servable too.
+let streamNonce = 0;
+function freshTokenMode(): boolean {
+  return typeof window !== 'undefined' && !!(window as unknown as { __EP_STREAM_NONCE?: boolean }).__EP_STREAM_NONCE;
+}
 let queueItems: QueueItem[];
 let crashRecords: CrashRecord[];
 let notificationState: NotificationSummary;
@@ -112,12 +123,13 @@ const handlers: Record<string, Handler> = {
     // middleware 404s it), so the player's media-error path must swap to
     // fallback_url.
     if (ep.id === 'ep-hls-demo' || ep.id === 'ep-hls-broken' || ep.id === 'ep-hls-audio') {
+      const q = freshTokenMode() ? `?r=${++streamNonce}` : '';
       if (format === 'audio') {
-        return { url: '/test-media/hls/audio/media.m3u8', fallback_url: '/test-media/hls/audio-fallback.m4a', format: 'audio' };
+        return { url: `/test-media/hls/audio/media.m3u8${q}`, fallback_url: `/test-media/hls/audio-fallback.m4a${q}`, format: 'audio' };
       }
       const master =
         ep.id === 'ep-hls-broken' ? '/test-media/hls/absent/master.m3u8' : '/test-media/hls/master.m3u8';
-      return { url: master, fallback_url: '/test-media/hls/fallback.mp4', format: 'video' };
+      return { url: `${master}${q}`, fallback_url: `/test-media/hls/fallback.mp4${q}`, format: 'video' };
     }
     if (format === 'audio') {
       const url = ep.audio_url ?? '/mock-media/generic-audio.wav';

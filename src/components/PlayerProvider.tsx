@@ -477,6 +477,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // `seeked`), so the fresh element's first timeupdate (0) cannot clobber the
   // stored position.
   const pendingRestoreRef = useRef<number | null>(null);
+  // F06 same-URL switch-back: a format switch reactivates the OTHER media
+  // element, and on a cache-hit re-resolve the url is unchanged, so the
+  // src-change restore below is skipped and play() would resume the element at
+  // its own stale position. Track the element identity and restore explicitly
+  // when it changes (owner 2026-11-17: playhead jumped on video<->audio switches).
+  const lastActiveElRef = useRef<HTMLMediaElement | null>(null);
   const seek = useCallback(
     (position: number) => {
       setPlaybackState({ position_seconds: position });
@@ -542,7 +548,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // would re-assign src and restart the load (observed in e2e: readyState
     // pinned at 0, networkState NETWORK_NO_SOURCE despite 206 responses;
     // jsdom reflects the raw attribute, which is why unit tests missed it).
-    if (activeEl.getAttribute('src') !== streamUrl) {
+    const srcChanged = activeEl.getAttribute('src') !== streamUrl;
+    // A format switch reactivates the OTHER element; on a cache-hit re-resolve
+    // the url is unchanged, so the src-change branch below would be skipped and
+    // play() would resume the element at its own stale position. Restore from
+    // the store whenever the active element identity changes.
+    const elementSwitched = activeEl !== lastActiveElRef.current;
+    lastActiveElRef.current = activeEl;
+    if (srcChanged) {
       activeEl.src = streamUrl;
       // WebKit (the shipped engine) rejects play() with NotSupportedError when
       // the element is still in the error state of a FAILED previous src (e.g.
@@ -564,6 +577,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Re-apply here, where the src actually changes. Read from a ref so this
       // effect does not need to re-run (and re-enter its play() branch) on
       // every rate change.
+      activeEl.playbackRate = playbackRateRef.current;
+    } else if (elementSwitched) {
+      // Same url, different element (cache-hit re-resolve on a format switch):
+      // restore the store position onto the reactivated element (F06).
+      const restore = playbackState?.position_seconds ?? 0;
+      if (Math.abs(activeEl.currentTime - restore) > 0.25) {
+        pendingRestoreRef.current = restore;
+        activeEl.currentTime = restore;
+      }
       activeEl.playbackRate = playbackRateRef.current;
     }
     if (isPlaying) {
