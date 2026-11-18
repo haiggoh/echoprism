@@ -7,6 +7,26 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.26] - 2026-11-18
+
+### Fixed — AI auto-dubbed audio really off by default this time
+
+- v0.1.25's note-only dub filter missed the progressive dub rungs, whose
+  `format_note` is just the language ("Arabic, low") — the owner got an Arabic
+  audio-only play when the HLS probe failed. Root-caused live on the owner's
+  video: the dump lists `233-N/234-N` HLS rungs as "<lang> - dubbed" and the
+  originals as "English - original (original)", and the HLS master's audio
+  rungs as `NAME="<lang> - dubbed"` vs `NAME="English - original"`.
+- **Fix:** `is_dubbed` now also rejects audio-only rungs whose `language`
+  differs from the video's original language (the dump's top-level
+  `language`), or whose note is a bare language name without "original".
+- **And the served master is rewritten** (`hls_master::force_original_audio`,
+  applied by the proxy to every master): all "- dubbed" audio rungs are
+  dropped and DEFAULT=YES/AUTOSELECT=YES is forced onto the original rung — so
+  video mode can no longer pick the geolocation-chosen dub either.
+- Fixture: a sanitized REAL master captured from the owner's video
+  (`master_with_dubs.m3u8`) — the red-mutation fixture for both fixes.
+
 ## [0.1.25] - 2026-11-18
 
 ### Fixed — audio-only stalls for minutes when yt-dlp omits the 233/234 audio-only HLS rungs
