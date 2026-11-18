@@ -124,6 +124,48 @@ describe('Task 5 embed integration', () => {
     stream.mockRestore();
   });
 
+  it('pref on but NO video_id (podcast): embed never mounts, extractor used', async () => {
+    const prefs = await settingsCommands.get();
+    vi.spyOn(settingsCommands, 'get').mockResolvedValue({ ...prefs, use_youtube_player: true });
+    const stream = mockStream();
+    renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    const podcast = { ...videoEpisode('ep-pod-x', 'A podcast'), video_id: undefined } as Episode;
+    await act(async () => {
+      api.play(podcast);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(api.embedMounted).toBe(false);
+    expect(api.embedPlayerActive).toBe(false);
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('ep-pod-x', 'audio'));
+    stream.mockRestore();
+  });
+
+  it.each([150, 101, 153, 5, 100])('embed error %i falls back to the extractor pipeline', async (code) => {
+    const prefs = await settingsCommands.get();
+    vi.spyOn(settingsCommands, 'get').mockResolvedValue({ ...prefs, use_youtube_player: true });
+    const stream = mockStream();
+    renderPlayer();
+    await waitFor(() => expect(api).toBeDefined());
+    await act(async () => {
+      api.play(videoEpisode('ep-vid-1', 'A video episode'));
+    });
+    await waitFor(() => expect(api.embedPlayerActive).toBe(true));
+
+    const callsBefore = stream.mock.calls.length;
+    await act(async () => {
+      api.onEmbedEvent({ type: 'error', code });
+    });
+    await waitFor(() => expect(api.embedPlayerActive, `error ${code} blocks the embed`).toBe(false));
+    await waitFor(() => {
+      expect(stream.mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(stream).toHaveBeenLastCalledWith('ep-vid-1', 'video');
+    });
+    stream.mockRestore();
+  });
+
   it('toggle off (default): the embed never activates', async () => {
     mockStream();
     renderPlayer();

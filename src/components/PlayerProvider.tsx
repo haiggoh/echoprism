@@ -517,8 +517,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (ep?.video_id) embedApi.load(ep.video_id, usePlayerStore.getState().isPlaying);
   }, [embedActive, embedApi, currentEpisode]);
   useEffect(() => {
-    if (!embedActive || !embedApi) return;
-    if (isPlaying) embedApi.play();
+    if (!embedApi) return;
+    // Play only while the embed is the engine; PAUSE it whenever it is not
+    // (audio mode / fallback) — a hidden iframe must never keep playing.
+    if (embedActive && isPlaying) embedApi.play();
     else embedApi.pause();
   }, [embedActive, embedApi, isPlaying]);
 

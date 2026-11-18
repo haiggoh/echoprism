@@ -59,8 +59,10 @@ validator dispatch).
    must never be stranded on an error. → Task 4 e2e + unit.
 2. Referrer/origin: the embed page MUST be served from the proxy origin or YouTube answers
    153 — pin the route's origin/CSP in a Rust route test. → Task 2.
-3. Audio-only must NEVER load the embed (assert zero `/embed/` requests in audio mode). →
-   Task 4 e2e.
+3. Audio-only must never PLAY through the embed: the warm iframe stays mounted
+   (one host-page load per session with the toggle on) but is paused and issues
+   no further `/embed/` requests in audio mode. → Task 4 e2e request counter +
+   provider pause effect.
 4. Position sync across embed↔extractor switches (the v0.1.22 playhead fix must hold
    when the embed player is the source). → Task 4 e2e.
 5. The ad-prune user script must not corrupt non-ad JSON (prune only the named keys;

@@ -41,6 +41,8 @@ const STUB_HOST_PAGE = `<!doctype html><html><body><div id="player"></div><scrip
     } else if (m.cmd === 'seek') {
       player.t = m.t;
       window.parent.postMessage({ type: 'time', t: m.t }, '*');
+    } else if (m.cmd === 'forceError') {
+      window.parent.postMessage({ type: 'error', code: 150 }, '*');
     }
   });
 </script></body></html>`;
@@ -55,6 +57,10 @@ async function enableEmbedToggle(page: import('@playwright/test').Page) {
   await page.goto('/settings');
   await page.getByRole('tab', { name: 'Preferences' }).click();
   const toggle = page.getByLabel("Use YouTube's player for video");
+  // the owner's exact label wording is visible next to the checkbox
+  await expect(
+    page.getByText("Use YouTube's player for video (faster start, may show ads it fails to block)"),
+  ).toBeVisible();
   await toggle.check();
   await expect(toggle).toBeChecked();
   // no page.goto after this: a full reload re-initialises the mock db and loses
@@ -125,11 +131,14 @@ test('embed error 150 falls back to the extractor player (real HLS master plays)
   await expect(page.getByTestId('embed-stage')).toBeHidden();
 });
 
-test('toggle off (default): zero embed traffic, plain video element plays', async ({ page }) => {
+test('toggle off (default): unchecked, zero embed traffic, plain video element plays', async ({ page }) => {
   let embedCount = 0;
   page.on('request', (r) => {
     if (r.url().includes('/embed/player.html')) embedCount++;
   });
+  await page.goto('/settings');
+  await page.getByRole('tab', { name: 'Preferences' }).click();
+  await expect(page.getByLabel(/Use YouTube's player for video/)).not.toBeChecked();
   await page.goto('/feed');
   await page
     .locator('article', { hasText: 'HLS master fixture' })
@@ -144,4 +153,59 @@ test('toggle off (default): zero embed traffic, plain video element plays', asyn
     .toBe(false);
   await expect(page.getByTestId('embed-stage')).toHaveCount(0);
   expect(embedCount, 'no /embed/player.html request with the toggle off').toBe(0);
+});
+
+test('audio mode: the embed is hidden and issues no further requests', async ({ page }) => {
+  let embedCount = 0;
+  page.on('request', (r) => {
+    if (r.url().includes('/embed/player.html')) embedCount++;
+  });
+  await stubEmbedHostPage(page);
+  await enableEmbedToggle(page);
+  await goToFeed(page);
+  await page
+    .locator('article', { hasText: 'HLS master fixture' })
+    .getByRole('button', { name: 'Play now' })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/player\/ep-hls-demo$/);
+  await expect(page.getByTestId('embed-stage')).toBeVisible();
+  await expect.poll(() => embedCount, { timeout: 10_000 }).toBe(1); // the one host-page load
+
+  await page.getByRole('checkbox', { name: 'Audio only mode' }).first().check();
+  const audio = page.locator('audio');
+  await expect
+    .poll(async () => audio.evaluate((el) => (el as HTMLAudioElement).paused), { timeout: 15_000 })
+    .toBe(false);
+  await expect(page.getByTestId('embed-stage')).toBeHidden();
+  await page.waitForTimeout(800);
+  expect(embedCount, 'no new /embed/player.html requests in audio mode').toBe(1);
+});
+
+test('embed → error fallback keeps the playhead position', async ({ page }) => {
+  await stubEmbedHostPage(page);
+  await enableEmbedToggle(page);
+  await goToFeed(page);
+  await page
+    .locator('article', { hasText: 'HLS master fixture' })
+    .getByRole('button', { name: 'Play now' })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/player\/ep-hls-demo$/);
+  await expect(page.getByTestId('embed-stage')).toBeVisible();
+
+  // the stub's time ticks advance the store position
+  await expect.poll(() => sliderPos(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+  const embedPos = await sliderPos(page);
+
+  // force error 150 from inside the iframe (cross-origin postMessage is allowed)
+  await page.locator('[data-testid="embed-stage"] iframe').evaluate((f) => {
+    (f as HTMLIFrameElement).contentWindow?.postMessage({ cmd: 'forceError' }, '*');
+  });
+
+  const video = page.locator('video');
+  await expect(video).toHaveAttribute('src', /\/test-media\/hls\/master\.m3u8(\?|$)/, { timeout: 15_000 });
+  await expect
+    .poll(async () => video.evaluate((el) => (el as HTMLVideoElement).currentTime), { timeout: 15_000 })
+    .toBeGreaterThan(embedPos - 0.5);
 });

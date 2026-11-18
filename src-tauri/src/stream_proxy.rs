@@ -517,6 +517,12 @@ mod tests {
         let body = resp.text().await.unwrap();
         assert!(body.contains("https://www.youtube-nocookie.com/iframe_api"), "host page loads the IFrame API");
         assert!(body.contains("postMessage"), "host page talks postMessage to the app");
+        // Task 5 ad blocking: the served host page prunes the ad keys (the
+        // unit-tested copy is src/lib/adPrune.ts — keep in sync).
+        for key in ["adPlacements", "playerAds", "adSlots"] {
+            assert!(body.contains(key), "host page prunes {key}");
+        }
+        assert!(body.contains("window.fetch"), "host page wraps fetch for pruning");
     }
 
     #[test]
