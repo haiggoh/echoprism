@@ -653,6 +653,10 @@ const handlers: Record<string, Handler> = {
     db.playModeRules = db.playModeRules.filter((r) => r.id !== ruleId);
   },
 
+  // Task 5: in the mock/e2e world the "proxy" is the vite dev server itself
+  // (playwright intercepts /embed/player.html via page.route).
+  proxy_port: () => 1420,
+
   // Settings
   get_settings: (): UserPreferences => ({ ...db.preferences }),
   update_settings: (args) => {

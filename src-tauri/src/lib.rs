@@ -292,6 +292,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::net_monitor_available,
+            crate::stream_proxy::proxy_port,
 
             // History commands
             commands::history::list_history,

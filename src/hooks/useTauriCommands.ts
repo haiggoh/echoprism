@@ -169,6 +169,11 @@ export const settingsCommands = {
   update: (prefs: Partial<UserPreferences>) => invoke<void>('update_settings', { prefs }),
 };
 
+// Proxy commands (stream_proxy.rs)
+export const proxyCommands = {
+  port: () => invoke<number>('proxy_port'),
+};
+
 // History commands (history.rs)
 export const historyCommands = {
   list: (limit?: number, offset?: number) => invoke<HistoryEntry[]>('list_history', { limit, offset }),

@@ -207,6 +207,13 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
         .unwrap())
 }
 
+/// Task 5: the local proxy's port, so the frontend can build the embed host
+/// page URL `http://127.0.0.1:<port>/embed/player.html`.
+#[tauri::command]
+pub fn proxy_port() -> u16 {
+    state().port
+}
+
 /// Task 5: the YouTube IFrame Player API host page, embedded at compile time
 /// and served from the PROXY origin so the player's requests to YouTube carry
 /// a valid http://127.0.0.1 referrer (§11 spike: without it, error 153).
