@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { episodeCommands, historyCommands, settingsCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands, settingsCommands, proxyCommands } from '../hooks/useTauriCommands';
 // Namespace import for the match-on-play call: several engine tests partially
 // mock useTauriCommands WITHOUT smartLinkCommands — the optional chain keeps
 // those green while the real app always has the export.
@@ -14,6 +14,8 @@ import { readStoredPlaybackRate, writeStoredPlaybackRate } from './player/SpeedC
 import { startupTimer } from '../lib/startupTimer';
 import { upcomingQueueEpisodes, QUEUE_LOOKAHEAD } from '../hooks/usePrefetchStream';
 import { nextAudioOnly, type AudioOnlyOrigin } from '../lib/audioOnlyAuto';
+import { EMBED_ERROR_FALLBACK_CODES, type EmbedEvent } from '../lib/embedPlayerProtocol';
+import type { EmbedPlayerApi } from './player/YoutubeEmbedPlayer';
 import { listen } from '@tauri-apps/api/event';
 import type { UserPreferences } from '../types';
 import { useToasts } from './ui/Toaster';
@@ -64,6 +66,15 @@ interface PlayerContextType {
   switchToLinked: () => Promise<void>;
   /** PlayerScreen registers its <video> element here; the engine picks the active media element. */
   registerVideoElement: (el: HTMLVideoElement | null) => void;
+  /** Task 5 (YouTube embed player): the iframe stays mounted whenever the
+   * toggle is on and the episode has a video_id — the warm instance is the
+   * 0.46 s load. `embedPlayerActive` is true only while the embed is the
+   * actual playback engine (video format, not error-fallback-blocked). */
+  embedMounted: boolean;
+  embedPlayerActive: boolean;
+  embedPort: number | null;
+  onEmbedEvent: (e: EmbedEvent) => void;
+  registerEmbedApi: (api: EmbedPlayerApi | null) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -113,6 +124,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // "override affects initial choice only; audio-only toggle still governs
   // subsequent switches").
   const [playbackFormat, setPlaybackFormat] = useState<'video' | 'audio'>('video');
+
+  // ---- Task 5: YouTube embed player ----
+  const [embedPort, setEmbedPort] = useState<number | null>(null);
+  const [embedApi, setEmbedApi] = useState<EmbedPlayerApi | null>(null);
+  const [embedBlocked, setEmbedBlocked] = useState(false);
+  const embedApiRef = useRef<EmbedPlayerApi | null>(null);
+  embedApiRef.current = embedApi;
+  const { data: preferences } = useQuery({ queryKey: ['preferences'], queryFn: () => settingsCommands.get() });
+  const useYoutubePlayer = preferences?.use_youtube_player ?? false;
+  const embedMounted = useYoutubePlayer && !!currentEpisode?.video_id;
+  const embedActive = embedMounted && playbackFormat === 'video' && !embedBlocked;
+  const embedActiveRef = useRef(false);
+  embedActiveRef.current = embedActive;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentEpisodeRef = useRef<Episode | null>(null);
@@ -216,6 +240,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
       // Changing episode invalidates any previous stream; resolution is owned
       // by the resolve effect below (single code path, also serves load(paused)).
+      setEmbedBlocked(false);
       setStreamUrl(null);
       setResolveTick((t) => t + 1);
     },
@@ -239,6 +264,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         position_seconds: ep.progress_seconds ?? 0,
         duration_seconds: ep.duration_seconds,
       });
+      setEmbedBlocked(false);
       setStreamUrl(null);
       setResolveTick((t) => t + 1);
     },
@@ -333,6 +359,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [setStoreAudioMode]);
+  // Task 5: learn the local proxy port once, for the embed host page URL.
+  useEffect(() => {
+    let cancelled = false;
+    proxyCommands
+      .port()
+      .then((p) => {
+        if (!cancelled) setEmbedPort(p);
+      })
+      .catch(() => setEmbedPort(null));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setAudioMode = useCallback(
     (mode: boolean) => {
@@ -354,11 +393,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Clearing it makes the effect resolve again for the new format.
       // Playback position is NOT reset here: the effect restores it from the
       // store on the new src (the F06 format-switch sync).
+      setEmbedBlocked(false);
       setStreamUrl(null);
       setResolveTick((t) => t + 1);
     },
     [setStoreAudioMode, setStreamUrl, queryClient]
   );
+
+  // Task 5: embed player events. Time events feed the store position; a
+  // fallback error code switches the episode back to the extractor pipeline.
+  const onEmbedEvent = useCallback(
+    (e: EmbedEvent) => {
+      if (!embedActiveRef.current) return;
+      switch (e.type) {
+        case 'time':
+          setPlaybackState({ position_seconds: e.t });
+          break;
+        case 'state':
+          if (e.state === 1) {
+            const ep = currentEpisodeRef.current;
+            if (ep) startupTimer.firstFrame(ep.id);
+          }
+          break;
+        case 'error':
+          if (EMBED_ERROR_FALLBACK_CODES.includes(e.code)) {
+            console.warn('embed player error', e.code, '— falling back to the extractor pipeline');
+            setEmbedBlocked(true);
+            setStreamUrl(null);
+            setResolveTick((t) => t + 1);
+          }
+          break;
+      }
+    },
+    [setPlaybackState]
+  );
+  const registerEmbedApi = useCallback((api: EmbedPlayerApi | null) => setEmbedApi(api), []);
 
   // Resolve the stream for the current episode once playback is requested.
   // Single resolution path: play() and load(paused) only set state; this effect
@@ -375,6 +444,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const lastMatchAtRef = useRef(0);
   useEffect(() => {
     if (!isPlaying || streamUrl || resolvingRef.current) return;
+    // Task 5: while the embed player is the engine, the media elements stay idle.
+    if (embedActiveRef.current) return;
     const ep = currentEpisodeRef.current;
     if (!ep) return;
     resolvingRef.current = true;
@@ -450,6 +521,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- queryClient is a stable provider singleton; adding it would re-run stream resolution on every render
   }, [isPlaying, streamUrl, resolveTick, setPlaying, addToast]);
 
+  // Task 5: drive the embed player — load on episode change, play/pause on toggle.
+  useEffect(() => {
+    if (!embedActive || !embedApi) return;
+    const ep = currentEpisodeRef.current;
+    if (ep?.video_id) embedApi.load(ep.video_id, usePlayerStore.getState().isPlaying);
+  }, [embedActive, embedApi, currentEpisode]);
+  useEffect(() => {
+    if (!embedActive || !embedApi) return;
+    if (isPlaying) embedApi.play();
+    else embedApi.pause();
+  }, [embedActive, embedApi, isPlaying]);
+
   const pause = useCallback(() => setPlaying(false), [setPlaying]);
 
   const togglePlay = useCallback(() => {
@@ -486,6 +569,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seek = useCallback(
     (position: number) => {
       setPlaybackState({ position_seconds: position });
+      // Task 5: with the embed player active the iframe is the engine — seek it.
+      if (embedActiveRef.current && embedApiRef.current) {
+        if (pendingRestoreRef.current !== null) pendingRestoreRef.current = position;
+        embedApiRef.current.seek(position);
+        return;
+      }
       const el = playbackFormatRef.current === 'video' && videoEl ? videoEl : audioRef.current;
       // Round 6 final review: a seek made while a src-change restore is still
       // pending (the new element has not loaded metadata yet) must WIN — the
@@ -947,6 +1036,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     hasPrevious,
     switchToLinked,
     registerVideoElement,
+    embedMounted,
+    embedPlayerActive: embedActive,
+    embedPort,
+    onEmbedEvent,
+    registerEmbedApi,
   };
 
   // macOS Now Playing + hardware media keys, and the native Playback menu (step 2d).

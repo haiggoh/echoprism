@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
 import { usePlayer } from '../PlayerProvider';
+import { YoutubeEmbedPlayer } from '../player/YoutubeEmbedPlayer';
 import { Episode } from '../../types';
 import { Thumbnail } from '../ui/Thumbnail';
 import { HeadphonesIcon } from '../ui/HeadphonesIcon';
@@ -24,7 +25,17 @@ export function PlayerScreen() {
   // identically either way (previously the toggle flipped podcast playback
   // between the empty <video> branch and the art stage).
   const hasVideo = !!episode?.video_id || !!episode?.video_url;
-  const { playbackFormat, currentEpisode, load, registerVideoElement } = usePlayer();
+  const {
+    playbackFormat,
+    currentEpisode,
+    load,
+    registerVideoElement,
+    embedMounted,
+    embedPlayerActive,
+    embedPort,
+    onEmbedEvent,
+    registerEmbedApi,
+  } = usePlayer();
 
   useEffect(() => {
     if (episodeId) {
@@ -137,6 +148,19 @@ export function PlayerScreen() {
             )}
 
           </>
+        )}
+        {/* Task 5: the YouTube embed player overlays the stage while it is the
+            active engine; it stays MOUNTED (display:none) whenever the toggle
+            is on and the episode has video, so the warm instance survives
+            audio-mode switches. */}
+        {embedMounted && embedPort !== null && (
+          <div
+            className="absolute inset-0 bg-black"
+            style={{ display: embedPlayerActive ? 'block' : 'none' }}
+            data-testid="embed-stage"
+          >
+            <YoutubeEmbedPlayer port={embedPort} onEvent={onEmbedEvent} registerApi={registerEmbedApi} />
+          </div>
         )}
       </div>
 
