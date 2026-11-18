@@ -7,6 +7,32 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.25] - 2026-11-18
+
+### Fixed — audio-only stalls for minutes when yt-dlp omits the 233/234 audio-only HLS rungs
+
+- Owner live report 2026-11-18 (v0.1.24): audio-only played a 28–64 MB
+  **progressive** audio file through the proxy — the §10 A fragment walk, i.e.
+  minutes-long start AND seek stalls. Video was fine (HLS master). Not a
+  network issue (IPv6 and IPv4 probes both 200; reproducible on any network):
+  YouTube serves the 233/234 rungs only in *some* `-J` dumps, and when absent
+  the app fell through to progressive.
+- **Fix:** when 233/234 are absent (or their probe fails), audio mode now
+  takes the audio-only `#EXT-X-MEDIA` rung of the **video HLS master** (present
+  whenever video HLS works), served through the local proxy and probed like
+  any other rung. Progressive audio stays only as the last-resort fallback.
+
+### Fixed — YouTube AI auto-dubbed (geolocation-translated) audio is OFF by default
+
+- Owner report 2026-11-18: an English interview auto-played with a German AI
+  redub; the app passed no setting to prevent it.
+- **Fix:** formats whose `audio_track.kind == "dub"` or `format_note` mentions
+  dub/translation are rejected in every selection path (candidate ranking,
+  233/234, HLS master, progressive fallback, master audio rungs). Original
+  audio is always the default. A settings allowlist of never-translated
+  languages (e.g. en+de) with other languages dubbed by default is a possible
+  later option — deliberately not in this release.
+
 ## [0.1.24] - 2026-11-18
 
 ### Added — optional "YouTube player" embed mode (OFF by default)
