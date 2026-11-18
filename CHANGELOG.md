@@ -7,6 +7,16 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.24] - 2026-11-18
+
+### Added — optional "YouTube player" embed mode (OFF by default)
+
+- **Settings toggle** "Use YouTube's player for video (faster start, may show ads it fails to block)" (`use_youtube_player` preference, default false, persisted like every other setting).
+- **Faster video start via YouTube's own player:** the local proxy serves `/embed/player.html` from its own origin (valid `127.0.0.1` referrer — without it YouTube answers error 153), and the player stage hosts ONE persistent iframe driven over postMessage. Spike numbers: warm `loadVideoById` ≈ 0.46 s vs 5.4 s cold.
+- **Honest fallback:** player errors 150/101/153/5/100 log one line and switch the episode to the normal extractor pipeline automatically. Audio-only never uses the embed; with the toggle off there is zero embed traffic (e2e-pinned).
+- **Ad pruning:** the host page wraps fetch/XHR and json-prunes `adPlacements`/`playerAds`/`adSlots` from player responses (unit-tested). A versioned Safari content-blocker rule list ships in `src-tauri/resources/adblock/` ready to attach when wry exposes `addContentRuleList` (it currently does not).
+- **Tests:** unit (protocol, queue-until-ready, prune fixtures, integration selection rules + error-150 fallback), webkit e2e with the host page stubbed at the proxy origin (play/seek flow, fallback plays the real HLS master, toggle-off zero traffic). Commands posted before the host page is ready are queued (measured: postMessage to a not-yet-loaded iframe is lost).
+
 ## [0.1.23] - 2026-11-18
 
 ### Fixed — the Feed header search box actually searches
