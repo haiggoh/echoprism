@@ -482,7 +482,7 @@ impl Extractor {
                 .await
                 .ok()?;
                 let dump: YtDlpDump = serde_json::from_slice(&out.stdout).ok()?;
-                let ranked = rank_yt_dlp_formats(&dump.formats, want_audio);
+                let ranked = rank_yt_dlp_formats(&dump.formats, want_audio, dump.language.as_deref());
                 let cand = if prefer_hls {
                     // Task 9: a refreshed HLS entry wants the new MASTER url.
                     dump.formats
@@ -536,7 +536,7 @@ impl Extractor {
         // one candidate blindly — probe each (through the proxy when it has
         // headers) with a 1-byte Range GET and take the first that answers
         // 200/206.
-        let candidates = rank_yt_dlp_formats(&dump.formats, want_audio);
+        let candidates = rank_yt_dlp_formats(&dump.formats, want_audio, dump.language.as_deref());
         if candidates.is_empty() {
             return Err("yt-dlp returned no usable stream format".to_string());
         }
@@ -560,7 +560,7 @@ impl Extractor {
                 .iter()
                 .find(|f| {
                     f.protocol.as_deref() == Some("m3u8_native")
-                        && !is_dubbed(f)
+                        && !is_dubbed(f, dump.language.as_deref())
                         && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
                 })
                 .cloned()
@@ -701,7 +701,7 @@ impl Extractor {
             // is what stalls for minutes on a slow link).
             if let Some(master) = dump.formats.iter().find(|f| {
                 f.protocol.as_deref() == Some("m3u8_native")
-                    && !is_dubbed(f)
+                    && !is_dubbed(f, dump.language.as_deref())
                     && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
                     && !is_none_codec(&f.vcodec)
             }).cloned() {
@@ -1317,6 +1317,10 @@ fn parse_invidious_search(body: &str) -> Result<Vec<VideoInfo>, String> {
 /// A yt-dlp `-J` dump, reduced to the fields stream selection needs.
 #[derive(Debug, Deserialize)]
 struct YtDlpDump {
+    /// The video's original language ("en", "de", …) — the reference for
+    /// dub detection (2026-11-18).
+    #[serde(default)]
+    language: Option<String>,
     #[serde(default)]
     formats: Vec<YtDlpFormat>,
 }
@@ -1350,6 +1354,11 @@ struct YtDlpFormat {
     format_note: Option<String>,
     #[serde(default)]
     audio_track: Option<AudioTrack>,
+    /// Per-format language ("en", "de", …). Combined with the dump's original
+    /// language, this is how non-"dubbed"-labelled progressive dubs (whose
+    /// note is just the language name, e.g. "Arabic, low") are detected.
+    #[serde(default)]
+    language: Option<String>,
     protocol: Option<String>,
 }
 
@@ -1372,13 +1381,31 @@ pub struct AudioTrack {
 
 /// True when a format is an AI-translated DUB (not the original audio).
 /// Owner 2026-11-18: original audio by default; dubs are rejected everywhere
-/// (candidate ranking, HLS picks, progressive fallback).
-fn is_dubbed(f: &YtDlpFormat) -> bool {
+/// (candidate ranking, HLS picks, progressive fallback). `original_lang` is the
+/// dump's top-level `language` (the video's original language).
+/// Measured live 2026-11-18: m3u8 dub rungs carry note "<lang> - dubbed" and
+/// audio_track.kind "dub"; PROGRESSIVE dub rungs carry only "<lang>, low"
+/// (no "dub" word) — those are caught by the language/note rules below.
+fn is_dubbed(f: &YtDlpFormat, original_lang: Option<&str>) -> bool {
     if f.audio_track.as_ref().and_then(|t| t.kind.as_deref()) == Some("dub") {
         return true;
     }
     let note = f.format_note.as_deref().unwrap_or("").to_lowercase();
-    note.contains("dub") || note.contains("translat")
+    if note.contains("dub") || note.contains("translat") {
+        return true;
+    }
+    // audio-only rungs only: a language note that is not the original language
+    // (and not marked "original") is a dub
+    let audio_only = is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec);
+    if !audio_only {
+        return false;
+    }
+    if let (Some(l), Some(orig)) = (f.language.as_deref(), original_lang) {
+        if l != orig {
+            return true;
+        }
+    }
+    !note.is_empty() && !note.contains("original")
 }
 
 /// Task 2c (§10 C): the old `youtube:player_client=mediaconnect` extractor-args
@@ -1488,12 +1515,12 @@ fn is_audio_hls_format(f: &YtDlpFormat) -> bool {
 /// a video codec in an audio rank); video → progressive muxed by height desc,
 /// then manifests. The resolver probes each in order (see
 /// get_stream_with_yt_dlp).
-fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFormat> {
+fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool, original_lang: Option<&str>) -> Vec<YtDlpFormat> {
     // Storyboards (sb*, protocol mhtml) are scrubber-preview IMAGES, never a
     // stream (round 6: one was served to <video> -> MediaError 4).
     let usable = |f: &YtDlpFormat| {
         f.protocol.as_deref() != Some("mhtml")
-            && !is_dubbed(f)
+            && !is_dubbed(f, original_lang)
             && (f.url.as_ref().is_some_and(|u| !u.is_empty()) || f.manifest_url.is_some())
     };
     let cands: Vec<YtDlpFormat> = formats.iter().filter(|f| usable(f)).cloned().collect();
@@ -1501,7 +1528,7 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
         // Task 2a: audio-only HLS renditions rank FIRST (§10 A: 1.13 s vs
         // 105 s); progressive audio-only follows as the fallback_url source.
         // Task 6: still never a video codec in an audio rank.
-        let mut hls: Vec<_> = formats.iter().filter(|f| is_audio_hls_format(f) && !is_dubbed(f)).cloned().collect();
+        let mut hls: Vec<_> = formats.iter().filter(|f| is_audio_hls_format(f) && !is_dubbed(f, original_lang)).cloned().collect();
         hls.sort_by(|a, b| b.abr.unwrap_or(0.0).partial_cmp(&a.abr.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
         let mut audio_only: Vec<_> = cands
             .into_iter()
@@ -1524,7 +1551,7 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
 /// ranked candidate list (the resolver probes candidates in order; round 5).
 #[cfg(test)]
 fn pick_yt_dlp_format(formats: &[YtDlpFormat], want_audio: bool, _quality: Option<&str>) -> Option<YtDlpFormat> {
-    rank_yt_dlp_formats(formats, want_audio).into_iter().next()
+    rank_yt_dlp_formats(formats, want_audio, None).into_iter().next()
 }
 
 /// 2h: card-appropriate thumbnail from a yt-dlp `thumbnails` list — the
@@ -1784,6 +1811,7 @@ mod tests {
             protocol: Some("https".into()),
             format_note: None,
             audio_track: None,
+            language: None,
         }
     }
 
@@ -1800,12 +1828,45 @@ mod tests {
             label: Some("German".into()),
         });
         let orig = fmt("https://a/96", Some("none"), Some("mp4a"), Some(96.0), None);
-        assert!(is_dubbed(&dub) && is_dubbed(&dub2) && !is_dubbed(&orig));
-        let ranked = rank_yt_dlp_formats(&[dub.clone(), dub2, orig.clone()], true);
+        assert!(is_dubbed(&dub, Some("en")) && is_dubbed(&dub2, Some("en")) && !is_dubbed(&orig, Some("en")));
+        let ranked = rank_yt_dlp_formats(&[dub.clone(), dub2, orig.clone()], true, Some("en"));
         assert_eq!(ranked.len(), 1, "dubs are excluded from the ranked candidates");
         assert_eq!(ranked[0].url.as_deref(), Some("https://a/96"));
-        let ranked_video = rank_yt_dlp_formats(&[dub], false);
+        let ranked_video = rank_yt_dlp_formats(&[dub], false, Some("en"));
         assert!(ranked_video.is_empty(), "dubs are excluded in video mode too");
+    }
+
+    #[test]
+    fn language_labelled_progressive_dubs_are_rejected_too() {
+        // Live dump 2026-11-18 (tpQZLCel_kg): progressive dub rungs carry only
+        // the language name in format_note ("Arabic, low") — no "dub" word —
+        // and language="ar"; the original is "English original (default)" with
+        // language="en" = the dump's top-level language. The Arabic rung is
+        // what v0.1.25 wrongly picked. RED without the language/original rules.
+        let mut ar_dub = fmt("https://a/ar", Some("none"), Some("mp4a"), Some(48.0), None);
+        ar_dub.format_note = Some("Arabic, low".into());
+        ar_dub.language = Some("ar".into());
+        let mut en_orig = fmt("https://a/en", Some("none"), Some("mp4a"), Some(48.0), None);
+        en_orig.format_note = Some("English original (default), low".into());
+        en_orig.language = Some("en".into());
+        let mut ar_hls = fmt("https://a/233ar", Some("none"), Some("mp4a"), None, None);
+        ar_hls.protocol = Some("m3u8_native".into());
+        ar_hls.format_note = Some("العربية - dubbed".into());
+        ar_hls.language = Some("ar".into());
+        let mut en_hls = fmt("https://a/233en", Some("none"), Some("mp4a"), None, None);
+        en_hls.protocol = Some("m3u8_native".into());
+        en_hls.format_note = Some("English - original (original)".into());
+        en_hls.language = Some("en".into());
+
+        assert!(is_dubbed(&ar_dub, Some("en")));
+        assert!(is_dubbed(&ar_hls, Some("en")));
+        assert!(!is_dubbed(&en_orig, Some("en")));
+        assert!(!is_dubbed(&en_hls, Some("en")));
+
+        let ranked = rank_yt_dlp_formats(&[ar_dub, en_orig.clone(), ar_hls, en_hls.clone()], true, Some("en"));
+        assert!(ranked.iter().all(|f| f.url.as_deref() != Some("https://a/ar") && f.url.as_deref() != Some("https://a/233ar")));
+        assert!(ranked.iter().any(|f| f.url.as_deref() == Some("https://a/233en")), "the HLS original rung is ranked first");
+        assert_eq!(ranked[0].url.as_deref(), Some("https://a/233en"));
     }
 
     #[test]
@@ -2408,7 +2469,7 @@ mod tests {
         sb.protocol = Some("mhtml".into());
         let real = fmt("https://v/360", Some("avc1"), Some("mp4a"), None, Some(360));
         for want_audio in [true, false] {
-            let ranked = rank_yt_dlp_formats(&[sb.clone(), real.clone()], want_audio);
+            let ranked = rank_yt_dlp_formats(&[sb.clone(), real.clone()], want_audio, None);
             assert!(ranked.iter().all(|f| f.protocol.as_deref() != Some("mhtml")), "audio={want_audio}: {:?}", ranked.iter().map(|f| f.url.clone()).collect::<Vec<_>>());
         }
     }
@@ -3393,7 +3454,7 @@ mod tests {
         let mut formats = formats;
         formats[3].manifest_url = Some("https://gv.example/master.m3u8".to_string());
         formats[3].url = None;
-        let ranked = rank_yt_dlp_formats(&formats, true);
+        let ranked = rank_yt_dlp_formats(&formats, true, None);
         assert!(!ranked.is_empty(), "the audio-only formats must remain ranked");
         // Task 2a: the audio-only HLS manifest ranks FIRST now (§10 A measured
         // it playing in 1.13 s in WebKit vs 105 s fragmented progressive m4a).

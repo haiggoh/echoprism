@@ -197,6 +197,9 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
         }
     }
     let filtered = crate::hls_master::filter_master_playlist(&body, cap, start);
+    // 2026-11-18: never serve the geolocation-chosen AI dub as default audio —
+    // drop dub rungs and force DEFAULT onto the original one.
+    let filtered = crate::hls_master::force_original_audio(&filtered);
     let bytes = Bytes::from(filtered);
     Ok(Response::builder()
         .status(StatusCode::OK)

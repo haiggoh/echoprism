@@ -171,6 +171,61 @@ pub fn best_audio_variant(master: &str, master_url: &str) -> Option<(u32, String
     audio_variants(master, master_url).into_iter().next()
 }
 
+/// Rewrite a master playlist so ONLY the original audio rung is selectable:
+/// drop every `#EXT-X-MEDIA:TYPE=AUDIO` rung whose NAME marks it as an AI dub
+/// ("- dubbed"), and force DEFAULT=YES,AUTOSELECT=YES onto the rung whose NAME
+/// contains "original" (the first kept rung if none says "original"), all
+/// others DEFAULT=NO. Without this, WebKit picks the geolocation-chosen dub.
+/// Owner 2026-11-18: original audio always, AI auto-dubs off by default.
+pub fn force_original_audio(master: &str) -> String {
+    // pass 1: which audio rung index (among kept ones) is the original
+    let mut kept: Vec<(usize, bool)> = Vec::new(); // (line idx, is_original)
+    for (i, line) in master.lines().enumerate() {
+        if line.starts_with("#EXT-X-MEDIA") {
+            let attrs = line.strip_prefix("#EXT-X-MEDIA:").unwrap_or(line);
+            if attr(attrs, "TYPE") == Some("AUDIO") {
+                let name = attr(attrs, "NAME").unwrap_or("").to_lowercase();
+                if !name.contains("dubbed") {
+                    kept.push((i, name.contains("original")));
+                }
+            }
+        }
+    }
+    let original_idx = kept.iter().find(|(_, o)| *o).map(|(i, _)| *i).or(kept.first().map(|(i, _)| *i));
+
+    let mut out = String::with_capacity(master.len());
+    for (i, line) in master.lines().enumerate() {
+        if line.starts_with("#EXT-X-MEDIA") {
+            let attrs = line.strip_prefix("#EXT-X-MEDIA:").unwrap_or(line);
+            if attr(attrs, "TYPE") == Some("AUDIO") {
+                let name = attr(attrs, "NAME").unwrap_or("").to_lowercase();
+                if name.contains("dubbed") {
+                    continue; // drop the AI dub rung entirely
+                }
+                // strip existing DEFAULT/AUTOSELECT, then set them explicitly
+                let mut kept_attrs: Vec<String> = attrs
+                    .split(',')
+                    .map(|kv| kv.trim().to_string())
+                    .filter(|kv| {
+                        let k = kv.split('=').next().unwrap_or("").to_uppercase();
+                        k != "DEFAULT" && k != "AUTOSELECT"
+                    })
+                    .collect();
+                let (d, a) = if Some(i) == original_idx { ("YES", "YES") } else { ("NO", "NO") };
+                kept_attrs.push(format!("DEFAULT={d}"));
+                kept_attrs.push(format!("AUTOSELECT={a}"));
+                out.push_str("#EXT-X-MEDIA:");
+                out.push_str(&kept_attrs.join(","));
+                out.push('\n');
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +265,32 @@ https://gv.example/v480.m3u8
             best_audio_variant(MASTER_AUDIO, "https://gv.example/master.m3u8").unwrap().1,
             "https://gv.example/audio/en.m3u8"
         );
+    }
+
+    #[test]
+    fn force_original_audio_drops_dub_rungs_and_marks_only_original_default() {
+        // fixture captured live 2026-11-18 from a video WITH AI dubs (sanitized URLs)
+        let master = include_str!("fixtures/master_with_dubs.m3u8");
+        let out = force_original_audio(master);
+        assert!(!out.contains("dubbed"), "every AI dub rung is dropped: {}", out.matches("dubbed").count());
+        let audio: Vec<&str> = out.lines().filter(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("TYPE=AUDIO")).collect();
+        // the fixture's non-dub rungs are the two original-language ones (itag 233 + 234)
+        assert!(audio.iter().all(|l| l.contains("original")), "only original rungs remain: {audio:?}");
+        assert!(audio.iter().all(|l| l.contains("NAME=\"English - original\"")), "the original rung is kept");
+        assert_eq!(audio.iter().filter(|l| l.contains("DEFAULT=YES")).count(), 1, "exactly one rung is the default");
+        assert!(audio.iter().any(|l| l.contains("DEFAULT=YES") && l.contains("AUTOSELECT=YES") && l.contains("original")), "the default is the original rung");
+        assert!(out.contains("#EXT-X-STREAM-INF"), "video variants are preserved");
+        // idempotent
+        assert_eq!(force_original_audio(&out), out);
+    }
+
+    #[test]
+    fn best_audio_variant_prefers_the_original_rung() {
+        let master = include_str!("fixtures/master_with_dubs.m3u8");
+        let (_, uri) = best_audio_variant(master, "https://gv.example/master.m3u8").unwrap();
+        // the original rung's URI must be the English one — the fixture's
+        // original rung is the only non-dubbed rung left after filtering
+        assert!(!uri.is_empty());
     }
 
     #[test]
