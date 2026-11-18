@@ -122,7 +122,7 @@ const handlers: Record<string, Handler> = {
     // ep-hls-broken's master path is deliberately absent (the /test-media
     // middleware 404s it), so the player's media-error path must swap to
     // fallback_url.
-    if (ep.id === 'ep-hls-demo' || ep.id === 'ep-hls-broken' || ep.id === 'ep-hls-audio') {
+    if (ep.id === 'ep-hls-demo' || ep.id === 'ep-hls-broken' || ep.id === 'ep-hls-audio' || ep.id === 'ep-embed-blocked') {
       const q = freshTokenMode() ? `?r=${++streamNonce}` : '';
       if (format === 'audio') {
         return { url: `/test-media/hls/audio/media.m3u8${q}`, fallback_url: `/test-media/hls/audio-fallback.m4a${q}`, format: 'audio' };

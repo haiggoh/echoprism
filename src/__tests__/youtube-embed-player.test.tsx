@@ -24,11 +24,21 @@ describe('Task 5 embed player component', () => {
       posted.push(msg);
     });
 
-    // cast: TS narrows the callback-assigned `let` to null at this read site
+    // commands are QUEUED until the host page posts `ready` (a postMessage sent
+    // before the iframe's listener attaches is lost)
     const a = api as EmbedPlayerApi | null;
     if (!a) throw new Error('registerApi was not called');
     act(() => {
       a.load('abc', true);
+    });
+    expect(posted, 'nothing is posted before ready').toEqual([]);
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: 'ready' }, source: iframe.contentWindow }),
+      );
+    });
+    expect(posted).toEqual([{ cmd: 'load', videoId: 'abc', autoplay: true }]);
+    act(() => {
       a.play();
       a.pause();
       a.seek(12);

@@ -201,6 +201,21 @@ export const mockDb: MockDb = {
       updated_at: now,
     },
     {
+      // Task 5 e2e: played through the embed player; the stub host page
+      // answers error 150 for this video_id, forcing the extractor fallback.
+      id: 'ep-embed-blocked',
+      channel_id: 'ch-1',
+      external_id: 'embed-blocked-150',
+      title: 'video: embed blocked fixture (error 150)',
+      video_id: 'embed-blocked-150',
+      duration_seconds: 4,
+      progress_seconds: 0,
+      is_downloaded: false,
+      published_at: '2026-10-16T00:00:00Z',
+      created_at: now,
+      updated_at: now,
+    },
+    {
       id: 'ep-pod-1',
       channel_id: 'ch-2',
       external_id: 'deep-dive-042',
