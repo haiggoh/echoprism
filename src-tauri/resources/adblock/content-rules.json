@@ -1,0 +1,16 @@
+[
+  {
+    "trigger": {
+      "url-filter": ".*doubleclick\\.net.*|.*googlesyndication\\.com.*|.*googleadservices\\.com.*",
+      "resource-type": ["script", "xmlhttprequest", "image", "stylesheet"]
+    },
+    "action": { "type": "block" }
+  },
+  {
+    "trigger": {
+      "url-filter": ".*/pagead/.*|.*/api/stats/ads.*|.*/ptracking.*",
+      "resource-type": ["script", "xmlhttprequest", "image"]
+    },
+    "action": { "type": "block" }
+  }
+]

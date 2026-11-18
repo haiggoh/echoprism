@@ -7,6 +7,57 @@
 </head>
 <body>
 <div id="player"></div>
+<script>
+  // Task 5 ad blocking (json-prune pattern). MUST run before the IFrame API
+  // loads so its own requests are wrapped. Keep in sync with src/lib/adPrune.ts
+  // (the unit-tested copy).
+  (function () {
+    var AD_KEYS = { adPlacements: 1, playerAds: 1, adSlots: 1 };
+    function prune(v) {
+      if (Array.isArray(v)) return v.map(prune);
+      if (v && typeof v === 'object') {
+        var out = {};
+        for (var k in v) { if (!AD_KEYS[k]) out[k] = prune(v[k]); }
+        return out;
+      }
+      return v;
+    }
+    function pruneText(text) {
+      var obj;
+      try { obj = JSON.parse(text); } catch (e) { return text; }
+      if (!obj || typeof obj !== 'object') return text;
+      if (!('ytInitialPlayerResponse' in obj) && !('playabilityStatus' in obj) && !('playerAds' in obj)) return text;
+      return JSON.stringify(prune(obj));
+    }
+    var origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      return origFetch.apply(this, arguments).then(function (resp) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (!/youtubei\/v1\/player|youtube-nocookie\.com|youtube\.com/.test(url)) return resp;
+        return resp.text().then(function (t) {
+          return new Response(pruneText(t), { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+        });
+      });
+    };
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__epUrl = String(url);
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function () {
+      var self = this;
+      if (/youtubei\/v1\/player|youtube-nocookie\.com|youtube\.com/.test(self.__epUrl || '')) {
+        var origText = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
+        Object.defineProperty(self, 'responseText', {
+          configurable: true,
+          get: function () { return pruneText(origText.get.call(self)); },
+        });
+      }
+      return origSend.apply(this, arguments);
+    };
+  })();
+</script>
 <script src="https://www.youtube-nocookie.com/iframe_api"></script>
 <script>
   // Task 5 host page. It is served from the app's OWN proxy origin
