@@ -352,6 +352,16 @@ function PreferencesTab() {
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
+              aria-label="Use YouTube's player for video"
+              checked={preferences?.use_youtube_player ?? false}
+              onChange={(e) => updateMutation.mutate({ use_youtube_player: e.target.checked })}
+              className="w-4 h-4 accent-accent rounded border-border"
+            />
+            <span className="text-sm">Use YouTube's player for video (faster start, may show ads it fails to block)</span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
               checked={preferences?.audio_only_on_metered ?? false}
               onChange={(e) => updateMutation.mutate({ audio_only_on_metered: e.target.checked })}
               className="w-4 h-4 accent-accent rounded border-border"

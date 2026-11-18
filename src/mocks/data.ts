@@ -505,6 +505,7 @@ export const mockDb: MockDb = {
     audio_only_on_metered: false,
     metered_restore: 'restore',
     skip_podcast_trackers: true,
+    use_youtube_player: false, // Task 5: embed player off by default
     updated_at: now,
   },
 };

@@ -165,6 +165,9 @@ pub struct UserPreferences {
     /// Skip podcast tracker redirects (Task 7), on by default.
     #[serde(default = "default_skip_trackers")]
     pub skip_podcast_trackers: bool,
+    /// Task 5: use YouTube's own IFrame player for video mode. Default false (off).
+    #[serde(default)]
+    pub use_youtube_player: bool,
     pub updated_at: DateTimeUtc,
 }
 
@@ -206,6 +209,7 @@ pub struct UserPreferencesPatch {
     pub audio_only_on_metered: Option<bool>,
     pub metered_restore: Option<MeteredRestore>,
     pub skip_podcast_trackers: Option<bool>,
+    pub use_youtube_player: Option<bool>,
 }
 
 impl UserPreferencesPatch {
@@ -230,6 +234,7 @@ impl UserPreferencesPatch {
         if let Some(v) = self.audio_only_on_metered { base.audio_only_on_metered = v; }
         if let Some(v) = self.metered_restore { base.metered_restore = v; }
         if let Some(v) = self.skip_podcast_trackers { base.skip_podcast_trackers = v; }
+        if let Some(v) = self.use_youtube_player { base.use_youtube_player = v; }
         base
     }
 }

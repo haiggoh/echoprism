@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, card_click_action = ?, windowed_quality_cap = ?, fullscreen_quality_cap = ?, start_quality = ?, data_saver = ?, audio_only_on_metered = ?, metered_restore = ?, skip_podcast_trackers = ?, use_youtube_player = ?, updated_at = ? WHERE user_id = 'current-user'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 19
+    },
+    "nullable": []
+  },
+  "hash": "71e2c9b6204696e2ba110cb9040233ae04b0b3694dfc47f755c3e5273d06fc70"
+}

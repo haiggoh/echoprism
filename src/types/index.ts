@@ -35,6 +35,8 @@ export interface UserPreferences {
   metered_restore?: 'restore' | 'ask';
   /** Task 7/10: skip podcast tracker redirects. Default true. */
   skip_podcast_trackers?: boolean;
+  /** Task 5: use YouTube's own player for video (faster start, may show ads it fails to block). Default false. */
+  use_youtube_player?: boolean;
   updated_at: string;
 }
 

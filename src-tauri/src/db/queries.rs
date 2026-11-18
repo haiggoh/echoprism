@@ -1459,6 +1459,7 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
             audio_only_on_metered,
             metered_restore,
             skip_podcast_trackers,
+            use_youtube_player,
             updated_at
          FROM user_preferences WHERE user_id = 'current-user'"#
     )
@@ -1489,6 +1490,7 @@ pub async fn get_preferences(pool: &SqlitePool) -> DbResult<UserPreferences> {
         audio_only_on_metered: row.audio_only_on_metered != 0,
         metered_restore: MeteredRestore::from_str(&row.metered_restore).unwrap_or_default(),
         skip_podcast_trackers: row.skip_podcast_trackers != 0,
+        use_youtube_player: row.use_youtube_player != 0,
         updated_at: DateTimeUtc::from(row.updated_at),
     })
 }
@@ -1509,12 +1511,13 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
     let data_saver = prefs.data_saver as i64;
     let audio_only_on_metered = prefs.audio_only_on_metered as i64;
     let skip_podcast_trackers = prefs.skip_podcast_trackers as i64;
+    let use_youtube_player = prefs.use_youtube_player as i64;
     let windowed_quality_cap = prefs.windowed_quality_cap.map(|v| v as i64);
     let fullscreen_quality_cap = prefs.fullscreen_quality_cap.map(|v| v as i64);
     let now = chrono::Utc::now().to_rfc3339();
 
     query!(
-        "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, card_click_action = ?, windowed_quality_cap = ?, fullscreen_quality_cap = ?, start_quality = ?, data_saver = ?, audio_only_on_metered = ?, metered_restore = ?, skip_podcast_trackers = ?, updated_at = ? WHERE user_id = 'current-user'",
+        "UPDATE user_preferences SET default_format = ?, queue_behavior = ?, audio_only_default = ?, auto_download_wifi = ?, sponsorblock_enabled = ?, sponsorblock_categories = ?, keyboard_shortcuts_enabled = ?, theme = ?, cross_device_sync_enabled = ?, card_click_action = ?, windowed_quality_cap = ?, fullscreen_quality_cap = ?, start_quality = ?, data_saver = ?, audio_only_on_metered = ?, metered_restore = ?, skip_podcast_trackers = ?, use_youtube_player = ?, updated_at = ? WHERE user_id = 'current-user'",
         default_format,
         queue_behavior,
         audio_only_default,
@@ -1532,6 +1535,7 @@ pub async fn update_preferences(pool: &SqlitePool, prefs: UserPreferences) -> Db
         audio_only_on_metered,
         metered_restore,
         skip_podcast_trackers,
+        use_youtube_player,
         now
     ).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())

@@ -93,6 +93,16 @@ mod tests {
         assert_eq!(serde_json::to_value(&merged).unwrap(), serde_json::to_value(base()).unwrap());
     }
 
+    #[test]
+    fn use_youtube_player_patch_merges() {
+        // Task 5: the embed toggle is a one-field patch like every other setting.
+        assert!(!base().use_youtube_player, "default is OFF");
+        let patch: UserPreferencesPatch =
+            serde_json::from_value(json!({ "use_youtube_player": true })).expect("a one-field patch parses");
+        let merged = patch.apply(base());
+        assert!(merged.use_youtube_player, "the patched field changed");
+    }
+
     // ---- Task 10: playback quality / podcast settings ----
 
     #[test]
