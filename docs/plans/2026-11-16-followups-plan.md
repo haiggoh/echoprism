@@ -650,3 +650,11 @@ new task will be added to this plan on master; until then video stays on the war
   02c8072d · live AX dogfood of the playhead switch: NOT TESTED (AX button discovery unreliable in
   this headless context) — the delivery proof is the webkit e2e 3-leg cache-hit test, mutation
   RED→GREEN in the real engine
+- 2026-11-18 · ship v0.1.23 (header search wired to /search?q=; gate timing tests hardened) ·
+  9082502b on master · rtc-ship.sh from ~/.wt/ep-round-next EXIT:0 (reaped+backed up): tag v0.1.23
+  (bb04a854) VISIBLE via ls-remote, release published; launch gate on EchoPrism_0.1.23_aarch64.dmg
+  (sha256 939e9f48…, otool 0 bad links, ALIVE 12 s from mount); cask 85461ee (brew info → 0.1.23);
+  gates tsc/eslint EXIT:0, vitest 407/407, e2e 76/76 both projects, cargo lib 251/251; F02-H2 e2e
+  RED→GREEN for the header search fix; flaky gate tests hardened (42/42 ×2 + 251/251) ·
+  Task 5 plan written at docs/plans/2026-11-18-youtube-embed-player.md (branch feat/youtube-embed,
+  77e9a5e1)
