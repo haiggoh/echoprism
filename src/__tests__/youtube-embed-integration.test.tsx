@@ -91,7 +91,6 @@ describe('Task 5 embed integration', () => {
       api.play(videoEpisode('ep-vid-1', 'A video episode'));
     });
     await waitFor(() => expect(api.embedPlayerActive).toBe(true));
-    await waitFor(() => expect(api.embedPort).toBe(1420));
 
     // audio-only never uses the embed, but the iframe stays mounted (warm)
     await act(async () => {

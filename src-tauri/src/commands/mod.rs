@@ -17,3 +17,4 @@ pub mod downloads;
 pub mod crash;
 pub mod preview;
 pub mod notifications;
+pub mod proxy;

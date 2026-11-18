@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, Re
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
-import { episodeCommands, historyCommands, settingsCommands, proxyCommands } from '../hooks/useTauriCommands';
+import { episodeCommands, historyCommands, settingsCommands } from '../hooks/useTauriCommands';
 // Namespace import for the match-on-play call: several engine tests partially
 // mock useTauriCommands WITHOUT smartLinkCommands — the optional chain keeps
 // those green while the real app always has the export.
@@ -72,7 +72,6 @@ interface PlayerContextType {
    * actual playback engine (video format, not error-fallback-blocked). */
   embedMounted: boolean;
   embedPlayerActive: boolean;
-  embedPort: number | null;
   onEmbedEvent: (e: EmbedEvent) => void;
   registerEmbedApi: (api: EmbedPlayerApi | null) => void;
 }
@@ -126,7 +125,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playbackFormat, setPlaybackFormat] = useState<'video' | 'audio'>('video');
 
   // ---- Task 5: YouTube embed player ----
-  const [embedPort, setEmbedPort] = useState<number | null>(null);
   const [embedApi, setEmbedApi] = useState<EmbedPlayerApi | null>(null);
   const [embedBlocked, setEmbedBlocked] = useState(false);
   const embedApiRef = useRef<EmbedPlayerApi | null>(null);
@@ -359,19 +357,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [setStoreAudioMode]);
-  // Task 5: learn the local proxy port once, for the embed host page URL.
-  useEffect(() => {
-    let cancelled = false;
-    proxyCommands
-      .port()
-      .then((p) => {
-        if (!cancelled) setEmbedPort(p);
-      })
-      .catch(() => setEmbedPort(null));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // NOTE: the proxy port is fetched by PlayerScreen (which renders the
+  // iframe), NOT here — an async setState inside this provider perturbs the
+  // media-engine effect ordering (measured: podcast-seek duration adoption
+  // broke when the port effect lived here).
 
   const setAudioMode = useCallback(
     (mode: boolean) => {
@@ -1038,7 +1027,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     registerVideoElement,
     embedMounted,
     embedPlayerActive: embedActive,
-    embedPort,
     onEmbedEvent,
     registerEmbedApi,
   };

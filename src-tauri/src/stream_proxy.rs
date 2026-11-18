@@ -40,10 +40,10 @@ struct Entry {
     refresh: Option<RefreshFn>,
 }
 
-struct ProxyState {
+pub(crate) struct ProxyState {
     entries: DashMap<String, Entry>,
     client: reqwest::Client,
-    port: u16,
+    pub(crate) port: u16,
 }
 
 static PROXY: OnceLock<Arc<ProxyState>> = OnceLock::new();
@@ -63,7 +63,7 @@ fn proxy_client(idle: std::time::Duration) -> reqwest::Client {
         .expect("proxy client")
 }
 
-fn state() -> Arc<ProxyState> {
+pub(crate) fn state() -> Arc<ProxyState> {
     PROXY.get_or_init(|| {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind proxy");
         let port = listener.local_addr().expect("addr").port();
@@ -205,13 +205,6 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
         .header(hyper::header::CACHE_CONTROL, "no-store")
         .body(BodyExt::boxed(http_body_util::Full::new(bytes).map_err(|e| match e {}).boxed()))
         .unwrap())
-}
-
-/// Task 5: the local proxy's port, so the frontend can build the embed host
-/// page URL `http://127.0.0.1:<port>/embed/player.html`.
-#[tauri::command]
-pub fn proxy_port() -> u16 {
-    state().port
 }
 
 /// Task 5: the YouTube IFrame Player API host page, embedded at compile time

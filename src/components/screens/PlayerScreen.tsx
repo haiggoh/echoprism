@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { episodeCommands } from '../../hooks/useTauriCommands';
+import * as tauriCommands from '../../hooks/useTauriCommands';
 import { usePlayer } from '../PlayerProvider';
 import { YoutubeEmbedPlayer } from '../player/YoutubeEmbedPlayer';
 import { Episode } from '../../types';
@@ -32,10 +33,29 @@ export function PlayerScreen() {
     registerVideoElement,
     embedMounted,
     embedPlayerActive,
-    embedPort,
     onEmbedEvent,
     registerEmbedApi,
   } = usePlayer();
+  // Task 5: the proxy port lives HERE (not in PlayerProvider — an async
+  // setState inside the engine provider perturbs its effect ordering).
+  const [embedPort, setEmbedPort] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let portPromise: Promise<number> | undefined;
+    try {
+      portPromise = tauriCommands.proxyCommands?.port?.();
+    } catch {
+      portPromise = undefined; // partial useTauriCommands mocks in tests
+    }
+    portPromise
+      ?.then((p) => {
+        if (!cancelled) setEmbedPort(p);
+      })
+      .catch(() => setEmbedPort(null));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (episodeId) {

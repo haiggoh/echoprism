@@ -25,8 +25,8 @@ describe('mock IPC router', () => {
     // 4 original fixtures + the D6/D7 two-stream show (4 episodes) + the
     // round 6 long-title transport fixture (ep-video-long) + the Task 1/2a
     // (2026-11-16-followups-plan) HLS e2e trio (ep-hls-demo, ep-hls-broken,
-    // ep-hls-audio)
-    expect(episodes).toHaveLength(12);
+    // ep-hls-audio) + the Task 5 embed-blocked fixture (ep-embed-blocked)
+    expect(episodes).toHaveLength(13);
     const titles = episodes.map((e) => e.title).join('|');
     expect(titles).toContain('video');
     expect(titles).toContain('podcast');
