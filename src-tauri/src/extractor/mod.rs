@@ -560,6 +560,7 @@ impl Extractor {
                 .iter()
                 .find(|f| {
                     f.protocol.as_deref() == Some("m3u8_native")
+                        && !is_dubbed(f)
                         && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
                 })
                 .cloned()
@@ -632,6 +633,24 @@ impl Extractor {
         // fallback_url (ungated, best-effort — same policy as the video
         // fallback, Task 12 acceptance).
         if want_audio {
+            // Best non-dub progressive audio-only format rides along as
+            // fallback_url in every audio path (ungated, best-effort).
+            let progressive_fallback = || -> Option<String> {
+                let fb = candidates.iter().find(|f| {
+                    is_progressive_format(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec)
+                })?;
+                let fb_url = fb.url.clone().unwrap_or_default();
+                let fb_headers = fb.http_headers.clone().unwrap_or_default();
+                Some(if fb_headers.is_empty() {
+                    fb_url
+                } else {
+                    crate::stream_proxy::register_with_refresh(
+                        &fb_url,
+                        fb_headers,
+                        self.refresh_ytdlp_url(video_id, true, fb.format_id.clone(), false),
+                    )
+                })
+            };
             // Ranked order, not declaration order: the highest-abr audio-only
             // HLS rendition (233 over 234) wins.
             if let Some(hls) = candidates.iter().find(|f| is_audio_hls_format(f)).cloned() {
@@ -653,24 +672,7 @@ impl Extractor {
                 let check = probe.get(&serve_url).header("Range", "bytes=0-0").send().await;
                 probe_ms += t_probe.elapsed().as_millis() as u64;
                 if matches!(&check, Ok(r) if r.status().is_success() || r.status() == 206) {
-                    let fallback_url = 'fallback: {
-                        let Some(fb) = candidates.iter().find(|f| {
-                            is_progressive_format(f) && is_none_codec(&f.vcodec) && !is_none_codec(&f.acodec)
-                        }) else {
-                            break 'fallback None;
-                        };
-                        let fb_url = fb.url.clone().unwrap_or_default();
-                        let fb_headers = fb.http_headers.clone().unwrap_or_default();
-                        Some(if fb_headers.is_empty() {
-                            fb_url
-                        } else {
-                            crate::stream_proxy::register_with_refresh(
-                                &fb_url,
-                                fb_headers,
-                                self.refresh_ytdlp_url(video_id, true, fb.format_id.clone(), false),
-                            )
-                        })
-                    };
+                    let fallback_url = progressive_fallback();
                     tracing::info!("yt-dlp audio -> audio-only HLS (fallback: {:?})", fallback_url);
                     return Ok(StreamUrl {
                         url: serve_url,
@@ -689,6 +691,73 @@ impl Extractor {
                     });
                 }
                 tracing::warn!("audio HLS check failed ({:?}), falling back to progressive", check.map(|r| r.status()));
+            }
+            // 2026-11-18: formats 233/234 are PER-REQUEST — YouTube omits them
+            // from many -J dumps (seen live; network-independent, would happen
+            // on wifi too). When they are absent (or their probe fails), take
+            // the audio-only EXT-X-MEDIA rung of the VIDEO HLS master — present
+            // whenever video HLS works — instead of falling through to a
+            // multi-MB progressive audio file (the §10 A fragment walk, which
+            // is what stalls for minutes on a slow link).
+            if let Some(master) = dump.formats.iter().find(|f| {
+                f.protocol.as_deref() == Some("m3u8_native")
+                    && !is_dubbed(f)
+                    && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
+                    && !is_none_codec(&f.vcodec)
+            }).cloned() {
+                let manifest = master.manifest_url.clone().unwrap_or_default();
+                let mheaders = master.http_headers.clone().unwrap_or_default();
+                let fetch_url = if mheaders.is_empty() {
+                    manifest.clone()
+                } else {
+                    crate::stream_proxy::register_with_refresh(
+                        &manifest,
+                        mheaders.clone(),
+                        self.refresh_ytdlp_url(video_id, true, None, true),
+                    )
+                };
+                let t0 = std::time::Instant::now();
+                let master_resp = probe.get(&fetch_url).send().await;
+                probe_ms += t0.elapsed().as_millis() as u64;
+                if let Ok(r) = master_resp {
+                    if r.status().is_success() {
+                        let text = r.text().await.unwrap_or_default();
+                        if let Some((bw, uri)) = crate::hls_master::best_audio_variant(&text, &manifest) {
+                            let serve_url = if mheaders.is_empty() {
+                                uri.clone()
+                            } else {
+                                crate::stream_proxy::register_with_refresh(
+                                    &uri,
+                                    mheaders.clone(),
+                                    self.refresh_ytdlp_url(video_id, true, None, true),
+                                )
+                            };
+                            let t1 = std::time::Instant::now();
+                            let check = probe.get(&serve_url).header("Range", "bytes=0-0").send().await;
+                            probe_ms += t1.elapsed().as_millis() as u64;
+                            if matches!(&check, Ok(r) if r.status().is_success() || r.status() == 206) {
+                                let fallback_url = progressive_fallback();
+                                tracing::info!("yt-dlp audio -> HLS master audio variant bw={bw} (fallback: {:?})", fallback_url);
+                                return Ok(StreamUrl {
+                                    url: serve_url,
+                                    format: "hls".to_string(),
+                                    quality: quality.unwrap_or("auto").to_string(),
+                                    headers: None,
+                                    timings: Some(crate::startup_timer::ResolveTimings {
+                                        instances_ms: 0,
+                                        ytdlp_ms,
+                                        gate_ms,
+                                        probe_ms,
+                                        cache_hit: false,
+                                        joined_ms: None,
+                                    }),
+                                    fallback_url,
+                                });
+                            }
+                            tracing::warn!("master audio variant probe failed ({:?})", check.map(|r| r.status()));
+                        }
+                    }
+                }
             }
         }
         for cand in &candidates {
@@ -1274,11 +1343,42 @@ struct YtDlpFormat {
     acodec: Option<String>,
     abr: Option<f64>,
     height: Option<u32>,
+    /// 2026-11-18 (AI auto-dubs): yt-dlp surfaces AI-translated audio as
+    /// format_note "…dubbed…" and/or audio_track.kind == "dub". The app
+    /// rejects those (original audio by default, owner 2026-11-18).
+    #[serde(default)]
+    format_note: Option<String>,
+    #[serde(default)]
+    audio_track: Option<AudioTrack>,
     protocol: Option<String>,
 }
 
 fn is_none_codec(c: &Option<String>) -> bool {
     c.as_deref().is_none_or(|c| c == "none")
+}
+
+/// yt-dlp's audio-track descriptor (`audio_track` in the -J dump).
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct AudioTrack {
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)] // wire schema; read via is_dubbed on kind
+    pub lang: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub label: Option<String>,
+}
+
+/// True when a format is an AI-translated DUB (not the original audio).
+/// Owner 2026-11-18: original audio by default; dubs are rejected everywhere
+/// (candidate ranking, HLS picks, progressive fallback).
+fn is_dubbed(f: &YtDlpFormat) -> bool {
+    if f.audio_track.as_ref().and_then(|t| t.kind.as_deref()) == Some("dub") {
+        return true;
+    }
+    let note = f.format_note.as_deref().unwrap_or("").to_lowercase();
+    note.contains("dub") || note.contains("translat")
 }
 
 /// Task 2c (§10 C): the old `youtube:player_client=mediaconnect` extractor-args
@@ -1393,6 +1493,7 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
     // stream (round 6: one was served to <video> -> MediaError 4).
     let usable = |f: &YtDlpFormat| {
         f.protocol.as_deref() != Some("mhtml")
+            && !is_dubbed(f)
             && (f.url.as_ref().is_some_and(|u| !u.is_empty()) || f.manifest_url.is_some())
     };
     let cands: Vec<YtDlpFormat> = formats.iter().filter(|f| usable(f)).cloned().collect();
@@ -1400,7 +1501,7 @@ fn rank_yt_dlp_formats(formats: &[YtDlpFormat], want_audio: bool) -> Vec<YtDlpFo
         // Task 2a: audio-only HLS renditions rank FIRST (§10 A: 1.13 s vs
         // 105 s); progressive audio-only follows as the fallback_url source.
         // Task 6: still never a video codec in an audio rank.
-        let mut hls: Vec<_> = formats.iter().filter(|f| is_audio_hls_format(f)).cloned().collect();
+        let mut hls: Vec<_> = formats.iter().filter(|f| is_audio_hls_format(f) && !is_dubbed(f)).cloned().collect();
         hls.sort_by(|a, b| b.abr.unwrap_or(0.0).partial_cmp(&a.abr.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
         let mut audio_only: Vec<_> = cands
             .into_iter()
@@ -1681,7 +1782,30 @@ mod tests {
             abr,
             height,
             protocol: Some("https".into()),
+            format_note: None,
+            audio_track: None,
         }
+    }
+
+    #[test]
+    fn dubbed_formats_are_never_ranked() {
+        // Owner 2026-11-18: AI auto-dubbed tracks (format_note "…dubbed…" or
+        // audio_track.kind == "dub") must never be picked — original audio only.
+        let mut dub = fmt("https://a/128", Some("none"), Some("mp4a"), Some(128.0), None);
+        dub.format_note = Some("medium, auto-dubbed".into());
+        let mut dub2 = fmt("https://a/64", Some("none"), Some("opus"), Some(64.0), None);
+        dub2.audio_track = Some(AudioTrack {
+            kind: Some("dub".into()),
+            lang: Some("de".into()),
+            label: Some("German".into()),
+        });
+        let orig = fmt("https://a/96", Some("none"), Some("mp4a"), Some(96.0), None);
+        assert!(is_dubbed(&dub) && is_dubbed(&dub2) && !is_dubbed(&orig));
+        let ranked = rank_yt_dlp_formats(&[dub.clone(), dub2, orig.clone()], true);
+        assert_eq!(ranked.len(), 1, "dubs are excluded from the ranked candidates");
+        assert_eq!(ranked[0].url.as_deref(), Some("https://a/96"));
+        let ranked_video = rank_yt_dlp_formats(&[dub], false);
+        assert!(ranked_video.is_empty(), "dubs are excluded in video mode too");
     }
 
     #[test]

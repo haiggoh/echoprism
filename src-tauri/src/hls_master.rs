@@ -125,6 +125,52 @@ pub fn filter_master_playlist(master: &str, cap_height: Option<u32>, start: Star
     out
 }
 
+/// Parse one `KEY="value"` / `KEY=value` attribute out of an HLS attribute list.
+fn attr<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
+    attrs.split(',').find_map(|kv| {
+        let v = kv.trim().strip_prefix(key)?.strip_prefix('=')?;
+        Some(v.trim_matches('"'))
+    })
+}
+
+/// All `#EXT-X-MEDIA:TYPE=AUDIO` rungs of a master playlist as
+/// `(bandwidth, absolute URI)`, highest bandwidth first. Rungs whose NAME or
+/// CHARACTERISTICS marks them as AI dubs (YouTube's auto-translated audio,
+/// e.g. CHARACTERISTICS="public.dub") are skipped — original audio only
+/// (owner 2026-11-18). Relative URIs resolve against `master_url`.
+pub fn audio_variants(master: &str, master_url: &str) -> Vec<(u32, String)> {
+    let base = reqwest::Url::parse(master_url).ok();
+    let mut out = Vec::new();
+    for line in master.lines() {
+        if !line.starts_with("#EXT-X-MEDIA") {
+            continue;
+        }
+        let attrs = line.strip_prefix("#EXT-X-MEDIA:").unwrap_or(line);
+        if attr(attrs, "TYPE") != Some("AUDIO") {
+            continue;
+        }
+        let label = format!("{} {}", attr(attrs, "NAME").unwrap_or(""), attr(attrs, "CHARACTERISTICS").unwrap_or(""));
+        if label.to_lowercase().contains("dub") {
+            continue; // AI auto-dub rung — never the default
+        }
+        let Some(uri) = attr(attrs, "URI") else { continue };
+        let bw: u32 = attr(attrs, "BANDWIDTH").and_then(|v| v.parse().ok()).unwrap_or(0);
+        let abs = base
+            .as_ref()
+            .and_then(|b| b.join(uri).ok())
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| uri.to_string());
+        out.push((bw, abs));
+    }
+    out.sort_by(|a, b| b.0.cmp(&a.0));
+    out
+}
+
+/// Best (highest-bandwidth) original-audio variant rung of a master playlist.
+pub fn best_audio_variant(master: &str, master_url: &str) -> Option<(u32, String)> {
+    audio_variants(master, master_url).into_iter().next()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +191,33 @@ https://gv.example/v2160.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=99999
 https://gv.example/v-nores.m3u8
 ";
+
+    const MASTER_AUDIO: &str = "#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"English (original)\",URI=\"audio/en.m3u8\",BANDWIDTH=129000
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"German\",CHARACTERISTICS=\"public.dub\",URI=\"audio/de.m3u8\",BANDWIDTH=131000
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=854x480,AUDIO=\"aud\"
+https://gv.example/v480.m3u8
+";
+
+    #[test]
+    fn audio_variants_skip_dubbed_rungs_and_resolve_relative_uris() {
+        let v = audio_variants(MASTER_AUDIO, "https://gv.example/master.m3u8");
+        assert_eq!(v.len(), 1, "the German dub rung must be excluded");
+        assert_eq!(v[0].0, 129000);
+        assert_eq!(v[0].1, "https://gv.example/audio/en.m3u8", "relative URI resolves against the master");
+        assert_eq!(
+            best_audio_variant(MASTER_AUDIO, "https://gv.example/master.m3u8").unwrap().1,
+            "https://gv.example/audio/en.m3u8"
+        );
+    }
+
+    #[test]
+    fn audio_variants_keep_absolute_uris() {
+        let m = MASTER_AUDIO.replace("audio/en.m3u8", "https://cdn.example/en.m3u8").replace("audio/de.m3u8", "https://cdn.example/de.m3u8");
+        let v = audio_variants(&m, "https://gv.example/master.m3u8");
+        assert_eq!(v[0].1, "https://cdn.example/en.m3u8");
+    }
 
     fn variant_heights(playlist: &str) -> Vec<u32> {
         let mut out = Vec::new();
