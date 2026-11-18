@@ -117,6 +117,9 @@ pub fn register_hls_master(
     refresh: Option<RefreshFn>,
     cap: Option<u32>,
     start: crate::hls_master::StartQuality,
+    subs: &str,
+    sublang: &str,
+    olang: &str,
 ) -> String {
     let st = state();
     let token = uuid::Uuid::new_v4().simple().to_string();
@@ -133,8 +136,8 @@ pub fn register_hls_master(
         crate::hls_master::StartQuality::Cap => "cap",
     };
     format!(
-        "http://127.0.0.1:{}/hls/{}/master.m3u8?cap={}&start={}",
-        st.port, token, cap_q, start_q
+        "http://127.0.0.1:{}/hls/{}/master.m3u8?cap={}&start={}&subs={}&lang={}&olang={}",
+        st.port, token, cap_q, start_q, subs, sublang, olang
     )
 }
 
@@ -196,10 +199,29 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
             };
         }
     }
+    let mut olang_opt: Option<String> = None;
     let filtered = crate::hls_master::filter_master_playlist(&body, cap, start);
     // 2026-11-18: never serve the geolocation-chosen AI dub as default audio —
     // drop dub rungs and force DEFAULT onto the original one.
-    let filtered = crate::hls_master::force_original_audio(&filtered);
+    let filtered = crate::hls_master::force_original_audio(&filtered, olang_opt.as_deref());
+    // 2026-11-18: subtitle policy from the query (?subs=1&lang=de): off by
+    // default — WebKit auto-shows the AUTOSELECT subtitle rung otherwise.
+    let mut subs_on = false;
+    let mut sublang = "en";
+    for pair in query.split('&') {
+        if let Some(v) = pair.strip_prefix("subs=") {
+            subs_on = v == "1";
+        } else if let Some(v) = pair.strip_prefix("lang=") {
+            if !v.is_empty() {
+                sublang = v;
+            }
+        } else if let Some(v) = pair.strip_prefix("olang=") {
+            if !v.is_empty() {
+                olang_opt = Some(v.to_string());
+            }
+        }
+    }
+    let filtered = crate::hls_master::apply_subtitle_policy(&filtered, subs_on, sublang);
     let bytes = Bytes::from(filtered);
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -574,6 +596,9 @@ mod tests {
             None,
             Some(180),
             crate::hls_master::StartQuality::Lowest,
+            "0",
+            "en",
+            "en",
         );
         let client = reqwest::Client::new();
         let resp = client.get(&local).send().await.expect("proxy hls response");

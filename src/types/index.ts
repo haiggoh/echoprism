@@ -37,6 +37,10 @@ export interface UserPreferences {
   skip_podcast_trackers?: boolean;
   /** Task 5: use YouTube's own player for video (faster start, may show ads it fails to block). Default false. */
   use_youtube_player?: boolean;
+  /** 2026-11-18: show HLS subtitles. Default false (many users want none). */
+  subtitles_enabled?: boolean;
+  /** 2026-11-18: subtitle language (ISO 639-1 code, e.g. "en", "de"). Default 'en'. */
+  subtitle_language?: string;
   updated_at: string;
 }
 

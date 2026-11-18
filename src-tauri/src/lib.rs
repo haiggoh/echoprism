@@ -123,6 +123,8 @@ pub fn run() {
                     types::StartQualityPref::Lowest => hls_master::StartQuality::Lowest,
                     types::StartQualityPref::Cap => hls_master::StartQuality::Cap,
                 };
+                *extractor.subs_enabled.write().unwrap() = prefs.subtitles_enabled;
+                *extractor.subs_lang.write().unwrap() = prefs.subtitle_language.clone();
             }
             let extractor = Arc::new(extractor);
             app.manage(extractor.clone());

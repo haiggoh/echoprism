@@ -35,6 +35,9 @@ pub async fn update_settings(
         StartQualityPref::Lowest => crate::hls_master::StartQuality::Lowest,
         StartQualityPref::Cap => crate::hls_master::StartQuality::Cap,
     };
+    // 2026-11-18: subtitle policy is read per resolve by the proxy via the URL
+    *extractor.subs_enabled.write().unwrap() = merged.subtitles_enabled;
+    *extractor.subs_lang.write().unwrap() = merged.subtitle_language.clone();
     Ok(())
 }
 
@@ -91,6 +94,19 @@ mod tests {
         let patch: UserPreferencesPatch = serde_json::from_value(json!({})).unwrap();
         let merged = patch.apply(base());
         assert_eq!(serde_json::to_value(&merged).unwrap(), serde_json::to_value(base()).unwrap());
+    }
+
+    #[test]
+    fn subtitle_prefs_patch_merges() {
+        // 2026-11-18: subtitles off by default, language selectable.
+        assert!(!base().subtitles_enabled, "subtitles OFF by default");
+        assert_eq!(base().subtitle_language, "en");
+        let patch: UserPreferencesPatch =
+            serde_json::from_value(json!({ "subtitles_enabled": true, "subtitle_language": "de" }))
+                .expect("a two-field patch parses");
+        let merged = patch.apply(base());
+        assert!(merged.subtitles_enabled);
+        assert_eq!(merged.subtitle_language, "de");
     }
 
     #[test]

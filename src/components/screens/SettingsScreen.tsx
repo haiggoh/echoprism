@@ -362,6 +362,32 @@ function PreferencesTab() {
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
+              aria-label="Show subtitles"
+              checked={preferences?.subtitles_enabled ?? false}
+              onChange={(e) => updateMutation.mutate({ subtitles_enabled: e.target.checked })}
+              className="w-4 h-4 accent-accent rounded border-border"
+            />
+            <span className="text-sm">Show subtitles</span>
+          </label>
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm">Subtitle language</span>
+            <select
+              aria-label="Subtitle language"
+              value={preferences?.subtitle_language ?? 'en'}
+              onChange={(e) => updateMutation.mutate({ subtitle_language: e.target.value })}
+              disabled={!(preferences?.subtitles_enabled ?? false)}
+              className="px-3 py-2 bg-surface border border-border rounded-md text-text focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+            >
+              {['en', 'de', 'es', 'fr', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'hi', 'ar'].map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
               checked={preferences?.audio_only_on_metered ?? false}
               onChange={(e) => updateMutation.mutate({ audio_only_on_metered: e.target.checked })}
               className="w-4 h-4 accent-accent rounded border-border"

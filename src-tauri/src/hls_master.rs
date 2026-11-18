@@ -167,8 +167,92 @@ pub fn audio_variants(master: &str, master_url: &str) -> Vec<(u32, String)> {
 }
 
 /// Best (highest-bandwidth) original-audio variant rung of a master playlist.
-pub fn best_audio_variant(master: &str, master_url: &str) -> Option<(u32, String)> {
-    audio_variants(master, master_url).into_iter().next()
+/// STRICT: only rungs whose NAME contains "original" qualify — a bare
+/// language-named rung without "original" is treated as a dub (2026-11-18).
+pub fn best_audio_variant(master: &str, master_url: &str, original_lang: Option<&str>) -> Option<(u32, String)> {
+    let mut v = audio_variants_with_originality(master, master_url);
+    // prefer LANGUAGE == original language, then NAME "original", then bandwidth
+    v.sort_by(|a, b| {
+        let ra = original_lang.is_some_and(|ol| a.3.as_deref() == Some(ol)) || a.2;
+        let rb = original_lang.is_some_and(|ol| b.3.as_deref() == Some(ol)) || b.2;
+        rb.cmp(&ra).then(b.0.cmp(&a.0))
+    });
+    v.into_iter().next().map(|(bw, abs, _, _)| (bw, abs))
+}
+
+
+/// (bandwidth, absolute URI, is_original) for each non-dub audio rung, best first.
+fn audio_variants_with_originality(master: &str, master_url: &str) -> Vec<(u32, String, bool, Option<String>)> {
+    let base = reqwest::Url::parse(master_url).ok();
+    let mut out = Vec::new();
+    for line in master.lines() {
+        if !line.starts_with("#EXT-X-MEDIA") {
+            continue;
+        }
+        let attrs = line.strip_prefix("#EXT-X-MEDIA:").unwrap_or(line);
+        if attr(attrs, "TYPE") != Some("AUDIO") {
+            continue;
+        }
+        let name = attr(attrs, "NAME").unwrap_or("");
+        let chars = attr(attrs, "CHARACTERISTICS").unwrap_or("");
+        let label = format!("{name} {chars}").to_lowercase();
+        if label.contains("dub") && !label.contains("original") {
+            continue; // AI auto-dub rung
+        }
+        let Some(uri) = attr(attrs, "URI") else { continue };
+        let bw: u32 = attr(attrs, "BANDWIDTH").and_then(|v| v.parse().ok()).unwrap_or(0);
+        let abs = base
+            .as_ref()
+            .and_then(|b| b.join(uri).ok())
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| uri.to_string());
+        out.push((bw, abs, label.contains("original"), attr(attrs, "LANGUAGE").map(|s| s.to_string())));
+    }
+    out.sort_by(|a, b| b.2.cmp(&a.2).then(b.0.cmp(&a.0))); // original first, then bandwidth
+    out
+}
+
+/// Apply the user's subtitle policy to a master playlist: `enabled == false`
+/// drops every `#EXT-X-MEDIA:TYPE=SUBTITLES` rung (subtitles OFF by default —
+/// WebKit auto-shows the AUTOSELECT rung otherwise); `enabled == true` keeps
+/// only the rungs with `LANGUAGE == lang` and marks them DEFAULT=YES,
+/// AUTOSELECT=YES. Owner 2026-11-18.
+pub fn apply_subtitle_policy(master: &str, enabled: bool, lang: &str) -> String {
+    let mut out = String::with_capacity(master.len());
+    let mut kept_sub_idx = 0usize;
+    for line in master.lines() {
+        if line.starts_with("#EXT-X-MEDIA") {
+            let attrs = line.strip_prefix("#EXT-X-MEDIA:").unwrap_or(line);
+            if attr(attrs, "TYPE") == Some("SUBTITLES") {
+                if !enabled {
+                    continue; // drop the subtitle rung
+                }
+                if attr(attrs, "LANGUAGE") != Some(lang) {
+                    continue; // not the chosen language
+                }
+                // keep, force default/select on
+                let mut kept_attrs: Vec<String> = attrs
+                    .split(',')
+                    .map(|kv| kv.trim().to_string())
+                    .filter(|kv| {
+                        let k = kv.split('=').next().unwrap_or("").to_uppercase();
+                        k != "DEFAULT" && k != "AUTOSELECT"
+                    })
+                    .collect();
+                kept_attrs.push("DEFAULT=YES".to_string());
+                kept_attrs.push("AUTOSELECT=YES".to_string());
+                out.push_str("#EXT-X-MEDIA:");
+                out.push_str(&kept_attrs.join(","));
+                out.push('\n');
+                kept_sub_idx += 1;
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    let _ = kept_sub_idx;
+    out
 }
 
 /// Rewrite a master playlist so ONLY the original audio rung is selectable:
@@ -177,7 +261,7 @@ pub fn best_audio_variant(master: &str, master_url: &str) -> Option<(u32, String
 /// contains "original" (the first kept rung if none says "original"), all
 /// others DEFAULT=NO. Without this, WebKit picks the geolocation-chosen dub.
 /// Owner 2026-11-18: original audio always, AI auto-dubs off by default.
-pub fn force_original_audio(master: &str) -> String {
+pub fn force_original_audio(master: &str, original_lang: Option<&str>) -> String {
     // pass 1: which audio rung index (among kept ones) is the original
     let mut kept: Vec<(usize, bool)> = Vec::new(); // (line idx, is_original)
     for (i, line) in master.lines().enumerate() {
@@ -191,7 +275,24 @@ pub fn force_original_audio(master: &str) -> String {
             }
         }
     }
-    let original_idx = kept.iter().find(|(_, o)| *o).map(|(i, _)| *i).or(kept.first().map(|(i, _)| *i));
+    // Prefer the rung whose LANGUAGE is the video's original language (the
+    // user's Arabic-first bug: rungs are ordered ar,de,… alphabetically by
+    // language code, so "first" is usually Arabic). Fall back to the NAME that
+    // says "original", then to the first kept rung.
+    let original_idx = original_lang
+        .and_then(|ol| {
+            master
+                .lines()
+                .enumerate()
+                .filter(|(i, l)| kept.iter().any(|(k, _)| k == i))
+                .find(|(_, l)| {
+                    let a = l.strip_prefix("#EXT-X-MEDIA:").unwrap_or(l);
+                    attr(a, "LANGUAGE") == Some(ol)
+                })
+                .map(|(i, _)| i)
+        })
+        .or_else(|| kept.iter().find(|(_, o)| *o).map(|(i, _)| *i))
+        .or_else(|| kept.first().map(|(i, _)| *i));
 
     let mut out = String::with_capacity(master.len());
     for (i, line) in master.lines().enumerate() {
@@ -262,7 +363,7 @@ https://gv.example/v480.m3u8
         assert_eq!(v[0].0, 129000);
         assert_eq!(v[0].1, "https://gv.example/audio/en.m3u8", "relative URI resolves against the master");
         assert_eq!(
-            best_audio_variant(MASTER_AUDIO, "https://gv.example/master.m3u8").unwrap().1,
+            best_audio_variant(MASTER_AUDIO, "https://gv.example/master.m3u8", None).unwrap().1,
             "https://gv.example/audio/en.m3u8"
         );
     }
@@ -271,7 +372,7 @@ https://gv.example/v480.m3u8
     fn force_original_audio_drops_dub_rungs_and_marks_only_original_default() {
         // fixture captured live 2026-11-18 from a video WITH AI dubs (sanitized URLs)
         let master = include_str!("fixtures/master_with_dubs.m3u8");
-        let out = force_original_audio(master);
+        let out = force_original_audio(master, Some("en"));
         assert!(!out.contains("dubbed"), "every AI dub rung is dropped: {}", out.matches("dubbed").count());
         let audio: Vec<&str> = out.lines().filter(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("TYPE=AUDIO")).collect();
         // the fixture's non-dub rungs are the two original-language ones (itag 233 + 234)
@@ -281,16 +382,77 @@ https://gv.example/v480.m3u8
         assert!(audio.iter().any(|l| l.contains("DEFAULT=YES") && l.contains("AUTOSELECT=YES") && l.contains("original")), "the default is the original rung");
         assert!(out.contains("#EXT-X-STREAM-INF"), "video variants are preserved");
         // idempotent
-        assert_eq!(force_original_audio(&out), out);
+        assert_eq!(force_original_audio(&out, Some("en")), out);
+    }
+
+    #[test]
+    fn force_original_audio_uses_language_not_alphabetical_first() {
+        // RED-mutation fixture for the owner's bug: rungs with BARE language
+        // names (no "original", no "dubbed") ordered ar,de,en — a "first rung
+        // wins" implementation lands on Arabic; LANGUAGE-based selection must
+        // land on en when original_lang = Some("en").
+        let m = "#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",LANGUAGE=\"ar\",NAME=\"العربية\",URI=\"ar.m3u8\"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",LANGUAGE=\"de\",NAME=\"Deutsch\",URI=\"de.m3u8\"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",LANGUAGE=\"en\",NAME=\"English\",URI=\"en.m3u8\"
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=854x480,AUDIO=\"a\"
+https://gv.example/v480.m3u8
+";
+        let out = force_original_audio(m, Some("en"));
+        let yes: Vec<&str> = out.lines().filter(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("DEFAULT=YES")).collect();
+        assert_eq!(yes.len(), 1);
+        assert!(yes[0].contains("LANGUAGE=\"en\""), "the DEFAULT rung is the original language, not alphabetically-first Arabic");
+        // and best_audio_variant with the original language picks en too
+        let (_, uri) = best_audio_variant(m, "https://gv.example/master.m3u8", Some("en")).unwrap();
+        assert!(uri.ends_with("en.m3u8"), "got {uri}");
     }
 
     #[test]
     fn best_audio_variant_prefers_the_original_rung() {
         let master = include_str!("fixtures/master_with_dubs.m3u8");
-        let (_, uri) = best_audio_variant(master, "https://gv.example/master.m3u8").unwrap();
+        let (_, uri) = best_audio_variant(master, "https://gv.example/master.m3u8", None).unwrap();
         // the original rung's URI must be the English one — the fixture's
         // original rung is the only non-dubbed rung left after filtering
         assert!(!uri.is_empty());
+    }
+
+    #[test]
+    fn subtitle_policy_off_drops_all_subtitle_rungs() {
+        // fixture captured live 2026-11-18: 11 SUBTITLES rungs (one per language)
+        let master = include_str!("fixtures/master_with_dubs.m3u8");
+        assert!(master.matches("TYPE=SUBTITLES").count() >= 10);
+        let out = apply_subtitle_policy(master, false, "en");
+        assert_eq!(out.matches("TYPE=SUBTITLES").count(), 0, "off drops every subtitle rung");
+        assert!(out.contains("TYPE=AUDIO"), "audio rungs untouched");
+        assert!(out.contains("#EXT-X-STREAM-INF"), "variants untouched");
+    }
+
+    #[test]
+    fn subtitle_policy_on_keeps_only_the_chosen_language_as_default() {
+        let master = include_str!("fixtures/master_with_dubs.m3u8");
+        let out = apply_subtitle_policy(master, true, "de");
+        let subs: Vec<&str> = out.lines().filter(|l| l.contains("TYPE=SUBTITLES")).collect();
+        assert_eq!(subs.len(), 1, "only the German subtitle rung remains");
+        assert!(subs[0].contains("LANGUAGE=\"de\""));
+        assert!(subs[0].contains("DEFAULT=YES") && subs[0].contains("AUTOSELECT=YES"));
+        // a language the video does not have → no subtitle rungs at all
+        let out2 = apply_subtitle_policy(master, true, "sv");
+        assert_eq!(out2.matches("TYPE=SUBTITLES").count(), 0);
+    }
+
+    #[test]
+    fn best_audio_variant_requires_an_explicitly_original_rung() {
+        // fixture has "English - original" rungs + "- dubbed" rungs; a bare
+        // language-named rung without "original" must NOT win
+        let master = include_str!("fixtures/master_with_dubs.m3u8");
+        let (bw, uri) = {
+            let v = audio_variants_with_originality(master, "https://gv.example/master.m3u8");
+            let first_orig = v.iter().find(|(_, _, o, _)| *o).expect("an original rung exists");
+            (first_orig.0, first_orig.1.clone())
+        };
+        assert_eq!(best_audio_variant(master, "https://gv.example/master.m3u8", None).unwrap().1, uri);
+        assert!(uri.contains("gv.example"));
+        let _ = bw;
     }
 
     #[test]

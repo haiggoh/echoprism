@@ -521,6 +521,8 @@ export const mockDb: MockDb = {
     metered_restore: 'restore',
     skip_podcast_trackers: true,
     use_youtube_player: false, // Task 5: embed player off by default
+    subtitles_enabled: false, // 2026-11-18: subtitles OFF by default
+    subtitle_language: 'en',
     updated_at: now,
   },
 };

@@ -17,6 +17,9 @@ pub struct Extractor {
     /// — data saver forces 480). Written by update_settings, read per resolve.
     pub hls_cap: std::sync::Arc<std::sync::RwLock<Option<u32>>>,
     pub hls_start: std::sync::Arc<std::sync::RwLock<crate::hls_master::StartQuality>>,
+    /// Subtitle policy pushed from stored prefs (2026-11-18): off by default.
+    pub subs_enabled: std::sync::Arc<std::sync::RwLock<bool>>,
+    pub subs_lang: std::sync::Arc<std::sync::RwLock<String>>,
     /// Task 2b: bundle resource dir (for ytdlp_helper.py) when running as a
     /// packaged app; None in dev/tests → the repo's resources/ is used.
     resource_dir: Option<std::path::PathBuf>,
@@ -48,6 +51,8 @@ impl Extractor {
         Self {
             hls_cap: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_FULLSCREEN_CAP)),
             hls_start: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_START_QUALITY)),
+            subs_enabled: std::sync::Arc::new(std::sync::RwLock::new(false)),
+            subs_lang: std::sync::Arc::new(std::sync::RwLock::new("en".to_string())),
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .user_agent("Mozilla/5.0 (compatible; EchoPrism/0.1)")
@@ -573,6 +578,9 @@ impl Extractor {
                     self.refresh_ytdlp_url(video_id, want_audio, None, true),
                     *self.hls_cap.read().unwrap(),
                     *self.hls_start.read().unwrap(),
+                    if *self.subs_enabled.read().unwrap() { "1" } else { "0" },
+                    &self.subs_lang.read().unwrap(),
+                    dump.language.as_deref().unwrap_or(""),
                 );
                 let t_probe = std::time::Instant::now();
                 let check = probe.get(&hls_url).send().await;
@@ -722,7 +730,7 @@ impl Extractor {
                 if let Ok(r) = master_resp {
                     if r.status().is_success() {
                         let text = r.text().await.unwrap_or_default();
-                        if let Some((bw, uri)) = crate::hls_master::best_audio_variant(&text, &manifest) {
+                        if let Some((bw, uri)) = crate::hls_master::best_audio_variant(&text, &manifest, dump.language.as_deref()) {
                             let serve_url = if mheaders.is_empty() {
                                 uri.clone()
                             } else {
@@ -2836,6 +2844,8 @@ mod tests {
             netpath: std::sync::Arc::new(crate::netpath::NetPath::in_memory()),
             hls_cap: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_FULLSCREEN_CAP)),
             hls_start: std::sync::Arc::new(std::sync::RwLock::new(crate::hls_master::DEFAULT_START_QUALITY)),
+            subs_enabled: std::sync::Arc::new(std::sync::RwLock::new(false)),
+            subs_lang: std::sync::Arc::new(std::sync::RwLock::new("en".to_string())),
             resource_dir: None,
             helper: tokio::sync::OnceCell::new(),
             dump_cache: std::sync::Mutex::new(std::collections::HashMap::new()),

@@ -52,6 +52,9 @@ async fn migrate_data(pool: &sqlx::SqlitePool) -> Result<(), String> {
         "ALTER TABLE user_preferences ADD COLUMN skip_podcast_trackers INTEGER NOT NULL DEFAULT 1",
         // Task 5: optional YouTube embed player for video, off by default.
         "ALTER TABLE user_preferences ADD COLUMN use_youtube_player INTEGER NOT NULL DEFAULT 0",
+        // 2026-11-18: subtitle policy — off by default, language selectable.
+        "ALTER TABLE user_preferences ADD COLUMN subtitles_enabled INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE user_preferences ADD COLUMN subtitle_language TEXT NOT NULL DEFAULT 'en'",
     ];
     for stmt in alters {
         // "duplicate column name" means this database already has the column.

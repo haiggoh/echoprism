@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     skip_podcast_trackers INTEGER NOT NULL DEFAULT 1,
     -- Task 5: optional YouTube embed player for video (off by default)
     use_youtube_player INTEGER NOT NULL DEFAULT 0,
+    -- 2026-11-18: subtitles off by default; language selectable (default en)
+    subtitles_enabled INTEGER NOT NULL DEFAULT 0,
+    subtitle_language TEXT NOT NULL DEFAULT 'en',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

@@ -129,6 +129,7 @@ pub enum MeteredRestore {
 fn default_windowed_cap() -> Option<u32> { Some(720) }
 fn default_fullscreen_cap() -> Option<u32> { Some(2160) }
 fn default_skip_trackers() -> bool { true }
+fn default_subtitle_lang() -> String { "en".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserPreferences {
@@ -168,6 +169,12 @@ pub struct UserPreferences {
     /// Task 5: use YouTube's own IFrame player for video mode. Default false (off).
     #[serde(default)]
     pub use_youtube_player: bool,
+    /// 2026-11-18: show HLS subtitles. Default FALSE (many users want none).
+    #[serde(default)]
+    pub subtitles_enabled: bool,
+    /// 2026-11-18: subtitle language (ISO 639-1, e.g. "en", "de"). Default 'en'.
+    #[serde(default = "default_subtitle_lang")]
+    pub subtitle_language: String,
     pub updated_at: DateTimeUtc,
 }
 
@@ -210,6 +217,8 @@ pub struct UserPreferencesPatch {
     pub metered_restore: Option<MeteredRestore>,
     pub skip_podcast_trackers: Option<bool>,
     pub use_youtube_player: Option<bool>,
+    pub subtitles_enabled: Option<bool>,
+    pub subtitle_language: Option<String>,
 }
 
 impl UserPreferencesPatch {
@@ -235,6 +244,8 @@ impl UserPreferencesPatch {
         if let Some(v) = self.metered_restore { base.metered_restore = v; }
         if let Some(v) = self.skip_podcast_trackers { base.skip_podcast_trackers = v; }
         if let Some(v) = self.use_youtube_player { base.use_youtube_player = v; }
+        if let Some(v) = self.subtitles_enabled { base.subtitles_enabled = v; }
+        if let Some(v) = self.subtitle_language { base.subtitle_language = v; }
         base
     }
 }
