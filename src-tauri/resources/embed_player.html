@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>EchoPrism embed player</title>
+<style>html,body{margin:0;height:100%;background:#000}#player{width:100%;height:100%}</style>
+</head>
+<body>
+<div id="player"></div>
+<script src="https://www.youtube-nocookie.com/iframe_api"></script>
+<script>
+  // Task 5 host page. It is served from the app's OWN proxy origin
+  // (http://127.0.0.1:<port>), so the IFrame API's requests to YouTube carry a
+  // valid 127.0.0.1 referrer — the §11 spike showed a page without one gets
+  // error 153. The app's tauri:// origin is never involved.
+  var player = null;
+  function post(msg) {
+    if (window.parent && window.parent !== window) window.parent.postMessage(msg, '*');
+  }
+  window.onYouTubeIframeAPIReady = function () {
+    player = new YT.Player('player', {
+      videoId: '',
+      playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+      events: {
+        onReady: function () { post({ type: 'ready' }); },
+        onStateChange: function (e) { post({ type: 'state', state: e.data }); },
+        onError: function (e) { post({ type: 'error', code: e.data }); },
+      },
+    });
+  };
+  setInterval(function () {
+    if (player && typeof player.getCurrentTime === 'function') {
+      try {
+        var t = player.getCurrentTime();
+        if (typeof t === 'number') post({ type: 'time', t: t });
+      } catch (e) { /* player not ready yet */ }
+    }
+  }, 500);
+  window.addEventListener('message', function (ev) {
+    var m = ev.data;
+    if (!m || typeof m !== 'object' || !player) return;
+    switch (m.cmd) {
+      case 'load':
+        if (m.autoplay) player.loadVideoById(m.videoId); else player.cueVideoById(m.videoId);
+        break;
+      case 'play': player.playVideo(); break;
+      case 'pause': player.pauseVideo(); break;
+      case 'seek': player.seekTo(m.t, true); break;
+    }
+  });
+</script>
+</body>
+</html>

@@ -207,11 +207,36 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
         .unwrap())
 }
 
+/// Task 5: the YouTube IFrame Player API host page, embedded at compile time
+/// and served from the PROXY origin so the player's requests to YouTube carry
+/// a valid http://127.0.0.1 referrer (§11 spike: without it, error 153).
+const EMBED_PLAYER_HTML: &[u8] = include_bytes!("../resources/embed_player.html");
+
+fn embed_player_response() -> Response<ProxyBody> {
+    let bytes = Bytes::from_static(EMBED_PLAYER_HTML);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(hyper::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header(hyper::header::CACHE_CONTROL, "no-store")
+        // Scoped to YouTube hosts; frame-ancestors * because the app embeds this
+        // page from its own (tauri://) origin on an ephemeral local port.
+        .header(
+            hyper::header::CONTENT_SECURITY_POLICY,
+            "default-src 'none'; script-src https://www.youtube-nocookie.com; connect-src https://www.youtube-nocookie.com https://www.youtube.com https://i.ytimg.com https://*.googlevideo.com; img-src https://i.ytimg.com https://www.youtube-nocookie.com data:; style-src 'unsafe-inline' https://www.youtube-nocookie.com; frame-ancestors *",
+        )
+        .header(hyper::header::CONTENT_LENGTH, bytes.len())
+        .body(BodyExt::boxed(http_body_util::Full::new(bytes).map_err(|e| match e {}).boxed()))
+        .unwrap()
+}
+
 async fn handle(
     st: Arc<ProxyState>,
     req: Request<Incoming>,
 ) -> Result<Response<ProxyBody>, std::convert::Infallible> {
     let path = req.uri().path().to_string();
+    if path == "/embed/player.html" {
+        return Ok(embed_player_response());
+    }
     if let Some(rest) = path.strip_prefix("/hls/") {
         let token = rest.split('/').next().unwrap_or("").to_string();
         return handle_hls(st, token, req.uri().query().unwrap_or("")).await;
@@ -457,6 +482,41 @@ mod tests {
             .await
             .expect("a slow-but-steady body must not be cut off by a total timeout");
         assert_eq!(&body[..], b"ABCDEF");
+    }
+
+    /// Task 5: the embed host page is served from the proxy ORIGIN (the §11
+    /// spike showed error 153 without a 127.0.0.1 referrer) as text/html with
+    /// a CSP scoped to YouTube hosts, and it wires the IFrame API + postMessage.
+    #[tokio::test]
+    async fn embed_player_route_serves_host_page_from_proxy_origin() {
+        let port = state().port;
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(format!("http://127.0.0.1:{port}/embed/player.html"))
+            .send()
+            .await
+            .expect("embed route must answer");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp
+            .headers()
+            .get(hyper::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(ct.starts_with("text/html"), "{ct}");
+        let csp = resp
+            .headers()
+            .get(hyper::header::CONTENT_SECURITY_POLICY)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(csp.contains("youtube-nocookie.com"), "{csp}");
+        assert!(csp.contains("frame-ancestors"), "{csp}");
+        let body = resp.text().await.unwrap();
+        assert!(body.contains("https://www.youtube-nocookie.com/iframe_api"), "host page loads the IFrame API");
+        assert!(body.contains("postMessage"), "host page talks postMessage to the app");
     }
 
     #[test]
