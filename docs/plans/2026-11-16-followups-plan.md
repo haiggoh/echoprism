@@ -658,3 +658,9 @@ new task will be added to this plan on master; until then video stays on the war
   RED→GREEN for the header search fix; flaky gate tests hardened (42/42 ×2 + 251/251) ·
   Task 5 plan written at docs/plans/2026-11-18-youtube-embed-player.md (branch feat/youtube-embed,
   77e9a5e1)
+- 2026-11-18 · Task 5 SHIPPED as v0.1.24 · 81d09dba on master · rtc-ship EXIT:0: tag v0.1.24
+  (c2564ab) VISIBLE, release live; launch gate on EchoPrism_0.1.24_aarch64.dmg (sha256
+  a44a1148…, otool 0 bad links, ALIVE 12 s); cask c0c2f26 (brew info → 0.1.24); gates tsc/vitest
+  412/cargo 253/e2e 81 both projects/build/eslint EXIT:0; embed e2e webkit 5/5; cross-family
+  validator (GLM 5.3 Flash, zhipu) findings fixed incl. a real pause-on-inactive bug; ship-gate
+  flake fixed via resolve_with_load_retry; live app launched with logging for owner testing
