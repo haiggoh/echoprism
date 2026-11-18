@@ -7,6 +7,28 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.27] - 2026-11-19
+
+### Added — subtitle controls (off by default)
+
+- Settings → Preferences gains **"Show subtitles"** (default **OFF** — WebKit
+  auto-shows the AUTOSELECT subtitle rung otherwise, which is why subtitles
+  appeared by default) and a **"Subtitle language"** select (en, de, es, fr,
+  it, pt, ru, zh, ja, ko, hi, ar; default `en`; disabled while subtitles are
+  off). The proxy rewrites every served HLS master per the policy: off drops
+  all `TYPE=SUBTITLES` rungs; on keeps only the chosen language as
+  DEFAULT=YES.
+
+### Fixed — audio-only landing on the wrong (Arabic) dub
+
+- Root cause (verified with a live dump + master of the owner's video, and
+  pinned by a red-mutation test): YouTube orders audio rungs alphabetically by
+  language code (ar, de, …), so a "first rung wins" pick always lands on
+  Arabic. When rung names lack "original", selection now keys on
+  `LANGUAGE ==` the video's original language (from the `-J` dump, passed to
+  the proxy as `&olang=`); dub rungs are still dropped from served masters.
+  The red-mutation fixture (bare ar/de/en rungs, olang=en) proves en wins.
+
 ## [0.1.26] - 2026-11-18
 
 ### Fixed — AI auto-dubbed audio really off by default this time
