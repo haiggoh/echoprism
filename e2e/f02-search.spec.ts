@@ -7,8 +7,9 @@ import { expect, test } from '@playwright/test';
  * Deviation from the plan text: steps 3-5 (channel page S06, subscribe button)
  * have no UI wiring yet — no screen calls channelCommands.subscribe and there
  * is no channel-detail route. Recorded as a gap; this spec covers search only.
- * The header search input is also a dead control (no handler) — the real
- * surface is the /search route.
+ * The header search input used to be a dead control (no handler) — it now
+ * submits to /search?q= (covered by F02-H2 below); the real surface is the
+ * /search route.
  */
 test('F02-H1 (subset): search returns matching episodes', async ({ page }) => {
   await page.goto('/search');
@@ -28,5 +29,17 @@ test('F02-H1 (subset): search returns matching episodes', async ({ page }) => {
   // search_episodes matches on title substring.
   await expect(page.getByText('How Invidious pools actually work')).toBeVisible();
   // A non-matching fixture title stays out of the results.
+  await expect(page.getByText('RSS is winning again')).toHaveCount(0);
+});
+
+test('F02-H2: the feed header search box submits to /search?q= (was an inert control)', async ({ page }) => {
+  await page.goto('/feed');
+  const headerInput = page.getByPlaceholder('Search feed...');
+  await headerInput.fill('Invidious');
+  await headerInput.press('Enter');
+  // The header box hands the query to the real search surface — SearchScreen
+  // prefills and runs from ?q=.
+  await expect(page).toHaveURL(/\/search\?q=Invidious/);
+  await expect(page.getByText('How Invidious pools actually work')).toBeVisible();
   await expect(page.getByText('RSS is winning again')).toHaveCount(0);
 });

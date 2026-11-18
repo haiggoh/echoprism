@@ -61,13 +61,24 @@ export function FeedScreen() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-text">Feed</h1>
           <div className="flex items-center gap-2">
-            <input
-              type="search"
-              placeholder="Search feed..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-64 px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
-            />
+            {/* Submits to the real search surface — SearchScreen prefills and
+                runs from ?q= (was an inert input: onChange only, no handler). */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const q = searchQuery.trim();
+                if (q.length >= 2) navigate(`/search?q=${encodeURIComponent(q)}`);
+              }}
+            >
+              <input
+                type="search"
+                placeholder="Search feed..."
+                aria-label="Search feed"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-64 px-3 py-2 bg-surface border border-border rounded-md text-text placeholder-text-muted focus:border-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              />
+            </form>
           </div>
         </div>
       </div>
