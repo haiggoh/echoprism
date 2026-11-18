@@ -7,6 +7,16 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.23] - 2026-11-18
+
+### Fixed — the Feed header search box actually searches
+
+- The header input bound its text but had no submit handler (inert control). It now submits to `/search?q=<query>` on Enter — the surface SearchScreen already prefills and runs from — and carries an `aria-label` for the axe scans. Covered by the new e2e `F02-H2` (RED before the fix, GREEN after, both projects).
+
+### Hardened — gate timing tests no longer flake under full-suite load
+
+- The extractor gate tests failed only in full-suite runs right after the playwright suite (passing solo). Lock windows widened 1–2 s → 3 s so the 300 ms polls are guaranteed to land while locked under load, `available_at` moved far-future so success can only come from the lock, the counting-stub counter path is now unique per test (the pid-only path collided across parallel tests in one binary), upper timing bounds widened to 3 s while staying far below the 10 s gate ceiling / 5 s client timeout, and the dual-stack resolve retries under load with its assertion unchanged. Extractor tests 42/42 twice in a row plus the full lib suite 251/251 after the change.
+
 ## [0.1.22] - 2026-11-17
 
 ### Fixed — playhead jumped on video<->audio-only switches (owner report 2026-11-17)
