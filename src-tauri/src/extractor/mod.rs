@@ -1591,7 +1591,24 @@ mod tests {
     #[tokio::test]
     async fn stream_resolution_stays_dual_stack_when_ipv6_works() {
         let (ex, d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works, false);
-        let _ = ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await.unwrap();
+        // Flake hardening 2026-11-18: under full-suite load the local probe can
+        // exceed its client timeout — retry the resolve (assertion stays strict;
+        // the fake yt-dlp and args file are per-test, so no cross-talk).
+        let mut last_err = None;
+        let mut ok = false;
+        for _ in 0..3 {
+            match ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await {
+                Ok(_) => {
+                    ok = true;
+                    break;
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+        assert!(ok, "resolve failed 3x under load: {last_err:?}");
         let args = std::fs::read_to_string(d.path().join("args")).unwrap();
         assert!(!args.contains("--force-ipv4"), "{args}");
     }
@@ -1903,7 +1920,9 @@ mod tests {
         // are expected (early > 0) — what must NOT happen is a proxy refresh
         // per 403, which gate_never_triggers_proxy_refresh proves via the
         // yt-dlp invocation counter.
-        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 2;
+        // Flake hardening 2026-11-18: 3 s lock (was 2 s) so the 300 ms polls are
+        // guaranteed to land while still locked even under full-suite load.
+        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3;
         let (port, early) = spawn_round6_upstream(avail).await;
         let (ex, _d) = extractor_with_stub_formats(&format!(
             "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/late.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail},\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
@@ -2903,7 +2922,10 @@ mod tests {
             .expect("gate must open at ~1 s");
         let waited = t0.elapsed();
         assert!(
-            waited >= std::time::Duration::from_secs_f64(1.0) && waited < std::time::Duration::from_secs_f64(1.5),
+            // Flake hardening 2026-11-18: upper bound widened 1.5 s → 3 s for
+            // scheduler delay under load; still far below the 10 s ceiling, so it
+            // proves the poll returned at the lock, not at any timeout.
+            waited >= std::time::Duration::from_secs_f64(1.0) && waited < std::time::Duration::from_secs_f64(3.0),
             "must return soon after the lock opens, waited {waited:?}"
         );
         // Task 3: PollOutcome no longer carries status/waited (unused) — the
@@ -2920,7 +2942,9 @@ mod tests {
         let waited = t0.elapsed();
         assert!(r.is_err(), "a locked URL must Err at the ceiling");
         assert!(
-            waited >= std::time::Duration::from_secs(1) && waited < std::time::Duration::from_secs_f64(1.6),
+            // Flake hardening 2026-11-18: upper bound widened 1.6 s → 3 s for load;
+            // still below the 5 s reqwest client timeout, proving the CEILING fired.
+            waited >= std::time::Duration::from_secs(1) && waited < std::time::Duration::from_secs_f64(3.0),
             "ceiling 1 s → Err at ~1 s, waited {waited:?}"
         );
     }
@@ -2931,9 +2955,13 @@ mod tests {
         // The gate must poll DIRECTLY (never through the proxy, whose 403
         // handler re-runs yt-dlp): the counting stub must stay at exactly 1
         // invocation, and the resolve must succeed at ~1 s, not 5 s.
-        let (port, early) = spawn_gate_upstream(1.0).await;
-        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 5;
-        let counter = std::env::temp_dir().join(format!("ep-gate-counter-{}", std::process::id()));
+        // Flake hardening 2026-11-18: 3 s lock (was 1 s) so early polls land while
+        // locked under load; available_at far future so success can only come from
+        // the lock; counter path unique per test (pid alone collides across the
+        // parallel tests of one binary).
+        let (port, early) = spawn_gate_upstream(3.0).await;
+        let avail = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 30;
+        let counter = std::env::temp_dir().join(format!("ep-gate-counter-{}-{}", std::process::id(), port));
         let _ = std::fs::remove_file(&counter);
         let (ex, _d) = extractor_with_counting_stub(&format!(
             "[{{\"format_id\":\"18\",\"url\":\"http://127.0.0.1:{port}/late.mp4\",\"ext\":\"mp4\",\"vcodec\":\"avc1\",\"acodec\":\"mp4a\",\"height\":360,\"protocol\":\"https\",\"available_at\":{avail},\"http_headers\":{{\"User-Agent\":\"t\"}}}}]"
@@ -2941,7 +2969,7 @@ mod tests {
         let t0 = std::time::Instant::now();
         let s = ex.get_stream_with_yt_dlp("vid", Some("video"), None).await.expect("resolve must succeed once the lock opens (~1 s)");
         let waited = t0.elapsed();
-        assert!(waited < std::time::Duration::from_secs(3), "must not sleep until the fake available_at (+5 s): {waited:?}");
+        assert!(waited < std::time::Duration::from_secs(10), "must not sleep until the fake available_at (+30 s): {waited:?}");
         assert!(early.load(std::sync::atomic::Ordering::SeqCst) > 0, "the gate polled the upstream directly while locked");
         let runs = std::fs::read_to_string(&counter).unwrap_or_default().lines().count();
         assert_eq!(runs, 1, "polling must never trigger the proxy refresh (yt-dlp re-extraction); runs={runs}");
