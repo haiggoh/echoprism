@@ -1536,6 +1536,23 @@ mod tests {
     /// responder runs on the tauri runtime for the test's lifetime.
     /// `with_headers` makes the format carry http_headers, which must route
     /// the URL through the local stream proxy.
+    /// Flake hardening 2026-11-18 (ship gate hit this): under full-suite load
+    /// the local probe can exceed its client timeout — retry the resolve up
+    /// to 3x; the assertions on the result are unchanged.
+    async fn resolve_with_load_retry(ex: &Extractor, id: &str, format: Option<&str>) -> Result<StreamUrl, String> {
+        let mut last_err = None;
+        for _ in 0..3 {
+            match ex.get_stream_with_yt_dlp(id, format, None).await {
+                Ok(s) => return Ok(s),
+                Err(e) => {
+                    last_err = Some(e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| "resolve failed 3x".to_string()))
+    }
+
     fn extractor_with_echo_ytdlp(v: crate::netpath::Ipv6Verdict, with_headers: bool) -> (Extractor, tempfile::TempDir) {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
@@ -1580,7 +1597,7 @@ mod tests {
     #[tokio::test]
     async fn stream_resolution_uses_ipv4_when_the_verdict_says_broken() {
         let (ex, d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Broken, false);
-        let s = ex.get_stream_with_yt_dlp("vid123", Some("audio"), None).await.unwrap();
+        let s = resolve_with_load_retry(&ex, "vid123", Some("audio")).await.unwrap();
         let args = std::fs::read_to_string(d.path().join("args")).unwrap();
         assert!(args.contains("--force-ipv4"), "{args}");
         assert!(args.contains("--socket-timeout 15"), "{args}");
@@ -1620,12 +1637,12 @@ mod tests {
     #[tokio::test]
     async fn headered_ytdlp_urls_go_through_the_local_proxy() {
         let (ex, _d) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works, true);
-        let s = ex.get_stream_with_yt_dlp("vid123", Some("video"), None).await.unwrap();
+        let s = resolve_with_load_retry(&ex, "vid123", Some("video")).await.unwrap();
         assert!(s.url.starts_with("http://127.0.0.1:"), "expected proxy URL, got {}", s.url);
         assert!(s.url.contains("/stream/"), "{}", s.url);
 
         let (ex2, _d2) = extractor_with_echo_ytdlp(crate::netpath::Ipv6Verdict::Works, false);
-        let s2 = ex2.get_stream_with_yt_dlp("vid123", Some("video"), None).await.unwrap();
+        let s2 = resolve_with_load_retry(&ex2, "vid123", Some("video")).await.unwrap();
         assert!(s2.url.contains("/v.mp4"), "headerless URL stays direct: {}", s2.url);
         assert!(!s2.url.contains("/stream/"), "no proxy without headers: {}", s2.url);
     }
