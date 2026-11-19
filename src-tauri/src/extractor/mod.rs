@@ -541,7 +541,16 @@ impl Extractor {
         // one candidate blindly — probe each (through the proxy when it has
         // headers) with a 1-byte Range GET and take the first that answers
         // 200/206.
-        let candidates = rank_yt_dlp_formats(&dump.formats, want_audio, dump.language.as_deref());
+        // 2026-11-18: the video's original language, robustly derived (some
+        // dumps omit the top-level field): dump.language, else the language of
+        // the rung whose note says "original".
+        let original_lang: Option<String> = dump.language.clone().or_else(|| {
+            dump.formats
+                .iter()
+                .find(|f| f.format_note.as_deref().is_some_and(|n| n.to_lowercase().contains("original")))
+                .and_then(|f| f.language.clone())
+        });
+        let candidates = rank_yt_dlp_formats(&dump.formats, want_audio, original_lang.as_deref());
         if candidates.is_empty() {
             return Err("yt-dlp returned no usable stream format".to_string());
         }
@@ -580,7 +589,7 @@ impl Extractor {
                     *self.hls_start.read().unwrap(),
                     if *self.subs_enabled.read().unwrap() { "1" } else { "0" },
                     &self.subs_lang.read().unwrap(),
-                    dump.language.as_deref().unwrap_or(""),
+                    original_lang.as_deref().unwrap_or(""),
                 );
                 let t_probe = std::time::Instant::now();
                 let check = probe.get(&hls_url).send().await;
@@ -679,37 +688,43 @@ impl Extractor {
                 let t_probe = std::time::Instant::now();
                 let check = probe.get(&serve_url).header("Range", "bytes=0-0").send().await;
                 probe_ms += t_probe.elapsed().as_millis() as u64;
-                if matches!(&check, Ok(r) if r.status().is_success() || r.status() == 206) {
-                    let fallback_url = progressive_fallback();
-                    tracing::info!("yt-dlp audio -> audio-only HLS (fallback: {:?})", fallback_url);
-                    return Ok(StreamUrl {
-                        url: serve_url,
-                        format: "hls".to_string(),
-                        quality: quality.unwrap_or("auto").to_string(),
-                        headers: None,
-                        timings: Some(crate::startup_timer::ResolveTimings {
-                            instances_ms: 0, // stamped by resolve_stream
-                            ytdlp_ms,
-                            gate_ms,
-                            probe_ms,
-                            cache_hit: false,
-                            joined_ms: None,
-                        }),
-                        fallback_url,
-                    });
+                let probe_ok = matches!(&check, Ok(r) if r.status().is_success() || r.status() == 206);
+                // Even when the probe failed (googlevideo edges 403 a URL that
+                // serves fine a minute later), RETURN this rung: it is a
+                // dub-filtered original-language audio-HLS rendition, and the
+                // proxy refreshes the URL on a play-time 403. Falling through
+                // here is what used to land the pick on an Arabic master rung.
+                if !probe_ok {
+                    tracing::warn!("audio HLS probe failed ({:?}) — returning the original rung anyway; proxy refresh covers it", check.map(|r| r.status()));
                 }
-                tracing::warn!("audio HLS check failed ({:?}), falling back to progressive", check.map(|r| r.status()));
+                let fallback_url = progressive_fallback();
+                tracing::info!("yt-dlp audio -> audio-only HLS (probe_ok={probe_ok}, fallback: {:?})", fallback_url);
+                return Ok(StreamUrl {
+                    url: serve_url,
+                    format: "hls".to_string(),
+                    quality: quality.unwrap_or("auto").to_string(),
+                    headers: None,
+                    timings: Some(crate::startup_timer::ResolveTimings {
+                        instances_ms: 0, // stamped by resolve_stream
+                        ytdlp_ms,
+                        gate_ms,
+                        probe_ms,
+                        cache_hit: false,
+                        joined_ms: None,
+                    }),
+                    fallback_url,
+                });
             }
             // 2026-11-18: formats 233/234 are PER-REQUEST — YouTube omits them
             // from many -J dumps (seen live; network-independent, would happen
-            // on wifi too). When they are absent (or their probe fails), take
-            // the audio-only EXT-X-MEDIA rung of the VIDEO HLS master — present
-            // whenever video HLS works — instead of falling through to a
-            // multi-MB progressive audio file (the §10 A fragment walk, which
-            // is what stalls for minutes on a slow link).
+            // on wifi too). ONLY when no dub-free audio-HLS rung exists at
+            // all, take the audio-only EXT-X-MEDIA rung of the VIDEO HLS master
+            // (present whenever video HLS works) — and only a rung with a
+            // POSITIVE original-language signal (best_audio_variant returns
+            // None instead of guessing from alphabetical order).
             if let Some(master) = dump.formats.iter().find(|f| {
                 f.protocol.as_deref() == Some("m3u8_native")
-                    && !is_dubbed(f, dump.language.as_deref())
+                    && !is_dubbed(f, original_lang.as_deref())
                     && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
                     && !is_none_codec(&f.vcodec)
             }).cloned() {
@@ -730,7 +745,7 @@ impl Extractor {
                 if let Ok(r) = master_resp {
                     if r.status().is_success() {
                         let text = r.text().await.unwrap_or_default();
-                        if let Some((bw, uri)) = crate::hls_master::best_audio_variant(&text, &manifest, dump.language.as_deref()) {
+                        if let Some((bw, uri)) = crate::hls_master::best_audio_variant(&text, &manifest, original_lang.as_deref()) {
                             let serve_url = if mheaders.is_empty() {
                                 uri.clone()
                             } else {

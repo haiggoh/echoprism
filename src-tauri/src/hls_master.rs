@@ -170,14 +170,19 @@ pub fn audio_variants(master: &str, master_url: &str) -> Vec<(u32, String)> {
 /// STRICT: only rungs whose NAME contains "original" qualify — a bare
 /// language-named rung without "original" is treated as a dub (2026-11-18).
 pub fn best_audio_variant(master: &str, master_url: &str, original_lang: Option<&str>) -> Option<(u32, String)> {
-    let mut v = audio_variants_with_originality(master, master_url);
-    // prefer LANGUAGE == original language, then NAME "original", then bandwidth
-    v.sort_by(|a, b| {
-        let ra = original_lang.is_some_and(|ol| a.3.as_deref() == Some(ol)) || a.2;
-        let rb = original_lang.is_some_and(|ol| b.3.as_deref() == Some(ol)) || b.2;
-        rb.cmp(&ra).then(b.0.cmp(&a.0))
-    });
-    v.into_iter().next().map(|(bw, abs, _, _)| (bw, abs))
+    let v = audio_variants_with_originality(master, master_url);
+    // NEVER guess from declaration order (the owner's Arabic bug: rungs are
+    // ordered alphabetically by language code, ar first). A rung qualifies
+    // only with a positive signal: LANGUAGE == original, or NAME "original".
+    let mut q: Vec<_> = v
+        .into_iter()
+        .filter(|(_, _, is_orig, lang)| *is_orig || original_lang.is_some_and(|ol| lang.as_deref() == Some(ol)))
+        .collect();
+    if q.is_empty() {
+        return None;
+    }
+    q.sort_by(|a, b| b.0.cmp(&a.0)); // among qualified rungs, highest bandwidth
+    q.into_iter().next().map(|(bw, abs, _, _)| (bw, abs))
 }
 
 
@@ -279,6 +284,9 @@ pub fn force_original_audio(master: &str, original_lang: Option<&str>) -> String
     // user's Arabic-first bug: rungs are ordered ar,de,… alphabetically by
     // language code, so "first" is usually Arabic). Fall back to the NAME that
     // says "original", then to the first kept rung.
+    // Positive signal only: LANGUAGE == original, or NAME "original". If
+    // neither exists (bare language names), do NOT guess from order — leave
+    // the DEFAULT flags untouched.
     let original_idx = original_lang
         .and_then(|ol| {
             master
@@ -291,8 +299,7 @@ pub fn force_original_audio(master: &str, original_lang: Option<&str>) -> String
                 })
                 .map(|(i, _)| i)
         })
-        .or_else(|| kept.iter().find(|(_, o)| *o).map(|(i, _)| *i))
-        .or_else(|| kept.first().map(|(i, _)| *i));
+        .or_else(|| kept.iter().find(|(_, o)| *o).map(|(i, _)| *i));
 
     let mut out = String::with_capacity(master.len());
     for (i, line) in master.lines().enumerate() {
@@ -312,7 +319,13 @@ pub fn force_original_audio(master: &str, original_lang: Option<&str>) -> String
                         k != "DEFAULT" && k != "AUTOSELECT"
                     })
                     .collect();
-                let (d, a) = if Some(i) == original_idx { ("YES", "YES") } else { ("NO", "NO") };
+                let (d, a) = if original_idx == Some(i) { ("YES", "YES") } else { ("NO", "NO") };
+                if original_idx.is_none() {
+                    // no positive signal — do not rewrite DEFAULT/AUTOSELECT at all
+                    out.push_str(line);
+                    out.push('\n');
+                    continue;
+                }
                 kept_attrs.push(format!("DEFAULT={d}"));
                 kept_attrs.push(format!("AUTOSELECT={a}"));
                 out.push_str("#EXT-X-MEDIA:");
@@ -383,6 +396,21 @@ https://gv.example/v480.m3u8
         assert!(out.contains("#EXT-X-STREAM-INF"), "video variants are preserved");
         // idempotent
         assert_eq!(force_original_audio(&out, Some("en")), out);
+    }
+
+    #[test]
+    fn bare_names_without_language_are_never_guessed() {
+        // Hardened fixture for the owner's bug: rungs with BARE language names
+        // and NO LANGUAGE attribute (ar first, de DEFAULT=YES as YouTube's
+        // geolocation would serve). With no positive signal, selection must
+        // return None / pass DEFAULT through — never pick alphabetically-first.
+        let m = include_str!("fixtures/master_bare_names.m3u8");
+        assert!(best_audio_variant(m, "https://gv.example/master.m3u8", Some("en")).is_none(),
+            "no LANGUAGE attrs + no 'original' name => no guess, even with olang=en");
+        assert!(best_audio_variant(m, "https://gv.example/master.m3u8", None).is_none());
+        let out = force_original_audio(m, Some("en"));
+        assert!(out.contains("DEFAULT=YES"), "without a positive signal the master is passed through unchanged");
+        assert!(out.contains("de.m3u8"));
     }
 
     #[test]
