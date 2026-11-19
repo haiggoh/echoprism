@@ -7,6 +7,32 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.29] - 2026-11-19
+
+### Fixed — video mode errors auto-retry instead of stranding on a toast
+
+- Owner live report: switching to video errored once with no automatic retry.
+  The media-error handler only retried when the resolve was a **cache hit**;
+  a cold resolve whose fallback URL died went straight to the "Stream error"
+  toast. Now ANY media element error retries the resolve once per episode
+  (loop-guarded); the toast surfaces only if the retry also fails.
+
+### Changed — the first click on a card plays it
+
+- Owner ruling 2026-11-19: "it should always work on the first click".
+  `card_click_action` default is now **`play_now`** (schema default + migration
+  rewrites stored `queue`/`auto` rows); "Add to queue" remains a choice in
+  Settings.
+
+### Instrumented — audio-rung choice is now diagnosable from the log
+
+- The audio resolve path logs the derived original language, the chosen
+  233/234 rung (id/note/lang), and every master audio rung (`lang:name`) plus
+  the chosen variant URI. The decision functions are pinned by a
+  live-capture fixture (`master_app_capture.m3u8`, captured via the app's own
+  helper dump): the English original rung wins with AND without `olang`, and
+  the served master marks exactly that rung `DEFAULT=YES`.
+
 ## [0.1.28] - 2026-11-19
 
 ### Fixed — audio-only never lands on the Arabic dub anymore (the real root cause)
