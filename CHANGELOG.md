@@ -7,6 +7,40 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.30] - 2026-11-19
+
+### Fixed — audio-only no longer swaps in the Arabic AI dub on a mid-play URL refresh
+
+- Root cause of the owner's 2026-11-19 retest of 0.1.29 (audio-only still
+  Arabic on home wifi AND LTE hotspot) — two defects compounding:
+  1. `hls_master::attr` split HLS attribute lists on every comma, but real
+     googlevideo `#EXT-X-MEDIA` lines carry commas **inside the quoted URI**
+     (`…/cps/538/met/1795097757,/mh/…` — all 52 rungs in the live capture),
+     so the chosen original-audio rung's URL was truncated at the first
+     internal comma and googlevideo 403'd it (live log 14:16:02).
+  2. The proxy's 403/410 refresh (`refresh_ytdlp_url`) then re-ran yt-dlp and
+     returned the **first** `m3u8_native` format of the fresh dump — and
+     YouTube lists the 233/234 AI-dub renditions first, alphabetical by
+     language code, so 233-0 is the Arabic dub. The `/stream/` audio route
+     serves that URL raw, so WebKit played Arabic; video mode escaped only
+     because `/hls/` masters are rewritten at serve time by
+     `force_original_audio`.
+- **Fixes:** HLS attribute parsing is now quote-aware (`split_attrs` at every
+  parse/rebuild site), so rung URIs survive intact end to end; the refresh
+  keeps the entry's resource kind and applies the same
+  `is_audio_hls_format && !is_dubbed` predicates as the resolve path
+  (honouring a known `format_id`, falling back to the dub-filtered ranked
+  head for audio); and `handle_hls` parses the `olang=` query **before**
+  `force_original_audio` runs (it used to run with `original_lang=None`, so
+  bare-name masters passed the geolocation `DEFAULT=YES` dub through).
+- Pinned by a real sanitized `-J` dump fixture
+  (`src-tauri/src/fixtures/yt_dlp_dump_with_dubs_2026-11-19.json`: 233-0
+  ar-dub first … 233-11 en-original) and the live master capture
+  (`master_app_capture.m3u8`): refresh-never-lands-on-a-dub,
+  video-refresh-returns-a-master, format_id preservation, olang-default on
+  bare names, and comma-carrying-URI preservation tests were all watched RED
+  on v0.1.29 and are GREEN on this branch.
+
 ## [0.1.29] - 2026-11-19
 
 ### Fixed — video mode errors auto-retry instead of stranding on a toast
