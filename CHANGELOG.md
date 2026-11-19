@@ -7,6 +7,31 @@ aims for [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The release workflow publishes the section for the pushed tag, verbatim —
 this file is the release notes' single source.
 
+## [0.1.28] - 2026-11-19
+
+### Fixed — audio-only never lands on the Arabic dub anymore (the real root cause)
+
+- Owner retest of 0.1.27 still got Arabic in audio-only. True root cause,
+  confirmed in the live log: when the dump's `233-11` (English original)
+  rung's edge 403s on a mobile link, the resolver fell through to the
+  **master-variant** path, and the master served on such requests has
+  **bare language-named rungs** (no `LANGUAGE` attribute, no "original" in
+  the name). With no positive signal, the code effectively took the first
+  rung — and YouTube orders rungs alphabetically by language code, so the
+  first is **always Arabic** (`ar`).
+- **Fix:** a master rung is now chosen only with a positive signal —
+  `LANGUAGE ==` the video's original language (from the `-J` dump, robustly
+  derived incl. the "original"-noted rung's language) or NAME containing
+  "original". With bare names there is **no guess**: `best_audio_variant`
+  returns None and the master is served with DEFAULT flags untouched. And
+  the dump's own dub-filtered audio-HLS rung (`233-11`) is now returned
+  even when its probe fails — the proxy's refresh-on-403 covers play-time
+  403s — so the master path is a last resort only.
+- Hardened fixtures: `master_bare_names.m3u8` (ar/de/en bare names, de
+  DEFAULT=YES — the geolocation shape) is the **red mutation**: with
+  olang=en and no LANGUAGE attrs, selection must return None and DEFAULT
+  must pass through unchanged; with LANGUAGE attrs, the original wins.
+
 ## [0.1.27] - 2026-11-19
 
 ### Added — subtitle controls (off by default)
