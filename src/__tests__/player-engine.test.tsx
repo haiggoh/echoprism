@@ -448,7 +448,7 @@ describe('PlayerProvider media engine', () => {
     }
   });
 
-  it('element error pauses and surfaces a stream-error toast', async () => {
+  it('element error auto-retries the resolve once, then pauses and toasts', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const ep = makeEpisode();
@@ -458,10 +458,19 @@ describe('PlayerProvider media engine', () => {
       await act(async () => {
         api.play(ep);
       });
+      expect(streamMock).toHaveBeenCalledTimes(1);
+
+      // 2026-11-19 (owner): ANY media error (cold resolve included) retries the
+      // resolve once — the toast only surfaces on the SECOND error.
       await act(async () => {
         probeVideo.dispatchEvent(new Event('error'));
       });
+      await waitFor(() => expect(streamMock, 'error #1 re-resolves once').toHaveBeenCalledTimes(2));
+      expect(screen.queryByText('Stream error')).toBeNull();
 
+      await act(async () => {
+        probeVideo.dispatchEvent(new Event('error'));
+      });
       expect(api.isPlaying).toBe(false);
       expect(screen.getByText('Stream error')).toBeTruthy();
       await act(async () => {

@@ -19,11 +19,13 @@ import { ConvergenceProvider } from '../hooks/useConvergence';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { Toaster, clearToasts } from '../components/ui/Toaster';
 import { resetMockState } from '../mocks/router';
+import { episodeCommands } from '../hooks/useTauriCommands';
 import { usePlayerStore } from '../store/slices/playerSlice';
 import { useQueueStore } from '../store/slices/queueSlice';
 import type { Episode } from '../types';
 
 let api: ReturnType<typeof usePlayer>;
+let streamSpy: ReturnType<typeof vi.spyOn<never, never>>;
 function Probe() {
   const ctx = usePlayer();
   api = ctx;
@@ -66,6 +68,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetMockState();
+  streamSpy = vi.spyOn(episodeCommands, 'stream');
   clearToasts();
   useQueueStore.setState({
     items: [{
@@ -76,7 +79,7 @@ beforeEach(() => {
   });
   usePlayerStore.setState({ isPlaying: false, playbackState: null });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('batch 4 item 6: seek errors must not kill playback', () => {
   it('an error during a seek downgrades to a recovery: toast + re-resolve (round 9)', async () => {
@@ -100,22 +103,37 @@ describe('batch 4 item 6: seek errors must not kill playback', () => {
     expect(await screen.findByText('Recovering playback…')).toBeTruthy();
     expect(screen.queryByText('Stream error')).toBeNull();
 
-    // Review 2026-11-03: the flag clears on the error path too — a SECOND error
-    // with no new seek must hit the danger path, not stay downgraded forever.
+    // 2026-11-19 (owner): a second error with no new seek retries the resolve
+    // ONCE (call count 1 -> 2 from the seek recovery, -> 3 here); only a
+    // THIRD error hits the danger path.
     await act(async () => {
       fireEvent(audio, new Event('error'));
     });
+    await waitFor(() => expect(streamSpy, 'second error retries once').toHaveBeenCalledTimes(3));
+    expect(screen.queryByText('Stream error')).toBeNull();
+    await act(async () => {
+      fireEvent(audio, new Event('error'));
+    });
+    await waitFor(() => expect(streamSpy, 'third error does not retry again').toHaveBeenCalledTimes(3));
     await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(false));
     expect(await screen.findByText('Stream error')).toBeTruthy();
   });
 
-  it('a load error with NO seek in flight keeps the danger path', async () => {
+  it('a load error with NO seek in flight retries once, then the danger path', async () => {
     const { container } = renderPlayer();
     await waitFor(() => expect(api).toBeDefined());
     await act(async () => {
       api.play(ep);
     });
     const audio = container.querySelector('audio') as HTMLAudioElement;
+    await act(async () => {
+      fireEvent(audio, new Event('error'));
+    });
+    // first error: auto-retry (call 1 -> 2), still playing, no toast yet
+    await waitFor(() => expect(streamSpy).toHaveBeenCalledTimes(2));
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(screen.queryByText('Stream error')).toBeNull();
+    // second error: the one retry is used up -> danger path
     await act(async () => {
       fireEvent(audio, new Event('error'));
     });

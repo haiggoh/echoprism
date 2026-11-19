@@ -225,10 +225,10 @@ function PreferencesTab() {
         <h3 className="font-semibold mb-4">Card Click Behavior</h3>
         <div className="space-y-2">
           {([
-            // Owner decision 2026-11-02: queueing is the default; every card
-            // also has explicit Play now / Play next / Add to end buttons.
-            { value: 'queue', label: 'Add to queue (default)', hint: 'Queue it at the Queue Behavior position above — never interrupts what is playing' },
-            { value: 'play_now', label: 'Play now', hint: 'Start it immediately; the rest of the queue continues after it' },
+            // Owner 2026-11-19: the FIRST click on a card plays it (default
+            // 'play_now'); 'queue' remains a choice for users who want it.
+            { value: 'play_now', label: 'Play now (default)', hint: 'Start it immediately on the first click; the rest of the queue continues after it' },
+            { value: 'queue', label: 'Add to queue', hint: 'Queue it at the Queue Behavior position above — never interrupts what is playing' },
             { value: 'load_paused', label: 'Open paused', hint: 'Open it in the player without starting playback' },
           ] as const).map((opt) => (
             <label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-border hover:border-input transition-colors">
@@ -238,7 +238,7 @@ function PreferencesTab() {
                 value={opt.value}
                 // A legacy 'auto' row reads as 'queue' in the backend; the
                 // mock may still carry it, so treat it the same here.
-                checked={(preferences?.card_click_action ?? 'queue') === opt.value}
+                checked={(preferences?.card_click_action ?? 'play_now') === opt.value}
                 onChange={() => updateMutation.mutate({ card_click_action: opt.value })}
                 className="mt-1 w-4 h-4 accent-accent"
               />

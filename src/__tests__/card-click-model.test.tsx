@@ -82,20 +82,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Card click: play next by default, a real Play now (owner decision 2026-11-02)', () => {
-  it('the DEFAULT click queues the episode right after the current item and does not start playback', async () => {
+describe('Card click: Play now by default (owner 2026-11-19: first click plays), queue on choice', () => {
+  it('the DEFAULT click plays immediately on the FIRST click', async () => {
     renderFeed();
     const c = await card();
     await waitFor(() => expect(c).toBeTruthy());
     await act(async () => {
       fireEvent.click(within(c).getByText(/How Invidious pools actually work/));
     });
-    await waitFor(() => expect(queueIds()).toEqual(['a', 'ep-video-1', 'b', 'c']));
-    expect(usePlayerStore.getState().isPlaying).toBe(false);
+    await waitFor(() => expect(usePlayerStore.getState().isPlaying).toBe(true));
+    expect(queueIds()).toEqual(['ep-video-1', 'a', 'b', 'c']); // inserted at cursor, like Play now
   });
 
-  it('the default click honours Queue behavior = Add to end', async () => {
-    await withPrefs({ queue_behavior: 'add_end' });
+  it('with Queue explicitly chosen, a click honours Queue behavior = Add to end', async () => {
+    await withPrefs({ card_click_action: 'queue', queue_behavior: 'add_end' });
     renderFeed();
     const c = await card();
     // Let the preferences query land before clicking (the click reads it).
@@ -107,6 +107,7 @@ describe('Card click: play next by default, a real Play now (owner decision 2026
       fireEvent.click(within(c).getByText(/How Invidious pools actually work/));
     });
     await waitFor(() => expect(queueIds()).toEqual(['a', 'b', 'c', 'ep-video-1']));
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
   });
 
   it('Play now plays it immediately WITHOUT discarding the queue: inserted AT the cursor, in front of the current item', async () => {

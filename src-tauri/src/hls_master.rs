@@ -126,6 +126,11 @@ pub fn filter_master_playlist(master: &str, cap_height: Option<u32>, start: Star
 }
 
 /// Parse one `KEY="value"` / `KEY=value` attribute out of an HLS attribute list.
+/// Public-for-tests/debug alias of `attr` (extractor logs rung labels).
+pub fn attr_pub<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
+    attr(attrs, key)
+}
+
 fn attr<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
     attrs.split(',').find_map(|kv| {
         let v = kv.trim().strip_prefix(key)?.strip_prefix('=')?;
@@ -591,5 +596,30 @@ https://gv.example/v480.m3u8
             vec![180, 360],
             "cap 720 keeps both rungs (no over-filtering): {uncapped}"
         );
+    }
+}
+
+#[cfg(test)]
+mod live_capture_tests {
+    use super::*;
+
+    #[test]
+    fn app_captured_master_original_rung_wins_with_olang_en() {
+        // Real master captured 2026-11-19 via the app's own helper dump for
+        // tpQZLCel_kg: 22 "- dubbed" rungs + 2 "English - original" (LANGUAGE=en).
+        let m = include_str!("fixtures/master_app_capture.m3u8");
+        let (_, uri) = best_audio_variant(m, "https://manifest.googlevideo.com/x/master.m3u8", Some("en"))
+            .expect("an original rung must be found");
+        assert!(uri.contains("en"), "picked {uri}");
+        // and with NO olang (dump lacked the top-level language field)
+        let (_, uri2) = best_audio_variant(m, "https://manifest.googlevideo.com/x/master.m3u8", None)
+            .expect("name-'original' fallback must find it");
+        assert!(uri2.contains("en"), "picked {uri2}");
+        // the served master must mark the original as the only DEFAULT
+        let served = force_original_audio(m, Some("en"));
+        let yes: Vec<&str> = served.lines().filter(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("DEFAULT=YES")).collect();
+        assert_eq!(yes.len(), 1, "exactly one DEFAULT=YES rung");
+        assert!(yes[0].contains("LANGUAGE=\"en\""), "the default is the original: {yes:?}");
+        assert!(!served.contains("dubbed"));
     }
 }

@@ -192,6 +192,6 @@ mod card_click_tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(stored, "queue");
+        assert_eq!(stored, "play_now"); // 2026-11-19: auto/queue rows rewrite to play_now
     }
 }

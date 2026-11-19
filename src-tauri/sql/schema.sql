@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     keyboard_shortcuts_enabled INTEGER NOT NULL DEFAULT 1,
     theme TEXT NOT NULL DEFAULT 'system' CHECK (theme IN ('dark','light','system')),
     cross_device_sync_enabled INTEGER NOT NULL DEFAULT 0,
-    card_click_action TEXT NOT NULL DEFAULT 'queue' CHECK (card_click_action IN ('auto','play_now','load_paused','queue')),
+    card_click_action TEXT NOT NULL DEFAULT 'play_now' CHECK (card_click_action IN ('auto','play_now','load_paused','queue')),
     -- Task 10: playback quality / podcast settings (NULL cap = no cap)
     windowed_quality_cap INTEGER NULL DEFAULT 720,
     fullscreen_quality_cap INTEGER NULL DEFAULT 2160,

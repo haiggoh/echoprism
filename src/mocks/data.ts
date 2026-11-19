@@ -511,7 +511,7 @@ export const mockDb: MockDb = {
     keyboard_shortcuts_enabled: true,
     theme: 'system',
     cross_device_sync_enabled: false,
-    card_click_action: 'queue', // owner decision 2026-11-02 (was D2 'auto')
+    card_click_action: 'play_now', // owner 2026-11-19: first click plays
     // Task 10 defaults (mirror the backend serde/DB defaults):
     windowed_quality_cap: 720,
     fullscreen_quality_cap: 2160,

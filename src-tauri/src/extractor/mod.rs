@@ -550,6 +550,11 @@ impl Extractor {
                 .find(|f| f.format_note.as_deref().is_some_and(|n| n.to_lowercase().contains("original")))
                 .and_then(|f| f.language.clone())
         });
+        // 2026-11-19: debug the Arabic-dub report — log the derived original
+        // language and every audio rung's label when the master path is taken.
+        if want_audio {
+            tracing::info!("audio resolve: original_lang={original_lang:?} dump_language={:?}", dump.language);
+        }
         let candidates = rank_yt_dlp_formats(&dump.formats, want_audio, original_lang.as_deref());
         if candidates.is_empty() {
             return Err("yt-dlp returned no usable stream format".to_string());
@@ -671,6 +676,7 @@ impl Extractor {
             // Ranked order, not declaration order: the highest-abr audio-only
             // HLS rendition (233 over 234) wins.
             if let Some(hls) = candidates.iter().find(|f| is_audio_hls_format(f)).cloned() {
+                tracing::info!("audio 233/234 rung: id={:?} note={:?} lang={:?}", hls.format_id, hls.format_note, hls.language);
                 let raw = hls
                     .url.clone().filter(|u| !u.is_empty())
                     .or_else(|| hls.manifest_url.clone())
@@ -745,7 +751,20 @@ impl Extractor {
                 if let Ok(r) = master_resp {
                     if r.status().is_success() {
                         let text = r.text().await.unwrap_or_default();
+                        // 2026-11-19 debug: every audio rung's (language, name) so a
+                        // wrong pick is diagnosable from the log alone.
+                        let rungs: Vec<String> = text
+                            .lines()
+                            .filter(|l| l.starts_with("#EXT-X-MEDIA"))
+                            .filter(|l| l.contains("TYPE=AUDIO"))
+                            .map(|l| {
+                                let a = l.strip_prefix("#EXT-X-MEDIA:").unwrap_or(l);
+                                format!("{}:{}", crate::hls_master::attr_pub(a, "LANGUAGE").unwrap_or("?"), crate::hls_master::attr_pub(a, "NAME").unwrap_or("?"))
+                            })
+                            .collect();
+                        tracing::info!("audio master rungs (lang:name): {rungs:?}");
                         if let Some((bw, uri)) = crate::hls_master::best_audio_variant(&text, &manifest, original_lang.as_deref()) {
+                            tracing::info!("audio master variant chosen: bw={bw} uri_tail={}", &uri[uri.len().saturating_sub(48)..]);
                             let serve_url = if mheaders.is_empty() {
                                 uri.clone()
                             } else {

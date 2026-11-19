@@ -782,13 +782,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setStreamUrl(null);
         return;
       }
-      // Final-review finding: a dead CACHE entry (no fallback URL) must fall
-      // back to a FRESH resolve without a user-visible error — retry the
-      // resolve ONCE per episode (guard against an error→resolve→error loop),
-      // and only then surface the destructive toast. A COLD resolve failing is
-      // a genuine error and keeps the toast path (existing tests pin that).
+      // 2026-11-19 (owner): a media element error must auto-retry the resolve
+      // ONCE per episode even on a COLD resolve — previously only cache hits
+      // retried, so a cold resolve whose (fallback) URL died left the user on
+      // a dead toast with no retry. Guard against an error→resolve→error loop
+      // stays (errorRetryRef); the second error surfaces the toast.
       const retryEp = currentEpisodeRef.current;
-      if (retryEp && lastStreamCacheHitRef.current && errorRetryRef.current !== retryEp.id) {
+      if (retryEp && errorRetryRef.current !== retryEp.id) {
         errorRetryRef.current = retryEp.id;
         console.warn('media element error, re-resolving once, streamUrl =', streamUrl);
         setStreamUrl(null);

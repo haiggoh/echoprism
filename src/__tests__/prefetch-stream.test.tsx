@@ -276,8 +276,17 @@ describe('PlayerProvider queue look-ahead and media error', () => {
       fireEvent(probeVideo, new Event('error'));
     });
     await waitFor(() => expect(invalidateMock).toHaveBeenCalledWith(ep.id));
-    // second error → normal error path, no re-resolve loop
-    expect(streamMock).toHaveBeenCalledTimes(1);
+    // second error → the once-per-episode auto-retry fires (2026-11-19
+    // owner ruling: cold errors retry too); a third error must NOT re-resolve
+    // again (loop guard).
+    await waitFor(() => expect(streamMock).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      fireEvent(probeVideo, new Event('error'));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(streamMock).toHaveBeenCalledTimes(2);
   });
 
   it('hls_error_uses_fallback_url', async () => {

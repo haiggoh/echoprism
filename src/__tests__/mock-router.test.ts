@@ -56,8 +56,8 @@ describe('mock IPC router', () => {
 
   it('update_settings persists in memory and get_settings reflects it (D2 radio path)', async () => {
     const before = await mockInvoke<UserPreferences>('get_settings');
-    // Owner decision 2026-11-02 superseded D2's 'auto' default with 'queue'.
-    expect(before.card_click_action).toBe('queue');
+    // Owner 2026-11-19: the default is now 'play_now' (first click plays).
+    expect(before.card_click_action).toBe('play_now');
 
     await mockInvoke('update_settings', { prefs: { card_click_action: 'play_now' } });
     const after = await mockInvoke<UserPreferences>('get_settings');
@@ -75,10 +75,9 @@ describe('mock IPC router', () => {
     expect(queue.items).toHaveLength(0);
   });
 
-  it('fixture database is D1-compliant at the default (no auto-download) and clicks queue (2026-11-02)', () => {
+  it('fixture database is D1-compliant at the default (no auto-download) and first click plays (2026-11-19)', () => {
     expect(mockDb.preferences.auto_download_wifi).toBe(false);
-    // Was 'auto' (D2). The owner retired it 2026-11-02: one click, one behaviour.
-    expect(mockDb.preferences.card_click_action).toBe('queue');
+    expect(mockDb.preferences.card_click_action).toBe('play_now');
   });
 
   it('add_instance registers an instance the onboarding flow can then list (F01-H1 step 2)', async () => {
