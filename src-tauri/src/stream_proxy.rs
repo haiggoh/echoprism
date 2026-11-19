@@ -204,11 +204,6 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
     // original_lang=None and only the NAME-"original" heuristic could catch
     // it; with bare language names the geolocation DEFAULT=YES dub passed
     // through untouched and WebKit played the dub.
-    // Parse the policy query FIRST — 2026-11-19 Arabic-dub fix: olang used to
-    // be parsed AFTER force_original_audio ran, so the rewrite always saw
-    // original_lang=None and only the NAME-"original" heuristic could catch
-    // it; with bare language names the geolocation DEFAULT=YES dub passed
-    // through untouched and WebKit played the dub.
     let mut subs_on = false;
     let mut sublang = "en";
     let mut olang_opt: Option<String> = None;

@@ -24,8 +24,8 @@ pub const DEFAULT_START_QUALITY: StartQuality = StartQuality::Lowest;
 
 /// Parse `RESOLUTION=<w>x<h>` from an #EXT-X-STREAM-INF attributes line.
 fn resolution_height(attrs: &str) -> Option<u32> {
-    attrs
-        .split(',')
+    split_attrs(attrs)
+        .into_iter()
         .find_map(|kv| kv.trim().strip_prefix("RESOLUTION="))
         .and_then(|v| v.split('x').nth(1))
         .and_then(|h| h.parse::<u32>().ok())
@@ -131,8 +131,32 @@ pub fn attr_pub<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
     attr(attrs, key)
 }
 
+/// Split an HLS attribute list on commas that are NOT inside a quoted value.
+/// Real googlevideo `#EXT-X-MEDIA` lines carry commas inside the quoted URI
+/// (`.../cps/461/met/1795089501,/mh/jF/mm/18,29/...`) — 2026-11-19: a naive
+/// `split(',')` truncated every audio rung's URI at the first internal comma,
+/// the truncated URL was 403'd upstream, and the proxy's refresh path then
+/// swapped in the Arabic AI dub. Every parse site must split quote-aware.
+fn split_attrs(attrs: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let mut in_quotes = false;
+    for (i, c) in attrs.char_indices() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => {
+                out.push(&attrs[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(&attrs[start..]);
+    out
+}
+
 fn attr<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
-    attrs.split(',').find_map(|kv| {
+    split_attrs(attrs).into_iter().find_map(|kv| {
         let v = kv.trim().strip_prefix(key)?.strip_prefix('=')?;
         Some(v.trim_matches('"'))
     })
@@ -241,8 +265,8 @@ pub fn apply_subtitle_policy(master: &str, enabled: bool, lang: &str) -> String 
                     continue; // not the chosen language
                 }
                 // keep, force default/select on
-                let mut kept_attrs: Vec<String> = attrs
-                    .split(',')
+                let mut kept_attrs: Vec<String> = split_attrs(attrs)
+                    .into_iter()
                     .map(|kv| kv.trim().to_string())
                     .filter(|kv| {
                         let k = kv.split('=').next().unwrap_or("").to_uppercase();
@@ -316,8 +340,8 @@ pub fn force_original_audio(master: &str, original_lang: Option<&str>) -> String
                     continue; // drop the AI dub rung entirely
                 }
                 // strip existing DEFAULT/AUTOSELECT, then set them explicitly
-                let mut kept_attrs: Vec<String> = attrs
-                    .split(',')
+                let mut kept_attrs: Vec<String> = split_attrs(attrs)
+                    .into_iter()
                     .map(|kv| kv.trim().to_string())
                     .filter(|kv| {
                         let k = kv.split('=').next().unwrap_or("").to_uppercase();
@@ -621,5 +645,48 @@ mod live_capture_tests {
         assert_eq!(yes.len(), 1, "exactly one DEFAULT=YES rung");
         assert!(yes[0].contains("LANGUAGE=\"en\""), "the default is the original: {yes:?}");
         assert!(!served.contains("dubbed"));
+    }
+
+    #[test]
+    fn attr_keeps_commas_inside_quoted_uris() {
+        // Real capture shape (master_app_capture.m3u8): every rung's URI comes
+        // first and carries commas inside the quotes —
+        // …/cps/461/met/1795089501,/mh/jF/mm/18,29/… — 2026-11-19: a naive
+        // split(',') truncated the URI at the first internal comma, the
+        // truncated URL 403'd upstream, and the refresh path swapped in the
+        // Arabic dub. RED mutation: split_attrs degenerating to split(',').
+        let m = include_str!("fixtures/master_app_capture.m3u8");
+        let line = m
+            .lines()
+            .find(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("TYPE=AUDIO") && l.contains("original"))
+            .expect("an original rung exists");
+        let attrs = line.strip_prefix("#EXT-X-MEDIA:").unwrap();
+        let uri = attr_pub(attrs, "URI").expect("URI parses");
+        assert!(uri.contains("/mh/jF/mm/18,29"), "URI truncated at a comma: {uri}");
+        assert!(uri.ends_with("index.m3u8"), "URI must be the full rendition URL: {uri}");
+        // end-to-end: the chosen original variant carries the same full URI
+        let (_, picked) = best_audio_variant(m, "https://manifest.googlevideo.com/x/master.m3u8", Some("en"))
+            .expect("an original rung is found");
+        assert!(picked.contains("/mh/jF/mm/18,29"), "picked {picked}");
+        assert!(picked.ends_with("index.m3u8"), "picked {picked}");
+    }
+
+    #[test]
+    fn force_original_audio_preserves_comma_carrying_uris() {
+        // The served-master rewrite rebuilds each kept rung's attribute list;
+        // comma-carrying quoted URIs must come out intact (WebKit parses them).
+        let m = include_str!("fixtures/master_app_capture.m3u8");
+        let out = force_original_audio(m, Some("en"));
+        let audio: Vec<&str> = out
+            .lines()
+            .filter(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("TYPE=AUDIO"))
+            .collect();
+        assert_eq!(audio.len(), 2, "the two original rungs remain: {audio:?}");
+        for l in audio {
+            let attrs = l.strip_prefix("#EXT-X-MEDIA:").unwrap();
+            let uri = attr_pub(attrs, "URI").expect("URI survives the rewrite");
+            assert!(uri.contains("/mh/jF/mm/18,29"), "comma-carrying URI mangled: {uri}");
+            assert!(uri.ends_with("index.m3u8"), "URI mangled: {uri}");
+        }
     }
 }
