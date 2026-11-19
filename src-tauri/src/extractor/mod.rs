@@ -488,15 +488,38 @@ impl Extractor {
                 .ok()?;
                 let dump: YtDlpDump = serde_json::from_slice(&out.stdout).ok()?;
                 let ranked = rank_yt_dlp_formats(&dump.formats, want_audio, dump.language.as_deref());
+                // 2026-11-19 Arabic-dub fix: a refreshed entry must keep the
+                // KIND of resource it holds and must never land on an AI dub.
+                // YouTube lists the 233/234 audio-dub renditions FIRST in -J
+                // dumps (alphabetical by language code — 233-0 is the Arabic
+                // dub), so the old "first m3u8_native" pick silently replaced
+                // the original audio with the Arabic dub on every 403/410
+                // refresh (live log 2026-11-19 14:16:02). Audio entries
+                // (want_audio) want an audio-only rendition under the same
+                // predicates the resolve path uses; video master entries want
+                // a video-bearing hls_variant master. A known format_id wins
+                // when the fresh dump still lists it.
+                let kind_ok = |f: &YtDlpFormat| {
+                    if want_audio {
+                        is_audio_hls_format(f) && !is_dubbed(f, dump.language.as_deref())
+                    } else {
+                        f.protocol.as_deref() == Some("m3u8_native")
+                            && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
+                            && !is_none_codec(&f.vcodec)
+                            && !is_dubbed(f, dump.language.as_deref())
+                    }
+                };
                 let cand = if prefer_hls {
-                    // Task 9: a refreshed HLS entry wants the new MASTER url.
-                    dump.formats
-                        .iter()
-                        .find(|f| {
-                            f.protocol.as_deref() == Some("m3u8_native")
-                                && f.manifest_url.as_ref().is_some_and(|u| !u.is_empty())
+                    format_id
+                        .as_deref()
+                        .and_then(|id| {
+                            dump.formats
+                                .iter()
+                                .find(|f| f.format_id.as_deref() == Some(id) && kind_ok(f))
+                                .cloned()
                         })
-                        .cloned()
+                        .or_else(|| dump.formats.iter().find(|f| kind_ok(f)).cloned())
+                        .or_else(|| if want_audio { ranked.into_iter().next() } else { None })
                 } else {
                     format_id
                         .as_deref()
@@ -506,7 +529,14 @@ impl Extractor {
                 // Task 3: gate the FRESH url directly (never via the proxy)
                 // before handing it back — the lock opens ~2 s before
                 // available_at, so polling beats sleeping.
-                let url = cand.url.clone().filter(|u| !u.is_empty()).or(cand.manifest_url.clone())?;
+                // Audio entries hold a media playlist (hls_playlist); the
+                // video master entry holds the hls_variant master — refresh
+                // each with the same kind of URL.
+                let url = if want_audio {
+                    cand.url.clone().filter(|u| !u.is_empty()).or(cand.manifest_url.clone())
+                } else {
+                    cand.manifest_url.clone().filter(|u| !u.is_empty()).or(cand.url.clone())
+                }?;
                 let headers = cand.http_headers.clone().unwrap_or_default();
                 let gate_client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
@@ -3264,6 +3294,133 @@ mod tests {
         let body = reqwest::Client::new().get(&s.url).send().await.unwrap().text().await.unwrap();
         assert!(body.contains("#EXT-X-STREAM-INF"), "master served through the route: {body}");
         assert!(body.contains("360.m3u8"), "cap 2160 keeps 360p: {body}");
+    }
+
+    // ---- 2026-11-19: audio-only mode played the Arabic AI dub (owner report) ----
+    //
+    // Live repro (log 2026-11-19 14:15–14:16, video tpQZLCel_kg, audio mode):
+    // the resolve took the master-variant path and picked the English-original
+    // rung, but that URL was COMMA-TRUNCATED by `hls_master::attr`'s naive
+    // split(',') and googlevideo 403'd it; the proxy's 403/410 refresh then
+    // re-ran yt-dlp and `refresh_ytdlp_url`'s prefer_hls branch returned the
+    // FIRST m3u8_native format of the fresh dump — which, in a real dump, is
+    // 233-0, the ARABIC AI dub (renditions are ordered by language code, ar
+    // first). WebKit then played the Arabic media playlist. The /hls/ video
+    // route is protected by force_original_audio at serve time; the /stream/
+    // audio route has no such protection, so audio-only is what regressed.
+
+    /// Stub upstream answering 206 to every GET — `refresh_ytdlp_url` gates
+    /// the fresh URL with a 1-byte Range probe before returning it.
+    async fn spawn_always_206() -> u16 {
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = upstream.local_addr().unwrap().port();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut sock, _)) = upstream.accept().await {
+                tauri::async_runtime::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let _ = sock.read(&mut buf).await;
+                    let _ = sock
+                        .write_all(
+                            b"HTTP/1.1 206 Partial Content\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Range: bytes 0-0/100\r\nContent-Length: 1\r\nConnection: close\r\n\r\nX",
+                        )
+                        .await;
+                });
+            }
+        });
+        port
+    }
+
+    /// Extractor whose yt-dlp stub prints a prepared dump file (a full -J
+    /// document, top-level `language` included — the refresh path derives the
+    /// original language from it).
+    fn extractor_with_dump_file(dump_json: &str) -> (Extractor, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let dump_path = dir.path().join("dump.json");
+        std::fs::write(&dump_path, dump_json).unwrap();
+        let bin = dir.path().join("yt-dlp");
+        std::fs::write(&bin, format!("#!/bin/sh\ncat '{}'\n", dump_path.display())).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let np = std::sync::Arc::new(crate::netpath::NetPath::in_memory());
+        np.set(crate::netpath::Ipv6Verdict::Works);
+        let ex = Extractor::from_parts(np);
+        ex.yt_dlp_path.set(bin.display().to_string()).unwrap();
+        ex.set_helper_for_test(None);
+        (ex, dir)
+    }
+
+    /// The committed fixture is a REAL yt-dlp -J dump for tpQZLCel_kg captured
+    /// live 2026-11-19 (yt-dlp 2026.10.26, default clients; URLs sanitized to
+    /// gv.example with the volatile params redacted). Its shapes that matter:
+    /// top-level `language: "en"`; 233/234 AI-dub renditions FIRST (233-0 =
+    /// Arabic … 233-10 = Chinese), then 233-11/234-11 "English - original",
+    /// then progressive audio (139/140 families, the `-11` ones the originals),
+    /// 18 muxed, and video-HLS renditions 602/269/270.
+    const DUMP_WITH_DUBS: &str = include_str!("../fixtures/yt_dlp_dump_with_dubs_2026-11-19.json");
+
+    #[tokio::test]
+    async fn audio_refresh_never_swaps_in_an_ai_dub() {
+        // RED on v0.1.29 (root cause of the Arabic-dub report): the prefer_hls
+        // branch took the first m3u8_native format of the fresh dump — 233-0,
+        // the Arabic dub — and handed it to the /stream/ proxy entry.
+        let port = spawn_always_206().await;
+        let dump = DUMP_WITH_DUBS
+            .replace("https://gv.example", &format!("http://127.0.0.1:{port}"))
+            .replace("https://rr.example.googlevideo.com", &format!("http://127.0.0.1:{port}"))
+            .replace("https://rr.example.googlevideo.com", &format!("http://127.0.0.1:{port}"));
+        let (ex, _d) = extractor_with_dump_file(&dump);
+        let refresh = ex.refresh_ytdlp_url("vid", true, None, true).expect("refresh fn");
+        let (url, _headers) = refresh().await.expect("the fresh dump holds a usable audio rendition");
+        assert!(
+            !url.contains("dubbed"),
+            "refreshed audio URL must never be a dub rung (this is the Arabic pick): {url}"
+        );
+        assert!(
+            url.contains("lang%3Den"),
+            "refreshed audio URL must be an English (original-language) rendition: {url}"
+        );
+    }
+
+    #[tokio::test]
+    async fn video_refresh_returns_a_video_master_never_a_dub() {
+        // Same branch, the video face: a /hls/ master entry refreshed on
+        // 403/410 must come back as a hls_variant MASTER (what the route
+        // filters), and never as the first-list 233-0 Arabic media playlist.
+        let port = spawn_always_206().await;
+        let dump = DUMP_WITH_DUBS
+            .replace("https://gv.example", &format!("http://127.0.0.1:{port}"))
+            .replace("https://rr.example.googlevideo.com", &format!("http://127.0.0.1:{port}"))
+            .replace("https://rr.example.googlevideo.com", &format!("http://127.0.0.1:{port}"));
+        let (ex, _d) = extractor_with_dump_file(&dump);
+        let refresh = ex.refresh_ytdlp_url("vid", false, None, true).expect("refresh fn");
+        let (url, _headers) = refresh().await.expect("the fresh dump holds a video manifest");
+        assert!(
+            url.contains("hls_variant"),
+            "a video master entry refreshes to a master playlist, not a rendition: {url}"
+        );
+        assert!(!url.contains("dubbed"), "never an AI dub rung: {url}");
+    }
+
+    #[tokio::test]
+    async fn audio_refresh_honours_the_same_format_when_the_dump_has_it() {
+        // A 233-rung entry registers its format_id; the refresh must keep the
+        // SAME rendition when the fresh dump still lists it, else the pick
+        // silently jumps to a different band/rendition.
+        let port = spawn_always_206().await;
+        // acodec present (some dumps do) so the 233 family qualifies as
+        // audio-only HLS and the id match can be observed in the URL.
+        let dump = DUMP_WITH_DUBS
+            .replace("https://gv.example", &format!("http://127.0.0.1:{port}"))
+            .replace("https://rr.example.googlevideo.com", &format!("http://127.0.0.1:{port}"))
+            .replace("\"format_id\": \"233-11\"", "\"format_id\": \"233-11\", \"acodec\": \"opus\"");
+        let (ex, _d) = extractor_with_dump_file(&dump);
+        let refresh = ex.refresh_ytdlp_url("vid", true, Some("233-11".to_string()), true).expect("refresh fn");
+        let (url, _headers) = refresh().await.expect("refresh must succeed");
+        assert!(
+            url.contains("original:lang%3Den"),
+            "refresh must keep the requested original-language rendition: {url}"
+        );
     }
 
     /// LIVE acceptance (Task 12): prefetch a real video through the real

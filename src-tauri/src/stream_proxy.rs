@@ -199,15 +199,19 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
             };
         }
     }
-    let mut olang_opt: Option<String> = None;
-    let filtered = crate::hls_master::filter_master_playlist(&body, cap, start);
-    // 2026-11-18: never serve the geolocation-chosen AI dub as default audio —
-    // drop dub rungs and force DEFAULT onto the original one.
-    let filtered = crate::hls_master::force_original_audio(&filtered, olang_opt.as_deref());
-    // 2026-11-18: subtitle policy from the query (?subs=1&lang=de): off by
-    // default — WebKit auto-shows the AUTOSELECT subtitle rung otherwise.
+    // Parse the policy query FIRST — 2026-11-19 Arabic-dub fix: olang used to
+    // be parsed AFTER force_original_audio ran, so the rewrite always saw
+    // original_lang=None and only the NAME-"original" heuristic could catch
+    // it; with bare language names the geolocation DEFAULT=YES dub passed
+    // through untouched and WebKit played the dub.
+    // Parse the policy query FIRST — 2026-11-19 Arabic-dub fix: olang used to
+    // be parsed AFTER force_original_audio ran, so the rewrite always saw
+    // original_lang=None and only the NAME-"original" heuristic could catch
+    // it; with bare language names the geolocation DEFAULT=YES dub passed
+    // through untouched and WebKit played the dub.
     let mut subs_on = false;
     let mut sublang = "en";
+    let mut olang_opt: Option<String> = None;
     for pair in query.split('&') {
         if let Some(v) = pair.strip_prefix("subs=") {
             subs_on = v == "1";
@@ -221,6 +225,12 @@ async fn handle_hls(st: Arc<ProxyState>, token: String, query: &str) -> Result<R
             }
         }
     }
+    let filtered = crate::hls_master::filter_master_playlist(&body, cap, start);
+    // 2026-11-18: never serve the geolocation-chosen AI dub as default audio —
+    // drop dub rungs and force DEFAULT onto the original one.
+    let filtered = crate::hls_master::force_original_audio(&filtered, olang_opt.as_deref());
+    // 2026-11-18: subtitle policy from the query (?subs=1&lang=de): off by
+    // default — WebKit auto-shows the AUTOSELECT subtitle rung otherwise.
     let filtered = crate::hls_master::apply_subtitle_policy(&filtered, subs_on, sublang);
     let bytes = Bytes::from(filtered);
     Ok(Response::builder()
@@ -612,6 +622,57 @@ mod tests {
         assert!(
             !text.contains("v360/playlist.m3u8"),
             "cap 180 drops the 360p rung: {text}"
+        );
+    }
+
+    /// 2026-11-19 Arabic-dub report, proxy face (RED on v0.1.29): `handle_hls`
+    /// parsed the `olang=` query param AFTER calling `force_original_audio`,
+    /// so the rewrite always ran with original_lang=None and only the
+    /// NAME-"original" heuristic could catch it. With bare language names
+    /// (no "original"/"dubbed" words) it passed the master through unchanged
+    /// and WebKit then played YouTube's geolocation DEFAULT=YES rung — the
+    /// dub. The served master must mark the olang rung DEFAULT=YES.
+    #[tokio::test]
+    async fn hls_route_marks_olang_default_when_names_are_bare() {
+        let master = "#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",LANGUAGE=\"ar\",NAME=\"العربية\",URI=\"ar.m3u8\",DEFAULT=YES,AUTOSELECT=YES\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",LANGUAGE=\"en\",NAME=\"English\",URI=\"en.m3u8\",DEFAULT=NO\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=640x360,AUDIO=\"a\"\nhttps://x/360.m3u8\n";
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let up_port = upstream.local_addr().unwrap().port();
+        let body = master.to_string();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut sock, _)) = upstream.accept().await {
+                let body = body.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let _ = sock.read(&mut buf).await;
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        let local = register_hls_master(
+            &format!("http://127.0.0.1:{up_port}/master.m3u8"),
+            HashMap::new(),
+            None,
+            None,
+            crate::hls_master::StartQuality::Lowest,
+            "0",
+            "en",
+            "en", // olang: the video's original language
+        );
+        let text = reqwest::Client::new().get(&local).send().await.unwrap().text().await.unwrap();
+        let yes: Vec<&str> = text
+            .lines()
+            .filter(|l| l.starts_with("#EXT-X-MEDIA") && l.contains("TYPE=AUDIO") && l.contains("DEFAULT=YES"))
+            .collect();
+        assert_eq!(yes.len(), 1, "exactly one DEFAULT=YES audio rung: {text}");
+        assert!(
+            yes[0].contains("LANGUAGE=\"en\""),
+            "the DEFAULT rung must be the original language (olang=en), not the geolocation dub: {yes:?}"
         );
     }
 }
